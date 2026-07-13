@@ -6,6 +6,8 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { SshService } from './ssh/ssh.service';
 import { attachTerminalServer } from './terminal/terminal-server';
+import { attachOpsServer } from './ops/ops-server';
+import { ServersService } from './servers/servers.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -25,6 +27,11 @@ async function bootstrap() {
     jwt: app.get(JwtService),
     prisma: app.get(PrismaService),
     ssh: app.get(SshService),
+  });
+
+  attachOpsServer(httpServer, {
+    jwt: app.get(JwtService),
+    servers: app.get(ServersService),
   });
 
   console.log(`Velix API rodando na porta ${port}`);

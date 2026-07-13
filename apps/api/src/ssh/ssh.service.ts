@@ -30,11 +30,16 @@ export class SshService {
    * Usado tanto pelo teste de conexão quanto por updates/Docker — comandos
    * de instalação podem levar minutos, por isso o timeout é bem generoso.
    *
-   * ponytail: síncrono (a requisição HTTP fica esperando o comando acabar).
-   * Trocar por fila (BullMQ) + WebSocket de log ao vivo quando os comandos
-   * passarem de alguns minutos ou o usuário precisar navegar para outra tela.
+   * `onData`, se passado, recebe cada pedaço de saída assim que chega — usado
+   * pelo canal de log ao vivo (/ops) pra streaming em tempo real. Sem ele, o
+   * comportamento é o de sempre (só resolve no final, com tudo bufferizado).
    */
-  runCommand(options: SshConnectOptions, command: string, timeoutMs = 120_000): Promise<CommandResult> {
+  runCommand(
+    options: SshConnectOptions,
+    command: string,
+    timeoutMs = 120_000,
+    onData?: (chunk: string, isError: boolean) => void,
+  ): Promise<CommandResult> {
     return new Promise((resolve) => {
       const conn = new Client();
       let settled = false;
@@ -64,10 +69,14 @@ export class SshService {
                 finish({ ok: code === 0, code, stdout, stderr });
               })
               .on('data', (data: Buffer) => {
-                stdout += data.toString();
+                const text = data.toString();
+                stdout += text;
+                onData?.(text, false);
               })
               .stderr.on('data', (data: Buffer) => {
-                stderr += data.toString();
+                const text = data.toString();
+                stderr += text;
+                onData?.(text, true);
               });
           });
         })

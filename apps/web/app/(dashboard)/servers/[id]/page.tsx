@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { Bar } from '@/components/Bar';
-import { Alert, CommandOutput as OutputBlock } from '@/components/Alert';
+import { Alert } from '@/components/Alert';
+import { InstallLogModal } from '@/components/InstallLogModal';
 import '@xterm/xterm/css/xterm.css';
 
 interface ServerMetrics {
@@ -326,24 +327,16 @@ interface UpdatesInfo {
   packages: UpgradablePackage[];
 }
 
-interface CommandOutput {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  message?: string;
-}
 
 function UpdatesTab({ serverId }: { serverId: string }) {
   const [checking, setChecking] = useState(false);
   const [info, setInfo] = useState<UpdatesInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [installing, setInstalling] = useState(false);
-  const [output, setOutput] = useState<CommandOutput | null>(null);
+  const [logParams, setLogParams] = useState<{ securityOnly: boolean } | null>(null);
 
   async function handleCheck() {
     setChecking(true);
     setError(null);
-    setOutput(null);
     try {
       const res = await apiFetch<UpdatesInfo>(`/servers/${serverId}/updates`);
       setInfo(res);
@@ -351,24 +344,6 @@ function UpdatesTab({ serverId }: { serverId: string }) {
       setError(err instanceof Error ? err.message : 'Falha ao verificar atualizações');
     } finally {
       setChecking(false);
-    }
-  }
-
-  async function handleInstall(securityOnly: boolean) {
-    setInstalling(true);
-    setOutput(null);
-    setError(null);
-    try {
-      const res = await apiFetch<CommandOutput>(`/servers/${serverId}/updates/install`, {
-        method: 'POST',
-        body: JSON.stringify({ securityOnly }),
-      });
-      setOutput(res);
-      handleCheck();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao instalar atualizações');
-    } finally {
-      setInstalling(false);
     }
   }
 
@@ -385,18 +360,14 @@ function UpdatesTab({ serverId }: { serverId: string }) {
         {info && info.total > 0 && (
           <>
             <button
-              onClick={() => handleInstall(true)}
-              disabled={installing || info.security === 0}
+              onClick={() => setLogParams({ securityOnly: true })}
+              disabled={info.security === 0}
               className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20"
             >
               Instalar só segurança ({info.security})
             </button>
-            <button
-              onClick={() => handleInstall(false)}
-              disabled={installing}
-              className="btn-primary px-4 py-2 text-sm"
-            >
-              {installing ? 'Instalando...' : `Instalar todas (${info.total})`}
+            <button onClick={() => setLogParams({ securityOnly: false })} className="btn-primary px-4 py-2 text-sm">
+              Instalar todas ({info.total})
             </button>
           </>
         )}
@@ -437,15 +408,15 @@ function UpdatesTab({ serverId }: { serverId: string }) {
         </div>
       )}
 
-      {output && (
-        <div className="mt-4">
-          <Alert variant={output.ok ? 'success' : 'error'} title={output.ok ? 'Atualização concluída' : 'Falha na atualização'}>
-            <OutputBlock>
-              {output.stdout}
-              {output.stderr}
-            </OutputBlock>
-          </Alert>
-        </div>
+      {logParams && (
+        <InstallLogModal
+          serverId={serverId}
+          op="updates-install"
+          params={logParams}
+          title={logParams.securityOnly ? 'Instalando atualizações de segurança' : 'Instalando todas as atualizações'}
+          onClose={() => setLogParams(null)}
+          onDone={() => handleCheck()}
+        />
       )}
     </div>
   );
@@ -465,10 +436,9 @@ interface DockerStatusResp {
 }
 
 function DockerTab({ server, onChange }: { server: Server; onChange: () => void }) {
-  const [installing, setInstalling] = useState(false);
-  const [output, setOutput] = useState<CommandOutput | null>(null);
   const [status, setStatus] = useState<DockerStatusResp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showLog, setShowLog] = useState(false);
 
   function loadStatus() {
     apiFetch<DockerStatusResp>(`/servers/${server.id}/docker/status`)
@@ -481,46 +451,29 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   }, [server.dockerInstalled]);
   useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
 
-  async function handleInstall() {
-    setInstalling(true);
-    setOutput(null);
-    setError(null);
-    try {
-      const res = await apiFetch<{ ok: boolean; output: string; version: string | null }>(`/servers/${server.id}/docker/install`, {
-        method: 'POST',
-      });
-      setOutput({ ok: res.ok, stdout: res.output, stderr: '' });
-      onChange();
-      loadStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao instalar Docker');
-    } finally {
-      setInstalling(false);
-    }
-  }
-
   if (!server.dockerInstalled) {
     return (
       <div>
         <p className="mb-4 text-sm text-slate-500">Docker ainda não foi instalado neste servidor.</p>
-        <button
-          onClick={handleInstall}
-          disabled={installing}
-          className="btn-primary px-4 py-2 text-sm"
-        >
-          {installing ? 'Instalando Docker (pode levar alguns minutos)...' : 'Instalar Docker'}
+        <button onClick={() => setShowLog(true)} className="btn-primary px-4 py-2 text-sm">
+          Instalar Docker
         </button>
         {error && (
           <div className="mt-3">
             <Alert variant="error">{error}</Alert>
           </div>
         )}
-        {output && (
-          <div className="mt-4">
-            <Alert variant={output.ok ? 'success' : 'error'} title={output.ok ? 'Docker instalado' : 'Falha na instalação'}>
-              <OutputBlock>{output.stdout}</OutputBlock>
-            </Alert>
-          </div>
+        {showLog && (
+          <InstallLogModal
+            serverId={server.id}
+            op="docker-install"
+            title="Instalando Docker"
+            onClose={() => setShowLog(false)}
+            onDone={() => {
+              onChange();
+              loadStatus();
+            }}
+          />
         )}
       </div>
     );
@@ -585,9 +538,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
   const [domain, setDomain] = useState('');
   const [email, setEmail] = useState('');
   const [createDnsRecord, setCreateDnsRecord] = useState(true);
-  const [installing, setInstalling] = useState(false);
-  const [output, setOutput] = useState<{ stdout: string } | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<EasyPanelStatusResp | null>(null);
 
@@ -606,32 +557,16 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
     return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
   }
 
-  async function handleInstall(e: React.FormEvent) {
-    e.preventDefault();
-    setInstalling(true);
-    setOutput(null);
-    setWarnings([]);
-    setError(null);
-    try {
-      const res = await apiFetch<{ ok: boolean; output: string; url: string | null; warnings: string[] }>(
-        `/servers/${server.id}/easypanel/install`,
-        { method: 'POST', body: JSON.stringify({ domain: domain || undefined, email, createDnsRecord }) },
-      );
-      setOutput({ stdout: res.output });
-      setWarnings(res.warnings);
-      onChange();
-      if (res.ok) loadStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao instalar EasyPanel');
-    } finally {
-      setInstalling(false);
-    }
-  }
-
   if (!server.easypanelInstalled) {
     return (
       <div>
-        <form onSubmit={handleInstall} className="max-w-sm space-y-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setShowLog(true);
+          }}
+          className="max-w-sm space-y-3"
+        >
           <label className="block text-sm">
             <span className="mb-1 block font-medium">Domínio (opcional)</span>
             <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input" />
@@ -646,12 +581,8 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
               Criar registro DNS na Cloudflare automaticamente
             </label>
           )}
-          <button
-            type="submit"
-            disabled={installing}
-            className="btn-primary px-4 py-2 text-sm"
-          >
-            {installing ? 'Instalando EasyPanel (pode levar alguns minutos)...' : 'Instalar EasyPanel'}
+          <button type="submit" className="btn-primary px-4 py-2 text-sm">
+            Instalar EasyPanel
           </button>
         </form>
 
@@ -660,21 +591,19 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
             <Alert variant="error">{error}</Alert>
           </div>
         )}
-        {warnings.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {warnings.map((w) => (
-              <Alert key={w} variant="warning">
-                {w}
-              </Alert>
-            ))}
-          </div>
-        )}
-        {output && (
-          <div className="mt-4">
-            <Alert variant="info" title="Saída da instalação">
-              <OutputBlock>{output.stdout}</OutputBlock>
-            </Alert>
-          </div>
+
+        {showLog && (
+          <InstallLogModal
+            serverId={server.id}
+            op="easypanel-install"
+            params={{ domain: domain || undefined, email, createDnsRecord }}
+            title="Instalando EasyPanel"
+            onClose={() => setShowLog(false)}
+            onDone={() => {
+              onChange();
+              loadStatus();
+            }}
+          />
         )}
       </div>
     );

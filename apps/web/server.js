@@ -15,11 +15,11 @@ app.prepare().then(() => {
     handle(req, res, parse(req.url, true));
   });
 
-  // Repassa upgrades de WebSocket em /terminal direto pro backend, via socket
-  // TCP cru — assim o terminal web funciona sem precisar de uma segunda porta
-  // exposta (rewrites do Next não proxeiam upgrade de WebSocket).
+  // Repassa upgrades de WebSocket em /terminal e /ops direto pro backend, via
+  // socket TCP cru — assim terminal e logs ao vivo funcionam sem precisar de
+  // uma segunda porta exposta (rewrites do Next não proxeiam upgrade de WebSocket).
   server.on('upgrade', (req, socket, head) => {
-    if (!req.url.startsWith('/terminal')) {
+    if (!req.url.startsWith('/terminal') && !req.url.startsWith('/ops')) {
       socket.destroy();
       return;
     }

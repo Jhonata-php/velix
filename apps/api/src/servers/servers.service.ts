@@ -9,6 +9,8 @@ import { CreateServerDto } from './dto/create-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
 import { METRICS_COMMAND, parseMetrics } from './metrics.util';
 
+type LogFn = (line: string) => void;
+
 function toPublic<T extends { credentialEnc: string }>(server: T) {
   const { credentialEnc: _drop, ...rest } = server;
   return rest;
@@ -151,10 +153,11 @@ export class ServersService {
   }
 
   /** Garante curl + ca-certificates antes de instalar Docker/EasyPanel — imagens mínimas costumam vir sem isso. */
-  private async ensurePrerequisites(options: SshConnectOptions) {
+  private async ensurePrerequisites(options: SshConnectOptions, onLog?: LogFn) {
     const hasCurl = await this.ssh.runCommand(options, 'command -v curl', 10_000);
     if (hasCurl.ok) return;
 
+    onLog?.('curl não encontrado — instalando pré-requisitos...\n');
     const packageManager = await this.detectPackageManager(options);
     const installCmd =
       packageManager === 'apt'
@@ -169,7 +172,7 @@ export class ServersService {
       throw new BadRequestException('curl não está instalado e o gerenciador de pacotes do servidor não foi reconhecido (apt/dnf/yum) para instalá-lo automaticamente');
     }
 
-    const result = await this.ssh.runCommand(options, installCmd, 120_000);
+    const result = await this.ssh.runCommand(options, installCmd, 120_000, onLog && ((chunk) => onLog(chunk)));
     if (!result.ok) {
       throw new BadRequestException(`Falha ao instalar pré-requisitos (curl/ca-certificates): ${result.stderr || result.message}`);
     }
@@ -214,10 +217,11 @@ export class ServersService {
     };
   }
 
-  async installUpdates(id: string, securityOnly: boolean) {
+  async installUpdates(id: string, securityOnly: boolean, onLog?: LogFn) {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
     const packageManager = server.packageManager ?? (await this.detectPackageManager(options));
+    const stream: LogFn | undefined = onLog && ((chunk) => onLog(chunk));
 
     if (packageManager === 'apt') {
       if (securityOnly) {
@@ -227,33 +231,40 @@ export class ServersService {
           return { ok: true, stdout: 'Nenhuma atualização de segurança pendente.', stderr: '', code: 0 };
         }
         const names = securityPkgs.map((p) => p.name).join(' ');
-        return this.ssh.runCommand(options, `sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade ${names}`, 600_000);
+        return this.ssh.runCommand(options, `sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade ${names}`, 600_000, stream);
       }
-      return this.ssh.runCommand(options, 'sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade', 600_000);
+      return this.ssh.runCommand(options, 'sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade', 600_000, stream);
     }
 
     if (packageManager === 'dnf' || packageManager === 'yum') {
       const flag = securityOnly ? '--security' : '';
-      return this.ssh.runCommand(options, `sudo ${packageManager} -y update ${flag}`.trim(), 600_000);
+      return this.ssh.runCommand(options, `sudo ${packageManager} -y update ${flag}`.trim(), 600_000, stream);
     }
 
     throw new BadRequestException('Gerenciador de pacotes não identificado. Rode "Verificar atualizações" primeiro.');
   }
 
-  async installDocker(id: string) {
+  async installDocker(id: string, onLog?: LogFn) {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
-    await this.ensurePrerequisites(options);
+    await this.ensurePrerequisites(options, onLog);
 
     // ponytail: baixa e executa em passos separados de propósito. Com
     // `curl ... | sudo sh` direto, se o curl falhar (rede, DNS) o `sh` recebe
     // stdin vazio e sai com código 0 — o pipeline "dá certo" sem instalar nada.
+    onLog?.('Baixando instalador do Docker...\n');
     const download = await this.ssh.runCommand(options, 'curl -fsSL https://get.docker.com -o /tmp/velix-get-docker.sh', 60_000);
     if (!download.ok) {
       return { ok: false, output: `Falha ao baixar o instalador do Docker: ${download.stderr || download.message}`, version: null };
     }
 
-    const install = await this.ssh.runCommand(options, 'sudo sh /tmp/velix-get-docker.sh; rm -f /tmp/velix-get-docker.sh', 600_000);
+    onLog?.('Executando instalador (isso pode levar alguns minutos)...\n');
+    const install = await this.ssh.runCommand(
+      options,
+      'sudo sh /tmp/velix-get-docker.sh; rm -f /tmp/velix-get-docker.sh',
+      600_000,
+      onLog && ((chunk) => onLog(chunk)),
+    );
     if (!install.ok) {
       return { ok: false, output: install.stdout + install.stderr, version: null };
     }
@@ -264,7 +275,8 @@ export class ServersService {
     }
 
     await this.ssh.runCommand(options, 'sudo systemctl enable --now docker', 30_000);
-    const verify = await this.ssh.runCommand(options, 'sudo docker run --rm hello-world', 60_000);
+    onLog?.('Validando com container de teste (hello-world)...\n');
+    const verify = await this.ssh.runCommand(options, 'sudo docker run --rm hello-world', 60_000, onLog && ((chunk) => onLog(chunk)));
     const versionRes = await this.ssh.runCommand(options, "sudo docker version --format '{{.Server.Version}}'", 15_000);
     const version = versionRes.stdout.trim() || null;
 
@@ -322,13 +334,13 @@ export class ServersService {
     }
   }
 
-  async installEasyPanel(id: string, opts: { domain?: string; email: string; createDnsRecord?: boolean }) {
+  async installEasyPanel(id: string, opts: { domain?: string; email: string; createDnsRecord?: boolean }, onLog?: LogFn) {
     const server = await this.getRawServer(id);
     if (!server.dockerInstalled) {
       throw new BadRequestException('Instale o Docker neste servidor antes do EasyPanel');
     }
     const options = this.toConnectOptions(server);
-    await this.ensurePrerequisites(options);
+    await this.ensurePrerequisites(options, onLog);
     const warnings: string[] = [];
 
     if (opts.domain && opts.createDnsRecord) {
@@ -336,6 +348,7 @@ export class ServersService {
         warnings.push('Servidor sem IP público cadastrado — DNS não foi configurado automaticamente.');
       } else {
         try {
+          onLog?.(`Configurando DNS na Cloudflare para ${opts.domain}...\n`);
           await this.upsertCloudflareRecord(opts.domain, server.publicIp);
         } catch (err) {
           warnings.push(`Falha ao configurar DNS na Cloudflare: ${err instanceof Error ? err.message : String(err)}`);
@@ -345,16 +358,24 @@ export class ServersService {
 
     // ponytail: mesmo motivo do installDocker — download e execução separados
     // pra não mascarar falha do curl atrás de um `sh` que "deu certo" com stdin vazio.
+    onLog?.('Baixando instalador do EasyPanel...\n');
     const download = await this.ssh.runCommand(options, 'curl -fsSL https://get.easypanel.io -o /tmp/velix-get-easypanel.sh', 60_000);
     if (!download.ok) {
       return { ok: false, output: `Falha ao baixar o instalador do EasyPanel: ${download.stderr || download.message}`, url: null, warnings };
     }
-    const install = await this.ssh.runCommand(options, 'sudo sh /tmp/velix-get-easypanel.sh; rm -f /tmp/velix-get-easypanel.sh', 600_000);
+    onLog?.('Executando instalador (isso pode levar alguns minutos)...\n');
+    const install = await this.ssh.runCommand(
+      options,
+      'sudo sh /tmp/velix-get-easypanel.sh; rm -f /tmp/velix-get-easypanel.sh',
+      600_000,
+      onLog && ((chunk) => onLog(chunk)),
+    );
     if (!install.ok) {
       return { ok: false, output: install.stdout + install.stderr, url: null, warnings };
     }
 
     // dá um tempo para o container subir antes de validar
+    onLog?.('Aguardando o container subir...\n');
     await new Promise((r) => setTimeout(r, 5000));
     const check = await this.ssh.runCommand(options, "sudo docker ps --filter name=easypanel --format '{{.Status}}'", 15_000);
     const running = check.stdout.toLowerCase().includes('up');
