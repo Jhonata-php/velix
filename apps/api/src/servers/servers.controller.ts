@@ -15,6 +15,11 @@ export class ServersController {
     return this.servers.create(dto);
   }
 
+  @Post('generate-ssh-key')
+  generateSshKey() {
+    return this.servers.generateSshKey();
+  }
+
   @Get()
   findAll() {
     return this.servers.findAll();

@@ -54,14 +54,14 @@ export default function ServerDetailPage() {
         {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
       </p>
 
-      <div className="mb-6 flex gap-1 border-b border-slate-200 dark:border-slate-800">
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium ${
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium ${
               tab === t.key
-                ? 'border-b-2 border-slate-900 text-slate-900 dark:border-white dark:text-white'
+                ? 'border-b-2 border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-400'
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
@@ -289,7 +289,7 @@ function UpdatesTab({ serverId }: { serverId: string }) {
       )}
 
       {info && info.packages.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
               <tr>
@@ -401,7 +401,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
             <tr>
@@ -538,7 +538,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
             <tr>
@@ -665,7 +665,7 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
         {created ? (
           <div>

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
 import { CloudflareService } from '../cloudflare/cloudflare.service';
+import { generateSshKeyPair } from '../ssh/keygen.util';
 import { CreateServerDto } from './dto/create-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
 
@@ -40,6 +41,12 @@ export class ServersService {
       },
     });
     return toPublic(server);
+  }
+
+  generateSshKey() {
+    const { publicKey, privateKey } = generateSshKeyPair();
+    const command = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${publicKey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
+    return { publicKey, privateKey, command };
   }
 
   async findAll() {
