@@ -334,7 +334,7 @@ export class ServersService {
     }
   }
 
-  async installEasyPanel(id: string, opts: { domain?: string; email: string; createDnsRecord?: boolean }, onLog?: LogFn) {
+  async installEasyPanel(id: string, opts: { domain?: string; createDnsRecord?: boolean }, onLog?: LogFn) {
     const server = await this.getRawServer(id);
     if (!server.dockerInstalled) {
       throw new BadRequestException('Instale o Docker neste servidor antes do EasyPanel');
@@ -430,5 +430,36 @@ export class ServersService {
       15_000,
     );
     return { installed: true as const, url, containers: this.parseContainers(psRes.stdout) };
+  }
+
+  /**
+   * Confirma, a partir do próprio Velix (não do servidor), se o domínio já
+   * responde em HTTPS — ou seja, se o usuário já configurou o domínio DENTRO
+   * do EasyPanel (isso é feito manualmente na UI dele, não tem parâmetro de
+   * instalação pra isso). Só faz sentido fechar a porta 3000 depois disso.
+   */
+  async verifyEasyPanelDomain(domain: string) {
+    try {
+      const res = await fetch(`https://${domain}`, { method: 'GET', signal: AbortSignal.timeout(10_000) });
+      return { reachable: res.status < 500, statusCode: res.status };
+    } catch (err) {
+      return { reachable: false, statusCode: null, message: err instanceof Error ? err.message : 'Falha ao consultar domínio' };
+    }
+  }
+
+  /** Bloqueia acesso externo à porta 3000 (EasyPanel) via ufw — só depois que o domínio já estiver respondendo. */
+  async lockEasyPanelPort(id: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+
+    const hasUfw = await this.ssh.runCommand(options, 'command -v ufw', 10_000);
+    if (!hasUfw.ok) {
+      throw new BadRequestException('ufw não está instalado neste servidor — configure o firewall manualmente para bloquear a porta 3000');
+    }
+    const result = await this.ssh.runCommand(options, 'sudo ufw deny 3000/tcp && sudo ufw reload', 30_000);
+    if (!result.ok) {
+      throw new BadRequestException(`Falha ao configurar o firewall: ${result.stderr || result.message}`);
+    }
+    return { ok: true, message: 'Porta 3000 bloqueada para acesso externo. O painel continua acessível pelo domínio.' };
   }
 }

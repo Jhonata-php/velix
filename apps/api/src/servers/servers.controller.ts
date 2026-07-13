@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServersService } from './servers.service';
 import { CreateServerDto } from './dto/create-server.dto';
@@ -78,5 +78,15 @@ export class ServersController {
   @Get(':id/easypanel/status')
   easypanelStatus(@Param('id') id: string) {
     return this.servers.easypanelStatus(id);
+  }
+
+  @Get(':id/easypanel/verify-domain')
+  verifyEasyPanelDomain(@Query('domain') domain: string) {
+    return this.servers.verifyEasyPanelDomain(domain);
+  }
+
+  @Post(':id/easypanel/lock-port')
+  lockEasyPanelPort(@Param('id') id: string) {
+    return this.servers.lockEasyPanelPort(id);
   }
 }

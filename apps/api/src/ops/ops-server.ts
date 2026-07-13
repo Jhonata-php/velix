@@ -6,7 +6,7 @@ import { ServersService } from '../servers/servers.service';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
-  | { type: 'start'; op: 'easypanel-install'; params: { domain?: string; email: string; createDnsRecord?: boolean } }
+  | { type: 'start'; op: 'easypanel-install'; params: { domain?: string; createDnsRecord?: boolean } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } };
 
 function send(ws: WebSocket, msg: object) {

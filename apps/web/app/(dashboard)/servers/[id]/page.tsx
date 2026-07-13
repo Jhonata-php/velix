@@ -573,7 +573,6 @@ interface EasyPanelStatusResp {
 
 function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => void }) {
   const [domain, setDomain] = useState('');
-  const [email, setEmail] = useState('');
   const [createDnsRecord, setCreateDnsRecord] = useState(true);
   const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -607,10 +606,9 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           <label className="block text-sm">
             <span className="mb-1 block font-medium">Domínio (opcional)</span>
             <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input" />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">E-mail administrativo</span>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
+            <span className="mt-1 block text-xs text-slate-400">
+              Cria o registro DNS apontando pro servidor. Configurar esse domínio dentro do EasyPanel é manual (feito na UI dele).
+            </span>
           </label>
           {domain && (
             <label className="flex items-center gap-2 text-sm">
@@ -633,7 +631,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           <InstallLogModal
             serverId={server.id}
             op="easypanel-install"
-            params={{ domain: domain || undefined, email, createDnsRecord }}
+            params={{ domain: domain || undefined, createDnsRecord }}
             title="Instalando EasyPanel"
             onClose={() => setShowLog(false)}
             onDone={() => {
@@ -648,14 +646,16 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <a href={server.easypanelUrl ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+      <Alert variant="info" title="Falta um passo manual">
+        A conta de administrador do EasyPanel é criada na primeira vez que você abre o painel — não tem como o Velix criar isso
+        automaticamente. Abra o link abaixo e defina seu e-mail/senha por lá.
+      </Alert>
+
+      <div className="my-4 flex items-center justify-between">
+        <a href={server.easypanelUrl ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
           Abrir EasyPanel ({server.easypanelUrl})
         </a>
-        <button
-          onClick={loadStatus}
-          className="btn-secondary px-3 py-1.5 text-xs"
-        >
+        <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
           ↻ Atualizar
         </button>
       </div>
@@ -666,13 +666,15 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <EasyPanelDomainLock serverId={server.id} defaultDomain={extractHostname(server.easypanelUrl)} />
+
+      <div className="card mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
+          <thead className="border-b border-slate-200 dark:border-slate-800">
             <tr>
-              <th className="px-4 py-2">Container</th>
-              <th className="px-4 py-2">Imagem</th>
-              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
+              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
+              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -693,6 +695,84 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function extractHostname(url: string | null): string {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function EasyPanelDomainLock({ serverId, defaultDomain }: { serverId: string; defaultDomain: string }) {
+  const [domain, setDomain] = useState(defaultDomain);
+  const [checking, setChecking] = useState(false);
+  const [reachable, setReachable] = useState<boolean | null>(null);
+  const [locking, setLocking] = useState(false);
+  const [lockMessage, setLockMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleVerify() {
+    setChecking(true);
+    setError(null);
+    setReachable(null);
+    try {
+      const res = await apiFetch<{ reachable: boolean }>(`/servers/${serverId}/easypanel/verify-domain?domain=${encodeURIComponent(domain)}`);
+      setReachable(res.reachable);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao verificar domínio');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function handleLock() {
+    setLocking(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ ok: boolean; message: string }>(`/servers/${serverId}/easypanel/lock-port`, { method: 'POST' });
+      setLockMessage(res.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao configurar firewall');
+    } finally {
+      setLocking(false);
+    }
+  }
+
+  return (
+    <div className="card p-4">
+      <h2 className="section-title mb-1">Domínio personalizado</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        Depois de configurar o domínio dentro do EasyPanel (com HTTPS), confirme aqui — e então dá pra fechar o acesso direto pela
+        porta 3000, deixando só o domínio.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input max-w-xs" />
+        <button onClick={handleVerify} disabled={checking || !domain} className="btn-secondary px-3 py-2 text-sm">
+          {checking ? 'Verificando...' : 'Verificar domínio'}
+        </button>
+        {reachable && (
+          <button onClick={handleLock} disabled={locking} className="btn-danger px-3 py-2 text-sm">
+            {locking ? 'Aplicando...' : 'Fechar porta 3000'}
+          </button>
+        )}
+      </div>
+      {reachable === true && <p className="mt-2 text-sm text-green-600 dark:text-green-400">Domínio respondendo — pode fechar a porta 3000.</p>}
+      {reachable === false && <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">Domínio ainda não está respondendo em HTTPS.</p>}
+      {lockMessage && (
+        <div className="mt-2">
+          <Alert variant="success">{lockMessage}</Alert>
+        </div>
+      )}
+      {error && (
+        <div className="mt-2">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
     </div>
   );
 }
