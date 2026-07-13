@@ -577,23 +577,38 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
   const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<EasyPanelStatusResp | null>(null);
+  const [checked, setChecked] = useState(false);
 
   function loadStatus() {
     apiFetch<EasyPanelStatusResp>(`/servers/${server.id}/easypanel/status`)
-      .then(setStatus)
-      .catch((e) => setError(e.message));
+      .then((res) => {
+        setStatus(res);
+        setChecked(true);
+        // a checagem é sempre real (não confia na flag salva) — se ela
+        // discordar do que a página já tinha carregado, atualiza o resto da UI
+        if (res.installed !== server.easypanelInstalled) onChange();
+      })
+      .catch((e) => {
+        setError(e.message);
+        setChecked(true);
+      });
   }
 
+  // Roda sempre, mesmo que a flag salva diga "não instalado" — é justamente
+  // esse caso que precisa da reconferência (ver bug corrigido no backend).
   useEffect(() => {
-    if (server.easypanelInstalled) loadStatus();
-  }, [server.easypanelInstalled]);
-  useAutoRefresh(() => server.easypanelInstalled && loadStatus(), 10_000);
+    if (server.dockerInstalled) loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.id]);
+  useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
 
   if (!server.dockerInstalled) {
     return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
   }
 
-  if (!server.easypanelInstalled) {
+  if (!checked) return null;
+
+  if (!status?.installed) {
     return (
       <div>
         <form
@@ -652,8 +667,8 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
       </Alert>
 
       <div className="my-4 flex items-center justify-between">
-        <a href={server.easypanelUrl ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-          Abrir EasyPanel ({server.easypanelUrl})
+        <a href={status.url ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+          Abrir EasyPanel ({status.url})
         </a>
         <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
           ↻ Atualizar
@@ -666,7 +681,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
         </div>
       )}
 
-      <EasyPanelDomainLock serverId={server.id} defaultDomain={extractHostname(server.easypanelUrl)} />
+      <EasyPanelDomainLock serverId={server.id} defaultDomain={extractHostname(status.url ?? null)} />
 
       <div className="card mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
