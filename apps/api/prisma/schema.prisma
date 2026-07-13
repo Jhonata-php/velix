@@ -55,6 +55,9 @@ model Server {
   status        ServerStatus @default(PENDING)
   osName        String?
   osVersion     String?
+  packageManager String?
+  dockerInstalled Boolean    @default(false)
+  dockerVersion String?
   lastCheckedAt DateTime?
   tags          String[]     @default([])
   environment   String?
