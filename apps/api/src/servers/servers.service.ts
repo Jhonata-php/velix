@@ -219,9 +219,22 @@ export class ServersService {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
 
-    const install = await this.ssh.runCommand(options, 'curl -fsSL https://get.docker.com | sudo sh', 600_000);
+    // ponytail: baixa e executa em passos separados de propósito. Com
+    // `curl ... | sudo sh` direto, se o curl falhar (rede, DNS) o `sh` recebe
+    // stdin vazio e sai com código 0 — o pipeline "dá certo" sem instalar nada.
+    const download = await this.ssh.runCommand(options, 'curl -fsSL https://get.docker.com -o /tmp/velix-get-docker.sh', 60_000);
+    if (!download.ok) {
+      return { ok: false, output: `Falha ao baixar o instalador do Docker: ${download.stderr || download.message}`, version: null };
+    }
+
+    const install = await this.ssh.runCommand(options, 'sudo sh /tmp/velix-get-docker.sh; rm -f /tmp/velix-get-docker.sh', 600_000);
     if (!install.ok) {
       return { ok: false, output: install.stdout + install.stderr, version: null };
+    }
+
+    const installed = await this.ssh.runCommand(options, 'command -v docker', 10_000);
+    if (!installed.ok) {
+      return { ok: false, output: `${install.stdout}\nO instalador rodou mas o comando "docker" não ficou disponível.`, version: null };
     }
 
     await this.ssh.runCommand(options, 'sudo systemctl enable --now docker', 30_000);
@@ -303,7 +316,13 @@ export class ServersService {
       }
     }
 
-    const install = await this.ssh.runCommand(options, 'curl -fsSL https://get.easypanel.io | sudo sh', 600_000);
+    // ponytail: mesmo motivo do installDocker — download e execução separados
+    // pra não mascarar falha do curl atrás de um `sh` que "deu certo" com stdin vazio.
+    const download = await this.ssh.runCommand(options, 'curl -fsSL https://get.easypanel.io -o /tmp/velix-get-easypanel.sh', 60_000);
+    if (!download.ok) {
+      return { ok: false, output: `Falha ao baixar o instalador do EasyPanel: ${download.stderr || download.message}`, url: null, warnings };
+    }
+    const install = await this.ssh.runCommand(options, 'sudo sh /tmp/velix-get-easypanel.sh; rm -f /tmp/velix-get-easypanel.sh', 600_000);
     if (!install.ok) {
       return { ok: false, output: install.stdout + install.stderr, url: null, warnings };
     }

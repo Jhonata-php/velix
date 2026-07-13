@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { Bar } from '@/components/Bar';
+import { Alert, CommandOutput as OutputBlock } from '@/components/Alert';
 import '@xterm/xterm/css/xterm.css';
 
 interface ServerMetrics {
@@ -266,8 +267,16 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         )}
       </div>
 
-      {result && <p className={`mt-4 text-sm ${result.ok ? 'text-green-600' : 'text-red-500'}`}>{result.message}</p>}
-      {rebootMessage && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{rebootMessage}</p>}
+      {result && (
+        <div className="mt-4">
+          <Alert variant={result.ok ? 'success' : 'error'}>{result.message}</Alert>
+        </div>
+      )}
+      {rebootMessage && (
+        <div className="mt-4">
+          <Alert variant="info">{rebootMessage}</Alert>
+        </div>
+      )}
 
       <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
         <h2 className="mb-2 text-base font-medium">Domínios Cloudflare</h2>
@@ -280,7 +289,11 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           {lookingUp ? 'Buscando...' : 'Localizar domínios'}
         </button>
 
-        {domainsError && <p className="mt-3 text-sm text-red-500">{domainsError}</p>}
+        {domainsError && (
+          <div className="mt-3">
+            <Alert variant="error">{domainsError}</Alert>
+          </div>
+        )}
 
         {domains && (
           <ul className="mt-3 space-y-1 text-sm">
@@ -389,7 +402,11 @@ function UpdatesTab({ serverId }: { serverId: string }) {
         )}
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
       {info && (
         <p className="mb-3 text-sm text-slate-500">
@@ -421,10 +438,14 @@ function UpdatesTab({ serverId }: { serverId: string }) {
       )}
 
       {output && (
-        <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
-          {output.stdout}
-          {output.stderr}
-        </pre>
+        <div className="mt-4">
+          <Alert variant={output.ok ? 'success' : 'error'} title={output.ok ? 'Atualização concluída' : 'Falha na atualização'}>
+            <OutputBlock>
+              {output.stdout}
+              {output.stderr}
+            </OutputBlock>
+          </Alert>
+        </div>
       )}
     </div>
   );
@@ -458,6 +479,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   useEffect(() => {
     if (server.dockerInstalled) loadStatus();
   }, [server.dockerInstalled]);
+  useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
 
   async function handleInstall() {
     setInstalling(true);
@@ -488,9 +510,17 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
         >
           {installing ? 'Instalando Docker (pode levar alguns minutos)...' : 'Instalar Docker'}
         </button>
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {error && (
+          <div className="mt-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         {output && (
-          <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{output.stdout}</pre>
+          <div className="mt-4">
+            <Alert variant={output.ok ? 'success' : 'error'} title={output.ok ? 'Docker instalado' : 'Falha na instalação'}>
+              <OutputBlock>{output.stdout}</OutputBlock>
+            </Alert>
+          </div>
         )}
       </div>
     );
@@ -504,11 +534,15 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
           onClick={loadStatus}
           className="btn-secondary px-3 py-1.5 text-xs"
         >
-          Atualizar
+          ↻ Atualizar
         </button>
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">
@@ -566,6 +600,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
   useEffect(() => {
     if (server.easypanelInstalled) loadStatus();
   }, [server.easypanelInstalled]);
+  useAutoRefresh(() => server.easypanelInstalled && loadStatus(), 10_000);
 
   if (!server.dockerInstalled) {
     return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
@@ -620,13 +655,27 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           </button>
         </form>
 
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
-        {warnings.map((w) => (
-          <p key={w} className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-            ⚠️ {w}
-          </p>
-        ))}
-        {output && <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{output.stdout}</pre>}
+        {error && (
+          <div className="mt-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {warnings.map((w) => (
+              <Alert key={w} variant="warning">
+                {w}
+              </Alert>
+            ))}
+          </div>
+        )}
+        {output && (
+          <div className="mt-4">
+            <Alert variant="info" title="Saída da instalação">
+              <OutputBlock>{output.stdout}</OutputBlock>
+            </Alert>
+          </div>
+        )}
       </div>
     );
   }
@@ -641,11 +690,15 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           onClick={loadStatus}
           className="btn-secondary px-3 py-1.5 text-xs"
         >
-          Atualizar
+          ↻ Atualizar
         </button>
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">
@@ -792,7 +845,11 @@ function DatabasesTab({ server }: { server: Server }) {
         </button>
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
       <div className="space-y-2">
         {instances.map((inst) => (
@@ -859,11 +916,15 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
             <p className="mb-3 text-sm">
               Senha do app: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.appPassword}</code>
             </p>
-            {created.warnings.map((w) => (
-              <p key={w} className="mb-2 text-sm text-amber-600 dark:text-amber-400">
-                ⚠️ {w}
-              </p>
-            ))}
+            {created.warnings.length > 0 && (
+              <div className="mb-2 space-y-2">
+                {created.warnings.map((w) => (
+                  <Alert key={w} variant="warning">
+                    {w}
+                  </Alert>
+                ))}
+              </div>
+            )}
             <button
               onClick={onCreated}
               className="mt-2 w-full btn-primary px-4 py-2 text-sm"
@@ -892,7 +953,11 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
               <span className="mb-1 block font-medium">Usuário inicial</span>
               <input required value={form.appUser} onChange={(e) => setForm({ ...form, appUser: e.target.value })} className="input" />
             </label>
-            {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+            {error && (
+              <div className="mb-3">
+                <Alert variant="error">{error}</Alert>
+              </div>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                 Cancelar
