@@ -2,7 +2,16 @@
 
 Plataforma para gerenciamento de servidores Linux via SSH — cadastro de servidores, teste de conexão real, dashboard e autenticação.
 
-Esta é a **Fase 1 + integração Cloudflare** do roadmap: autenticação, interface, cadastro de servidor e SSH, além de gerenciamento de zonas/registros DNS da Cloudflare (aba Configurações) e descoberta de domínios apontados para o IP de um servidor. As fases seguintes (Docker, EasyPanel, Swarm, bancos, replicação, failover) ainda não estão implementadas.
+Implementado até agora, tudo com execução real via SSH (nada simulado):
+
+- Autenticação, dashboard, tema claro/escuro, cadastro de servidores
+- Cloudflare: conta/token na aba Configurações, zonas, CRUD de registros DNS, descoberta de domínios por IP
+- Atualizações de Linux (apt/dnf/yum): checar e instalar (todas ou só segurança)
+- Docker: instalação real (get.docker.com) + status/containers
+- EasyPanel: instalação real (get.easypanel.io) + DNS automático via Cloudflare
+- MySQL: instalação via Docker já pronta para replicação, criação de réplica (dump + SFTP + `CHANGE REPLICATION SOURCE` com GTID), monitoramento de sincronização e **promoção manual** de réplica (com confirmação explícita — sem failover automático)
+
+Ainda não implementado: Docker Swarm/clusters, PostgreSQL, backups, failover automático com máquina de estados.
 
 ## Stack
 
@@ -53,4 +62,4 @@ Veja [.env.example](.env.example) (raiz, usado pelo `docker-compose.yml`) e [app
 
 ## Próximos passos
 
-Seguindo o roadmap original: instalação de Docker/EasyPanel nos servidores cadastrados, Docker Swarm, bancos MySQL/PostgreSQL com replicação, integração Cloudflare e grupos de failover com máquina de estados.
+Docker Swarm/clusters, PostgreSQL, backups agendados, e failover automático com máquina de estados e fencing real (o que existe hoje é promoção manual, de propósito — ver seção acima).
