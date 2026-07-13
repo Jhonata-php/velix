@@ -23,11 +23,22 @@ interface TestResult {
   message: string;
 }
 
+interface DnsMatch {
+  id: string;
+  name: string;
+  type: string;
+  zoneName: string;
+  proxied: boolean;
+}
+
 export default function ServerDetailPage() {
   const params = useParams<{ id: string }>();
   const [server, setServer] = useState<Server | null>(null);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [domains, setDomains] = useState<DnsMatch[] | null>(null);
+  const [domainsError, setDomainsError] = useState<string | null>(null);
 
   function load() {
     apiFetch<Server>(`/servers/${params.id}`).then(setServer);
@@ -46,6 +57,26 @@ export default function ServerDetailPage() {
     } finally {
       setTesting(false);
       load();
+    }
+  }
+
+  async function handleLookupDomains() {
+    if (!server) return;
+    const ip = server.publicIp;
+    if (!ip) {
+      setDomainsError('Servidor não possui IP público cadastrado');
+      return;
+    }
+    setLookingUp(true);
+    setDomainsError(null);
+    setDomains(null);
+    try {
+      const matches = await apiFetch<DnsMatch[]>(`/cloudflare/lookup?ip=${encodeURIComponent(ip)}`);
+      setDomains(matches);
+    } catch (err) {
+      setDomainsError(err instanceof Error ? err.message : 'Falha ao consultar Cloudflare');
+    } finally {
+      setLookingUp(false);
     }
   }
 
@@ -75,6 +106,34 @@ export default function ServerDetailPage() {
       {result && (
         <p className={`mt-4 text-sm ${result.ok ? 'text-green-600' : 'text-red-500'}`}>{result.message}</p>
       )}
+
+      <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
+        <h2 className="mb-2 text-base font-medium">Domínios Cloudflare</h2>
+        <p className="mb-3 text-sm text-slate-500">Localiza registros DNS que apontam para o IP público deste servidor.</p>
+        <button
+          onClick={handleLookupDomains}
+          disabled={lookingUp}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          {lookingUp ? 'Buscando...' : 'Localizar domínios'}
+        </button>
+
+        {domainsError && <p className="mt-3 text-sm text-red-500">{domainsError}</p>}
+
+        {domains && (
+          <ul className="mt-3 space-y-1 text-sm">
+            {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
+            {domains.map((d) => (
+              <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+                <span>{d.name}</span>
+                <span className="text-xs text-slate-400">
+                  {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

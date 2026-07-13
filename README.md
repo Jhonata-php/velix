@@ -2,7 +2,7 @@
 
 Plataforma para gerenciamento de servidores Linux via SSH — cadastro de servidores, teste de conexão real, dashboard e autenticação.
 
-Esta é a **Fase 1** do roadmap (base da plataforma): autenticação, interface, cadastro de servidor e SSH. As fases seguintes (Docker, EasyPanel, Swarm, bancos, replicação, Cloudflare, failover) ainda não estão implementadas.
+Esta é a **Fase 1 + integração Cloudflare** do roadmap: autenticação, interface, cadastro de servidor e SSH, além de gerenciamento de zonas/registros DNS da Cloudflare (aba Configurações) e descoberta de domínios apontados para o IP de um servidor. As fases seguintes (Docker, EasyPanel, Swarm, bancos, replicação, failover) ainda não estão implementadas.
 
 ## Stack
 

@@ -28,6 +28,17 @@ enum AuthMethod {
   PRIVATE_KEY
 }
 
+// ponytail: uma conta ativa por instalação (o serviço usa a mais recente).
+// Virar tabela multi-conta de verdade quando existir mais de um token/zona
+// isolado por equipe ou provedor.
+model CloudflareAccount {
+  id           String   @id @default(uuid())
+  email        String?
+  apiTokenEnc  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Server {
   id            String       @id @default(uuid())
   name          String

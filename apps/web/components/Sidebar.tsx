@@ -8,6 +8,7 @@ import { clearToken } from '@/lib/api';
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/servers', label: 'Servidores', icon: '🖥️' },
+  { href: '/settings', label: 'Configurações', icon: '⚙️' },
 ];
 
 export function Sidebar() {
