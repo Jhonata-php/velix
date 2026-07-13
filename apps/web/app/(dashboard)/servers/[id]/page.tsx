@@ -153,7 +153,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
       <button
         onClick={handleTest}
         disabled={testing}
-        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+        className="btn-primary px-4 py-2 text-sm"
       >
         {testing ? 'Testando conexão...' : 'Testar conexão'}
       </button>
@@ -166,7 +166,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         <button
           onClick={handleLookupDomains}
           disabled={lookingUp}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="btn-secondary px-4 py-2 text-sm"
         >
           {lookingUp ? 'Buscando...' : 'Localizar domínios'}
         </button>
@@ -256,7 +256,7 @@ function UpdatesTab({ serverId }: { serverId: string }) {
         <button
           onClick={handleCheck}
           disabled={checking}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="btn-secondary px-4 py-2 text-sm"
         >
           {checking ? 'Verificando...' : 'Verificar atualizações'}
         </button>
@@ -272,7 +272,7 @@ function UpdatesTab({ serverId }: { serverId: string }) {
             <button
               onClick={() => handleInstall(false)}
               disabled={installing}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+              className="btn-primary px-4 py-2 text-sm"
             >
               {installing ? 'Instalando...' : `Instalar todas (${info.total})`}
             </button>
@@ -375,7 +375,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
         <button
           onClick={handleInstall}
           disabled={installing}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+          className="btn-primary px-4 py-2 text-sm"
         >
           {installing ? 'Instalando Docker (pode levar alguns minutos)...' : 'Instalar Docker'}
         </button>
@@ -393,7 +393,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
         <p className="text-sm text-slate-500">Versão do Docker: {status?.version ?? server.dockerVersion}</p>
         <button
           onClick={loadStatus}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="btn-secondary px-3 py-1.5 text-xs"
         >
           Atualizar
         </button>
@@ -505,7 +505,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           <button
             type="submit"
             disabled={installing}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="btn-primary px-4 py-2 text-sm"
           >
             {installing ? 'Instalando EasyPanel (pode levar alguns minutos)...' : 'Instalar EasyPanel'}
           </button>
@@ -530,7 +530,7 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
         </a>
         <button
           onClick={loadStatus}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="btn-secondary px-3 py-1.5 text-xs"
         >
           Atualizar
         </button>
@@ -603,7 +603,7 @@ function DatabasesTab({ server }: { server: Server }) {
         <h2 className="text-base font-medium">Instâncias MySQL</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+          className="btn-primary px-4 py-2 text-sm"
         >
           Instalar MySQL
         </button>
@@ -683,7 +683,7 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
             ))}
             <button
               onClick={onCreated}
-              className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+              className="mt-2 w-full btn-primary px-4 py-2 text-sm"
             >
               Fechar
             </button>
@@ -717,7 +717,7 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                className="btn-primary px-4 py-2 text-sm"
               >
                 {saving ? 'Instalando (leva um tempinho)...' : 'Instalar'}
               </button>

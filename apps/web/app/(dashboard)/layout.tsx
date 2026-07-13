@@ -1,13 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { getToken } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  servers: 'Servidores',
+  settings: 'Configurações',
+  databases: 'Banco de dados',
+};
+
+function pageTitleFor(pathname: string | null) {
+  const segment = pathname?.split('/').filter(Boolean)[0];
+  return (segment && PAGE_TITLES[segment]) ?? 'Velix';
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -24,7 +37,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex">
       <Sidebar />
       <div className="flex-1">
-        <header className="flex items-center justify-end border-b border-slate-200 p-4 dark:border-slate-800">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <h1 className="text-sm font-medium text-slate-500">{pageTitleFor(pathname)}</h1>
           <ThemeToggle />
         </header>
         <main className="p-6">{children}</main>

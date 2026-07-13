@@ -13,6 +13,22 @@ export function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem('velix_token');
+  localStorage.removeItem('velix_user');
+}
+
+export interface StoredUser {
+  name: string;
+  email: string;
+}
+
+export function setUser(user: StoredUser) {
+  localStorage.setItem('velix_user', JSON.stringify(user));
+}
+
+export function getUser(): StoredUser | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem('velix_user');
+  return raw ? JSON.parse(raw) : null;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

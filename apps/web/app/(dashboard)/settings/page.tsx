@@ -106,7 +106,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={connecting}
-              className="whitespace-nowrap rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+              className="whitespace-nowrap btn-primary px-4 py-2 text-sm"
             >
               {connecting ? 'Conectando...' : 'Conectar'}
             </button>
@@ -232,7 +232,7 @@ function ZoneRecords({ zoneId }: { zoneId: string }) {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+          className="btn-primary px-3 py-2 text-xs"
         >
           {saving ? 'Salvando...' : 'Adicionar registro'}
         </button>

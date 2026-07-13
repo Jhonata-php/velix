@@ -37,7 +37,7 @@ export default function ServersPage() {
         <h1 className="text-xl font-semibold">Servidores</h1>
         <button
           onClick={() => setShowForm(true)}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+          className="btn-primary px-4 py-2 text-sm"
         >
           Adicionar servidor
         </button>
@@ -191,7 +191,7 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
           <button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="btn-primary px-4 py-2 text-sm"
           >
             {loading ? 'Salvando...' : 'Salvar'}
           </button>

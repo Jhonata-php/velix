@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, setToken } from '@/lib/api';
+import { apiFetch, setToken, setUser } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,11 +16,12 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const data = await apiFetch<{ accessToken: string }>('/auth/login', {
+      const data = await apiFetch<{ accessToken: string; user: { name: string; email: string } }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
       setToken(data.accessToken);
+      setUser(data.user);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no login');
@@ -30,18 +31,29 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="mb-1 text-2xl font-semibold">Velix</h1>
-        <p className="mb-6 text-sm text-slate-500">Controle. Continuidade. Disponibilidade.</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.15),transparent_60%)]"
+      />
+
+      <form onSubmit={handleSubmit} className="card relative z-10 w-full max-w-sm p-8 shadow-sm">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-lg font-bold text-white shadow-md shadow-indigo-500/30">
+            V
+          </div>
+          <h1 className="text-2xl font-semibold">Velix</h1>
+          <p className="mt-1 text-sm text-slate-500">Controle. Continuidade. Disponibilidade.</p>
+        </div>
 
         <label className="mb-1 block text-sm font-medium">E-mail</label>
         <input
           type="email"
           required
+          autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-slate-500 dark:border-slate-700"
+          className="input mb-4"
         />
 
         <label className="mb-1 block text-sm font-medium">Senha</label>
@@ -50,16 +62,12 @@ export default function LoginPage() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-slate-500 dark:border-slate-700"
+          className="input mb-4"
         />
 
         {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
-        >
+        <button type="submit" disabled={loading} className="w-full btn-primary px-3 py-2 text-sm">
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
       </form>

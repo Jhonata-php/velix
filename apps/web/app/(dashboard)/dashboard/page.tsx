@@ -20,23 +20,21 @@ export default function DashboardPage() {
   const pending = servers.filter((s) => s.status === 'PENDING').length;
 
   const cards = [
-    { label: 'Servidores totais', value: servers.length },
-    { label: 'Online', value: online },
-    { label: 'Offline / erro', value: offline },
-    { label: 'Pendentes', value: pending },
+    { label: 'Servidores totais', value: servers.length, accent: 'bg-indigo-500' },
+    { label: 'Online', value: online, accent: 'bg-green-500' },
+    { label: 'Offline / erro', value: offline, accent: 'bg-red-500' },
+    { label: 'Pendentes', value: pending, accent: 'bg-amber-500' },
   ];
 
   return (
-    <div>
-      <h1 className="mb-6 text-xl font-semibold">Dashboard</h1>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {cards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm text-slate-500">{c.label}</p>
-            <p className="mt-1 text-2xl font-semibold">{c.value}</p>
-          </div>
-        ))}
-      </div>
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.label} className="card relative overflow-hidden p-4">
+          <div className={`absolute inset-y-0 left-0 w-1 ${c.accent}`} />
+          <p className="text-sm text-slate-500">{c.label}</p>
+          <p className="mt-1 text-2xl font-semibold">{c.value}</p>
+        </div>
+      ))}
     </div>
   );
 }

@@ -107,7 +107,7 @@ function ReplicaSection({
         <h2 className="text-base font-medium">Réplicas</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="btn-secondary px-3 py-1.5 text-sm"
         >
           Criar réplica
         </button>
@@ -289,7 +289,7 @@ function CreateReplicaModal({ instanceId, onClose, onCreated }: { instanceId: st
             ))}
             <button
               onClick={onCreated}
-              className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+              className="mt-2 w-full btn-primary px-4 py-2 text-sm"
             >
               Fechar
             </button>
@@ -325,7 +325,7 @@ function CreateReplicaModal({ instanceId, onClose, onCreated }: { instanceId: st
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                className="btn-primary px-4 py-2 text-sm"
               >
                 {saving ? 'Criando (dump + cópia, pode levar minutos)...' : 'Criar réplica'}
               </button>
