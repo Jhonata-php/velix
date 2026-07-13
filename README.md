@@ -43,20 +43,27 @@ Para atualizar depois de um `git pull`, basta rodar `docker compose up -d --buil
 
 Requer Node 20+ e um PostgreSQL local (ou `docker compose up postgres` só do banco).
 
+**Primeira vez** — instala as dependências das duas apps e prepara o banco:
+
 ```bash
-# Backend
-cd apps/api
-cp .env.example .env   # ajuste DATABASE_URL se necessário
+cd apps/api && cp .env.example .env   # ajuste DATABASE_URL se necessário
 npm install
 npx prisma db push
-npm run seed            # cria o usuário admin@velix.local / changeme123
-npm run dev              # roda em :3001, usado só internamente
-
-# Frontend (em outro terminal)
-cd apps/web
-npm install
-npm run dev              # abra http://localhost:3000 — o proxy /api/* já aponta pra :3001
+npm run seed              # cria o usuário admin@velix.local / changeme123
+cd ../../apps/web && npm install
+cd ../..
 ```
+
+**Depois disso, um comando só sobe backend e frontend juntos:**
+
+```bash
+npm install   # só na primeira vez, instala o `concurrently` na raiz
+npm run dev   # sobe apps/api (:3001, interno) e apps/web (:3000) juntos
+```
+
+Abra http://localhost:3000 — o proxy `/api/*` do Next.js já aponta pra `:3001` automaticamente.
+
+Se preferir rodar cada um em um terminal separado (ex.: pra ver os logs isolados), pode continuar usando `npm run dev` dentro de `apps/api` e de `apps/web` individualmente — os scripts continuam existindo, o `npm run dev` da raiz só chama os dois ao mesmo tempo.
 
 ## Variáveis de ambiente
 
