@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: velix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: velix
+    volumes:
+      - velix_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velix"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://velix:${POSTGRES_PASSWORD}@postgres:5432/velix?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      VELIX_CREDENTIAL_SECRET: ${VELIX_CREDENTIAL_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
+      VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    # ponytail: `db push` em vez de migrations versionadas — sem histórico de
+    # migração ainda. Trocar para `prisma migrate deploy` com migrations
+    # commitadas quando houver mais de um ambiente (staging/prod) para sincronizar.
+    command: sh -c "npx prisma db push --skip-generate && npm run seed && node dist/main.js"
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  velix_postgres_data:

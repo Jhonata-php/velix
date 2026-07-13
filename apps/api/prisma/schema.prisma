@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+}
+
+enum ServerStatus {
+  PENDING
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+enum AuthMethod {
+  PASSWORD
+  PRIVATE_KEY
+}
+
+model Server {
+  id            String       @id @default(uuid())
+  name          String
+  description   String?
+  publicIp      String?
+  privateIp     String?
+  hostname      String?
+  sshPort       Int          @default(22)
+  sshUser       String
+  authMethod    AuthMethod   @default(PASSWORD)
+  // ponytail: credencial única cifrada com AES-256-GCM (ver ssh/crypto.util.ts).
+  // Rotação de chave por servidor e Vault externo entram quando houver mais de um operador confiável.
+  credentialEnc String
+  status        ServerStatus @default(PENDING)
+  osName        String?
+  osVersion     String?
+  lastCheckedAt DateTime?
+  tags          String[]     @default([])
+  environment   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
