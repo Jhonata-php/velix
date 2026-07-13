@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { Alert } from '@/components/Alert';
 
 interface Replication {
   id: string;
@@ -55,7 +56,7 @@ export default function DatabaseDetailPage() {
 
   useEffect(load, [params.id]);
 
-  if (error) return <p className="text-sm text-red-500">{error}</p>;
+  if (error) return <Alert variant="error">{error}</Alert>;
   if (!instance) return null;
 
   return (
@@ -65,7 +66,7 @@ export default function DatabaseDetailPage() {
         MySQL {instance.version ?? ''} · porta {instance.port} · banco {instance.databaseName}
       </p>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+      <div className="card mb-8 grid grid-cols-2 gap-4 p-4 text-sm">
         <Info label="Papel" value={instance.role} />
         <Info label="Status" value={instance.status} />
       </div>
@@ -186,7 +187,7 @@ function ReplicationCard({
           : 'text-red-500';
 
   return (
-    <div className="mb-3 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+    <div className="card mb-3 p-4 text-sm">
       <div className="mb-2 flex items-center justify-between">
         <span className={`font-medium ${statusColor}`}>{STATUS_LABEL[replication.status]}</span>
         <button onClick={refresh} disabled={refreshing} className="text-xs text-slate-400 hover:underline">

@@ -67,10 +67,23 @@ export default function ServerDetailPage() {
 
   return (
     <div className={tab === 'terminal' ? '' : 'max-w-3xl'}>
-      <h1 className="mb-1 text-xl font-semibold">{server.name}</h1>
-      <p className="mb-6 text-sm text-slate-500">
-        {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
-      </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">{server.name}</h1>
+          <p className="text-sm text-slate-500">
+            {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
+          </p>
+        </div>
+        <StatusPill status={server.status} />
+      </div>
+
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Badge ok={server.dockerInstalled} label={server.dockerInstalled ? `Docker ${server.dockerVersion ?? ''}` : 'Docker não instalado'} />
+        <Badge
+          ok={server.easypanelInstalled}
+          label={server.easypanelInstalled ? 'EasyPanel instalado' : 'EasyPanel não instalado'}
+        />
+      </div>
 
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {TABS.map((t) => (
@@ -104,6 +117,41 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="text-slate-500">{label}</p>
       <p className="font-medium">{value}</p>
     </div>
+  );
+}
+
+const STATUS_PILL_STYLE: Record<string, string> = {
+  ONLINE: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+  PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+  OFFLINE: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  ERROR: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+};
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+        STATUS_PILL_STYLE[status] ?? STATUS_PILL_STYLE.OFFLINE
+      }`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {status}
+    </span>
+  );
+}
+
+function Badge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+        ok
+          ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400'
+          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-green-500' : 'bg-slate-400'}`} />
+      {label}
+    </span>
   );
 }
 
@@ -194,29 +242,17 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-            server.status === 'ONLINE'
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-              : server.status === 'PENDING'
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
-          }`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          {server.status}
-        </span>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="section-title">Métricas</h2>
         <button onClick={collectMetrics} disabled={collecting} className="btn-secondary px-3 py-1.5 text-xs">
           {collecting ? 'Atualizando...' : '↻ Atualizar agora'}
         </button>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+      <div className="card mb-6 grid grid-cols-2 gap-5 p-4 text-sm sm:grid-cols-3">
         <Info label="Sistema operacional" value={server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'} />
         <Info label="Uptime" value={server.metrics?.uptimeText ?? '—'} />
         <Info label="Load average" value={server.metrics?.loadAvg ? server.metrics.loadAvg.join(', ') : '—'} />
-        <Info label="Docker" value={server.dockerInstalled ? `instalado (${server.dockerVersion})` : 'não instalado'} />
 
         <div>
           <p className="text-slate-500">Memória</p>
@@ -246,6 +282,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </div>
       </div>
 
+      <h2 className="section-title mb-3">Ações</h2>
       <div className="flex flex-wrap gap-2">
         <button onClick={handleTest} disabled={testing} className="btn-primary px-4 py-2 text-sm">
           {testing ? 'Testando conexão...' : 'Testar conexão'}
@@ -280,7 +317,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
       )}
 
       <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
-        <h2 className="mb-2 text-base font-medium">Domínios Cloudflare</h2>
+        <h2 className="section-title mb-2">Domínios Cloudflare</h2>
         <p className="mb-3 text-sm text-slate-500">Localiza registros DNS que apontam para o IP público deste servidor.</p>
         <button
           onClick={handleLookupDomains}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { Alert } from '@/components/Alert';
 
 interface AccountStatus {
   connected: boolean;
@@ -78,8 +79,8 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-8">
       <h1 className="text-xl font-semibold">Configurações</h1>
 
-      <section className="rounded-xl border border-slate-200 p-5 dark:border-slate-800">
-        <h2 className="mb-1 text-base font-medium">Cloudflare</h2>
+      <section className="card p-5">
+        <h2 className="section-title mb-1">Cloudflare</h2>
         <p className="mb-4 text-sm text-slate-500">
           Conecte um API Token da Cloudflare para gerenciar zonas e registros DNS diretamente pelo Velix.
         </p>
@@ -112,13 +113,21 @@ export default function SettingsPage() {
             </button>
           </form>
         )}
-        {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+        {error && (
+          <div className="mt-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
       </section>
 
       {account?.connected && (
-        <section className="rounded-xl border border-slate-200 p-5 dark:border-slate-800">
-          <h2 className="mb-4 text-base font-medium">Zonas</h2>
-          {zonesError && <p className="mb-3 text-sm text-red-500">{zonesError}</p>}
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Zonas</h2>
+          {zonesError && (
+            <div className="mb-3">
+              <Alert variant="error">{zonesError}</Alert>
+            </div>
+          )}
           <div className="space-y-2">
             {zones.map((zone) => (
               <div key={zone.id} className="rounded-lg border border-slate-200 dark:border-slate-800">
@@ -176,7 +185,11 @@ function ZoneRecords({ zoneId }: { zoneId: string }) {
 
   return (
     <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
-      {error && <p className="mb-2 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-2">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
       <table className="w-full text-left text-xs">
         <thead className="text-slate-500">
           <tr>

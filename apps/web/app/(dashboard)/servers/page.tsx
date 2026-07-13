@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { Alert } from '@/components/Alert';
 
 interface Server {
   id: string;
@@ -56,36 +57,43 @@ export default function ServersPage() {
         </div>
       </div>
 
-      {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="card overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
+          <thead className="border-b border-slate-200 dark:border-slate-800">
             <tr>
-              <th className="px-4 py-3">Nome</th>
-              <th className="px-4 py-3">IP</th>
-              <th className="px-4 py-3">Usuário SSH</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Nome</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">IP</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Usuário SSH</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
             </tr>
           </thead>
           <tbody>
             {servers.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900">
-                <td className="px-4 py-3">
-                  <Link href={`/servers/${s.id}`} className="font-medium hover:underline">
+              <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                <td className="px-4 py-3.5">
+                  <Link href={`/servers/${s.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">
                     {s.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-500">{s.publicIp ?? s.privateIp ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-500">{s.sshUser}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS_STYLE[s.status]}`}>{s.status}</span>
+                <td className="px-4 py-3.5 text-slate-500">{s.publicIp ?? s.privateIp ?? '—'}</td>
+                <td className="px-4 py-3.5 text-slate-500">{s.sshUser}</td>
+                <td className="px-4 py-3.5">
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[s.status]}`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                    {s.status}
+                  </span>
                 </td>
               </tr>
             ))}
             {servers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
                   Nenhum servidor cadastrado ainda.
                 </td>
               </tr>
@@ -264,7 +272,11 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </div>
         )}
 
-        {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+        {error && (
+          <div className="mb-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
 
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">

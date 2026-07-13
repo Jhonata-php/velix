@@ -374,11 +374,12 @@ export class ServersService {
       return { ok: false, output: install.stdout + install.stderr, url: null, warnings };
     }
 
-    // dá um tempo para o container subir antes de validar
-    onLog?.('Aguardando o container subir...\n');
-    await new Promise((r) => setTimeout(r, 5000));
-    const check = await this.ssh.runCommand(options, "sudo docker ps --filter name=easypanel --format '{{.Status}}'", 15_000);
-    const running = check.stdout.toLowerCase().includes('up');
+    // ponytail: EasyPanel sobe como serviço Swarm (não um `docker run` comum) —
+    // na primeira instalação a imagem ainda precisa ser baixada, o que pode
+    // levar bem mais que alguns segundos. Um único sleep+check curto marcava
+    // "não instalado" mesmo quando ia terminar de subir logo em seguida.
+    onLog?.('Aguardando o EasyPanel subir (pode levar até alguns minutos na primeira vez)...\n');
+    const running = await this.waitForEasyPanelRunning(options, onLog);
 
     const url = opts.domain ? `https://${opts.domain}` : `http://${server.publicIp ?? server.hostname}:3000`;
 
@@ -387,20 +388,47 @@ export class ServersService {
       data: { easypanelInstalled: running, easypanelUrl: running ? url : null },
     });
 
-    return { ok: running, output: install.stdout + check.stdout, url: running ? url : null, warnings };
+    return { ok: running, output: install.stdout, url: running ? url : null, warnings };
+  }
+
+  private async waitForEasyPanelRunning(options: SshConnectOptions, onLog?: LogFn, attempts = 18, delayMs = 5000) {
+    for (let i = 0; i < attempts; i++) {
+      const check = await this.ssh.runCommand(options, "sudo docker ps --filter name=easypanel --format '{{.Status}}'", 15_000);
+      if (check.stdout.toLowerCase().includes('up')) return true;
+      onLog?.(`Ainda subindo... (tentativa ${i + 1}/${attempts})\n`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return false;
   }
 
   async easypanelStatus(id: string) {
     const server = await this.getRawServer(id);
-    if (!server.easypanelInstalled) {
+    if (!server.dockerInstalled) {
       return { installed: false as const };
     }
     const options = this.toConnectOptions(server);
+
+    // ponytail: sempre reconsulta a realidade em vez de confiar só na flag
+    // salva — se a checagem inicial (na instalação) tivesse marcado errado
+    // por timing, o status nunca mais se corrigiria sozinho sem isso.
+    const check = await this.ssh.runCommand(options, "sudo docker ps --filter name=easypanel --format '{{.Status}}'", 15_000);
+    const running = check.ok && check.stdout.toLowerCase().includes('up');
+
+    const url = server.easypanelUrl ?? `http://${server.publicIp ?? server.hostname}:3000`;
+    if (running !== server.easypanelInstalled) {
+      await this.prisma.server.update({
+        where: { id },
+        data: { easypanelInstalled: running, easypanelUrl: running ? url : null },
+      });
+    }
+
+    if (!running) return { installed: false as const };
+
     const psRes = await this.ssh.runCommand(
       options,
       "sudo docker ps -a --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}'",
       15_000,
     );
-    return { installed: true as const, url: server.easypanelUrl, containers: this.parseContainers(psRes.stdout) };
+    return { installed: true as const, url, containers: this.parseContainers(psRes.stdout) };
   }
 }
