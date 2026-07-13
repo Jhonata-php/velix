@@ -18,6 +18,8 @@ interface Server {
   packageManager: string | null;
   dockerInstalled: boolean;
   dockerVersion: string | null;
+  easypanelInstalled: boolean;
+  easypanelUrl: string | null;
   lastCheckedAt: string | null;
 }
 
@@ -25,6 +27,7 @@ const TABS = [
   { key: 'overview', label: 'Visão geral' },
   { key: 'updates', label: 'Atualizações' },
   { key: 'docker', label: 'Docker' },
+  { key: 'easypanel', label: 'EasyPanel' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -68,6 +71,7 @@ export default function ServerDetailPage() {
       {tab === 'overview' && <OverviewTab server={server} onChange={load} />}
       {tab === 'updates' && <UpdatesTab serverId={server.id} />}
       {tab === 'docker' && <DockerTab server={server} onChange={load} />}
+      {tab === 'easypanel' && <EasyPanelTab server={server} onChange={load} />}
     </div>
   );
 }
@@ -415,6 +419,143 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
               <tr>
                 <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
                   Nenhum container em execução.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+interface EasyPanelStatusResp {
+  installed: boolean;
+  url?: string | null;
+  containers?: DockerContainer[];
+}
+
+function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => void }) {
+  const [domain, setDomain] = useState('');
+  const [email, setEmail] = useState('');
+  const [createDnsRecord, setCreateDnsRecord] = useState(true);
+  const [installing, setInstalling] = useState(false);
+  const [output, setOutput] = useState<{ stdout: string } | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<EasyPanelStatusResp | null>(null);
+
+  function loadStatus() {
+    apiFetch<EasyPanelStatusResp>(`/servers/${server.id}/easypanel/status`)
+      .then(setStatus)
+      .catch((e) => setError(e.message));
+  }
+
+  useEffect(() => {
+    if (server.easypanelInstalled) loadStatus();
+  }, [server.easypanelInstalled]);
+
+  if (!server.dockerInstalled) {
+    return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
+  }
+
+  async function handleInstall(e: React.FormEvent) {
+    e.preventDefault();
+    setInstalling(true);
+    setOutput(null);
+    setWarnings([]);
+    setError(null);
+    try {
+      const res = await apiFetch<{ ok: boolean; output: string; url: string | null; warnings: string[] }>(
+        `/servers/${server.id}/easypanel/install`,
+        { method: 'POST', body: JSON.stringify({ domain: domain || undefined, email, createDnsRecord }) },
+      );
+      setOutput({ stdout: res.output });
+      setWarnings(res.warnings);
+      onChange();
+      if (res.ok) loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao instalar EasyPanel');
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  if (!server.easypanelInstalled) {
+    return (
+      <div>
+        <form onSubmit={handleInstall} className="max-w-sm space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Domínio (opcional)</span>
+            <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input" />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">E-mail administrativo</span>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
+          </label>
+          {domain && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
+              Criar registro DNS na Cloudflare automaticamente
+            </label>
+          )}
+          <button
+            type="submit"
+            disabled={installing}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+          >
+            {installing ? 'Instalando EasyPanel (pode levar alguns minutos)...' : 'Instalar EasyPanel'}
+          </button>
+        </form>
+
+        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {warnings.map((w) => (
+          <p key={w} className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+            ⚠️ {w}
+          </p>
+        ))}
+        {output && <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{output.stdout}</pre>}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <a href={server.easypanelUrl ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+          Abrir EasyPanel ({server.easypanelUrl})
+        </a>
+        <button
+          onClick={loadStatus}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          Atualizar
+        </button>
+      </div>
+
+      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
+            <tr>
+              <th className="px-4 py-2">Container</th>
+              <th className="px-4 py-2">Imagem</th>
+              <th className="px-4 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {status?.containers?.map((c) => (
+              <tr key={c.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="px-4 py-2">{c.names}</td>
+                <td className="px-4 py-2 text-slate-500">{c.image}</td>
+                <td className="px-4 py-2">{c.status}</td>
+              </tr>
+            ))}
+            {(!status?.containers || status.containers.length === 0) && (
+              <tr>
+                <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
+                  Nenhum container encontrado.
                 </td>
               </tr>
             )}

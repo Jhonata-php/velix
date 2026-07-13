@@ -58,6 +58,8 @@ model Server {
   packageManager String?
   dockerInstalled Boolean    @default(false)
   dockerVersion String?
+  easypanelInstalled Boolean @default(false)
+  easypanelUrl  String?
   lastCheckedAt DateTime?
   tags          String[]     @default([])
   environment   String?

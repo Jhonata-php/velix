@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
+import { CloudflareService } from '../cloudflare/cloudflare.service';
 import { CreateServerDto } from './dto/create-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
 
@@ -15,6 +16,7 @@ export class ServersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ssh: SshService,
+    private readonly cloudflare: CloudflareService,
   ) {}
 
   async create(dto: CreateServerDto) {
@@ -208,7 +210,11 @@ export class ServersService {
       "sudo docker ps -a --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}'",
       15_000,
     );
-    const containers = psRes.stdout
+    return { installed: true as const, version: versionRes.stdout.trim(), containers: this.parseContainers(psRes.stdout) };
+  }
+
+  private parseContainers(output: string) {
+    return output
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
@@ -216,7 +222,76 @@ export class ServersService {
         const [id, image, status, names] = line.split('|');
         return { id, image, status, names };
       });
+  }
 
-    return { installed: true as const, version: versionRes.stdout.trim(), containers };
+  private async upsertCloudflareRecord(domain: string, ip: string) {
+    const zones = await this.cloudflare.listZones();
+    const zone = zones
+      .filter((z) => domain === z.name || domain.endsWith(`.${z.name}`))
+      .sort((a, b) => b.name.length - a.name.length)[0];
+    if (!zone) {
+      throw new Error(`Nenhuma zona Cloudflare encontrada para o domínio ${domain}`);
+    }
+    const records = await this.cloudflare.listRecords(zone.id);
+    const existing = records.find((r) => r.name === domain && r.type === 'A');
+    if (existing) {
+      await this.cloudflare.updateRecord(zone.id, existing.id, { content: ip });
+    } else {
+      await this.cloudflare.createRecord(zone.id, { type: 'A', name: domain, content: ip, proxied: false });
+    }
+  }
+
+  async installEasyPanel(id: string, opts: { domain?: string; email: string; createDnsRecord?: boolean }) {
+    const server = await this.getRawServer(id);
+    if (!server.dockerInstalled) {
+      throw new BadRequestException('Instale o Docker neste servidor antes do EasyPanel');
+    }
+    const options = this.toConnectOptions(server);
+    const warnings: string[] = [];
+
+    if (opts.domain && opts.createDnsRecord) {
+      if (!server.publicIp) {
+        warnings.push('Servidor sem IP público cadastrado — DNS não foi configurado automaticamente.');
+      } else {
+        try {
+          await this.upsertCloudflareRecord(opts.domain, server.publicIp);
+        } catch (err) {
+          warnings.push(`Falha ao configurar DNS na Cloudflare: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    const install = await this.ssh.runCommand(options, 'curl -fsSL https://get.easypanel.io | sudo sh', 600_000);
+    if (!install.ok) {
+      return { ok: false, output: install.stdout + install.stderr, url: null, warnings };
+    }
+
+    // dá um tempo para o container subir antes de validar
+    await new Promise((r) => setTimeout(r, 5000));
+    const check = await this.ssh.runCommand(options, "sudo docker ps --filter name=easypanel --format '{{.Status}}'", 15_000);
+    const running = check.stdout.toLowerCase().includes('up');
+
+    const url = opts.domain ? `https://${opts.domain}` : `http://${server.publicIp ?? server.hostname}:3000`;
+
+    await this.prisma.server.update({
+      where: { id },
+      data: { easypanelInstalled: running, easypanelUrl: running ? url : null },
+    });
+
+    return { ok: running, output: install.stdout + check.stdout, url: running ? url : null, warnings };
+  }
+
+  async easypanelStatus(id: string) {
+    const server = await this.getRawServer(id);
+    if (!server.easypanelInstalled) {
+      return { installed: false as const };
+    }
+    const options = this.toConnectOptions(server);
+    const psRes = await this.ssh.runCommand(
+      options,
+      "sudo docker ps -a --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}'",
+      15_000,
+    );
+    return { installed: true as const, url: server.easypanelUrl, containers: this.parseContainers(psRes.stdout) };
   }
 }

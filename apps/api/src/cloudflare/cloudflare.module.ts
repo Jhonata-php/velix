@@ -8,5 +8,6 @@ import { AuthModule } from '../auth/auth.module';
   imports: [AuthModule],
   controllers: [CloudflareController],
   providers: [CloudflareService, CloudflareApiService],
+  exports: [CloudflareService],
 })
 export class CloudflareModule {}

@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServersService } from './servers.service';
 import { CreateServerDto } from './dto/create-server.dto';
 import { InstallUpdatesDto } from './dto/install-updates.dto';
+import { InstallEasyPanelDto } from './dto/install-easypanel.dto';
 
 @Controller('servers')
 @UseGuards(JwtAuthGuard)
@@ -52,5 +53,15 @@ export class ServersController {
   @Get(':id/docker/status')
   dockerStatus(@Param('id') id: string) {
     return this.servers.dockerStatus(id);
+  }
+
+  @Post(':id/easypanel/install')
+  installEasyPanel(@Param('id') id: string, @Body() dto: InstallEasyPanelDto) {
+    return this.servers.installEasyPanel(id, dto);
+  }
+
+  @Get(':id/easypanel/status')
+  easypanelStatus(@Param('id') id: string) {
+    return this.servers.easypanelStatus(id);
   }
 }

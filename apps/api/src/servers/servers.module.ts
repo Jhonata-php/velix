@@ -3,9 +3,10 @@ import { ServersController } from './servers.controller';
 import { ServersService } from './servers.service';
 import { SshService } from '../ssh/ssh.service';
 import { AuthModule } from '../auth/auth.module';
+import { CloudflareModule } from '../cloudflare/cloudflare.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CloudflareModule],
   controllers: [ServersController],
   providers: [ServersService, SshService],
 })
