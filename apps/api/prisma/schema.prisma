@@ -60,6 +60,8 @@ model Server {
   dockerVersion String?
   easypanelInstalled Boolean @default(false)
   easypanelUrl  String?
+  metrics       Json?
+  metricsCheckedAt DateTime?
   lastCheckedAt DateTime?
   tags          String[]     @default([])
   environment   String?

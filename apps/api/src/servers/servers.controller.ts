@@ -40,6 +40,16 @@ export class ServersController {
     return this.servers.testConnection(id);
   }
 
+  @Get(':id/metrics')
+  collectMetrics(@Param('id') id: string) {
+    return this.servers.collectMetrics(id);
+  }
+
+  @Post(':id/reboot')
+  reboot(@Param('id') id: string) {
+    return this.servers.reboot(id);
+  }
+
   @Get(':id/updates')
   checkUpdates(@Param('id') id: string) {
     return this.servers.checkUpdates(id);

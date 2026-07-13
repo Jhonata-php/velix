@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
-import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
+import { encryptCredential } from '../ssh/crypto.util';
+import { buildConnectOptions } from '../ssh/connect-options.util';
 import { CloudflareService } from '../cloudflare/cloudflare.service';
 import { generateSshKeyPair } from '../ssh/keygen.util';
 import { CreateServerDto } from './dto/create-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
+import { METRICS_COMMAND, parseMetrics } from './metrics.util';
 
 function toPublic<T extends { credentialEnc: string }>(server: T) {
   const { credentialEnc: _drop, ...rest } = server;
@@ -78,17 +80,12 @@ export class ServersService {
     return { server, options: this.toConnectOptions(server) };
   }
 
-  private toConnectOptions(server: Awaited<ReturnType<ServersService['getRawServer']>>): SshConnectOptions {
-    const host = server.publicIp || server.privateIp || server.hostname;
-    if (!host) throw new BadRequestException('Servidor não possui IP ou hostname cadastrado');
-    const secret = decryptCredential(server.credentialEnc);
-    return {
-      host,
-      port: server.sshPort,
-      username: server.sshUser,
-      password: server.authMethod === 'PASSWORD' ? secret : undefined,
-      privateKey: server.authMethod === 'PRIVATE_KEY' ? secret : undefined,
-    };
+  private toConnectOptions(server: Awaited<ReturnType<ServersService['getRawServer']>>) {
+    try {
+      return buildConnectOptions(server);
+    } catch (err) {
+      throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao montar credenciais SSH');
+    }
   }
 
   async testConnection(id: string) {
@@ -109,6 +106,38 @@ export class ServersService {
     });
 
     return result;
+  }
+
+  /** Uma única conexão SSH: testa disponibilidade e já coleta uptime/memória/disco. */
+  async collectMetrics(id: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const result = await this.ssh.runCommand(options, METRICS_COMMAND, 15_000);
+
+    if (!result.ok) {
+      await this.prisma.server.update({ where: { id }, data: { status: 'OFFLINE', lastCheckedAt: new Date() } });
+      return { online: false, metrics: null };
+    }
+
+    const metrics = parseMetrics(result.stdout);
+    await this.prisma.server.update({
+      where: { id },
+      data: { status: 'ONLINE', metrics: metrics as object, metricsCheckedAt: new Date(), lastCheckedAt: new Date() },
+    });
+    return { online: true, metrics };
+  }
+
+  async reboot(id: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    // ponytail: dispara em subshell destacado (`disown`) pra nosso comando
+    // retornar antes do servidor cair — senão o canal SSH morre no meio e o
+    // resultado fica ambíguo (sucesso indistinguível de erro).
+    const result = await this.ssh.runCommand(options, 'nohup sudo sh -c "sleep 1 && reboot" >/dev/null 2>&1 & disown; echo sent', 10_000);
+    if (!result.ok) {
+      throw new BadRequestException(`Falha ao enviar comando de reboot: ${result.stderr || result.message}`);
+    }
+    return { ok: true, message: 'Comando de reboot enviado — o servidor deve voltar em alguns instantes.' };
   }
 
   private async detectPackageManager(options: SshConnectOptions): Promise<'apt' | 'dnf' | 'yum' | 'unknown'> {

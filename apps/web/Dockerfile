@@ -12,5 +12,6 @@ COPY package.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/next.config.js ./next.config.js
+COPY --from=build /app/server.js ./server.js
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

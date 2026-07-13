@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 
 interface Server {
   id: string;
@@ -24,23 +25,35 @@ export default function ServersPage() {
   const [servers, setServers] = useState<Server[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   function load() {
-    apiFetch<Server[]>('/servers').then(setServers).catch((e) => setError(e.message));
+    setRefreshing(true);
+    apiFetch<Server[]>('/servers')
+      .then(setServers)
+      .catch((e) => setError(e.message))
+      .finally(() => setRefreshing(false));
   }
 
   useEffect(load, []);
+  useAutoRefresh(load, 10_000);
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Servidores</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-primary px-4 py-2 text-sm"
-        >
-          Adicionar servidor
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            title="Atualizar agora"
+            className="btn-secondary px-3 py-2 text-sm"
+          >
+            {refreshing ? '…' : '↻'}
+          </button>
+          <button onClick={() => setShowForm(true)} className="btn-primary px-4 py-2 text-sm">
+            Adicionar servidor
+          </button>
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-500">{error}</p>}

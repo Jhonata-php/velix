@@ -1,9 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getToken } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { Bar } from '@/components/Bar';
+import '@xterm/xterm/css/xterm.css';
+
+interface ServerMetrics {
+  uptimeText: string | null;
+  loadAvg: [number, number, number] | null;
+  memTotalMb: number | null;
+  memUsedMb: number | null;
+  diskTotal: string | null;
+  diskUsed: string | null;
+  diskPercent: string | null;
+}
 
 interface Server {
   id: string;
@@ -21,6 +34,8 @@ interface Server {
   dockerVersion: string | null;
   easypanelInstalled: boolean;
   easypanelUrl: string | null;
+  metrics: ServerMetrics | null;
+  metricsCheckedAt: string | null;
   lastCheckedAt: string | null;
 }
 
@@ -30,6 +45,7 @@ const TABS = [
   { key: 'docker', label: 'Docker' },
   { key: 'easypanel', label: 'EasyPanel' },
   { key: 'databases', label: 'Bancos' },
+  { key: 'terminal', label: 'Terminal' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -48,7 +64,7 @@ export default function ServerDetailPage() {
   if (!server) return null;
 
   return (
-    <div className="max-w-3xl">
+    <div className={tab === 'terminal' ? '' : 'max-w-3xl'}>
       <h1 className="mb-1 text-xl font-semibold">{server.name}</h1>
       <p className="mb-6 text-sm text-slate-500">
         {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
@@ -75,6 +91,7 @@ export default function ServerDetailPage() {
       {tab === 'docker' && <DockerTab server={server} onChange={load} />}
       {tab === 'easypanel' && <EasyPanelTab server={server} onChange={load} />}
       {tab === 'databases' && <DatabasesTab server={server} />}
+      {tab === 'terminal' && <TerminalTab serverId={server.id} />}
     </div>
   );
 }
@@ -107,6 +124,20 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const [lookingUp, setLookingUp] = useState(false);
   const [domains, setDomains] = useState<DnsMatch[] | null>(null);
   const [domainsError, setDomainsError] = useState<string | null>(null);
+  const [collecting, setCollecting] = useState(false);
+  const [rebooting, setRebooting] = useState(false);
+  const [rebootConfirm, setRebootConfirm] = useState(false);
+  const [rebootMessage, setRebootMessage] = useState<string | null>(null);
+
+  function collectMetrics() {
+    setCollecting(true);
+    apiFetch(`/servers/${server.id}/metrics`)
+      .then(onChange)
+      .finally(() => setCollecting(false));
+  }
+
+  useEffect(collectMetrics, [server.id]);
+  useAutoRefresh(collectMetrics, 10_000);
 
   async function handleTest() {
     setTesting(true);
@@ -119,6 +150,20 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
     } finally {
       setTesting(false);
       onChange();
+    }
+  }
+
+  async function handleReboot() {
+    setRebooting(true);
+    setRebootMessage(null);
+    try {
+      const res = await apiFetch<{ ok: boolean; message: string }>(`/servers/${server.id}/reboot`, { method: 'POST' });
+      setRebootMessage(res.message);
+    } catch (err) {
+      setRebootMessage(err instanceof Error ? err.message : 'Falha ao reiniciar servidor');
+    } finally {
+      setRebooting(false);
+      setRebootConfirm(false);
     }
   }
 
@@ -141,24 +186,88 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
     }
   }
 
+  const memPercent =
+    server.metrics?.memTotalMb && server.metrics.memUsedMb != null ? (server.metrics.memUsedMb / server.metrics.memTotalMb) * 100 : null;
+  const diskPercent = server.metrics?.diskPercent ? Number(server.metrics.diskPercent.replace('%', '')) : null;
+
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
-        <Info label="Status" value={server.status} />
-        <Info label="Sistema operacional" value={server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'} />
-        <Info label="Última verificação" value={server.lastCheckedAt ? new Date(server.lastCheckedAt).toLocaleString('pt-BR') : 'nunca'} />
-        <Info label="Docker" value={server.dockerInstalled ? `instalado (${server.dockerVersion})` : 'não instalado'} />
+      <div className="mb-4 flex items-center justify-between">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+            server.status === 'ONLINE'
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+              : server.status === 'PENDING'
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+          }`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+          {server.status}
+        </span>
+        <button onClick={collectMetrics} disabled={collecting} className="btn-secondary px-3 py-1.5 text-xs">
+          {collecting ? 'Atualizando...' : '↻ Atualizar agora'}
+        </button>
       </div>
 
-      <button
-        onClick={handleTest}
-        disabled={testing}
-        className="btn-primary px-4 py-2 text-sm"
-      >
-        {testing ? 'Testando conexão...' : 'Testar conexão'}
-      </button>
+      <div className="mb-6 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+        <Info label="Sistema operacional" value={server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'} />
+        <Info label="Uptime" value={server.metrics?.uptimeText ?? '—'} />
+        <Info label="Load average" value={server.metrics?.loadAvg ? server.metrics.loadAvg.join(', ') : '—'} />
+        <Info label="Docker" value={server.dockerInstalled ? `instalado (${server.dockerVersion})` : 'não instalado'} />
+
+        <div>
+          <p className="text-slate-500">Memória</p>
+          {memPercent !== null ? (
+            <div className="mt-1 flex items-center gap-2">
+              <Bar percent={memPercent} />
+              <span className="text-xs">
+                {server.metrics?.memUsedMb}MB / {server.metrics?.memTotalMb}MB
+              </span>
+            </div>
+          ) : (
+            <p className="font-medium">—</p>
+          )}
+        </div>
+        <div>
+          <p className="text-slate-500">Disco</p>
+          {diskPercent !== null ? (
+            <div className="mt-1 flex items-center gap-2">
+              <Bar percent={diskPercent} />
+              <span className="text-xs">
+                {server.metrics?.diskUsed} / {server.metrics?.diskTotal}
+              </span>
+            </div>
+          ) : (
+            <p className="font-medium">—</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={handleTest} disabled={testing} className="btn-primary px-4 py-2 text-sm">
+          {testing ? 'Testando conexão...' : 'Testar conexão'}
+        </button>
+
+        {!rebootConfirm ? (
+          <button onClick={() => setRebootConfirm(true)} className="btn-danger px-4 py-2 text-sm">
+            Reiniciar servidor
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm dark:border-red-800">
+            <span className="text-red-600 dark:text-red-400">Confirma o reboot?</span>
+            <button onClick={handleReboot} disabled={rebooting} className="btn-danger px-3 py-1 text-xs">
+              {rebooting ? 'Enviando...' : 'Sim, reiniciar'}
+            </button>
+            <button onClick={() => setRebootConfirm(false)} className="text-xs text-slate-500 hover:underline">
+              Cancelar
+            </button>
+          </div>
+        )}
+      </div>
 
       {result && <p className={`mt-4 text-sm ${result.ok ? 'text-green-600' : 'text-red-500'}`}>{result.message}</p>}
+      {rebootMessage && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{rebootMessage}</p>}
 
       <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
         <h2 className="mb-2 text-base font-medium">Domínios Cloudflare</h2>
@@ -565,6 +674,80 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function TerminalTab({ serverId }: { serverId: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'closed' | 'error'>('connecting');
+
+  useEffect(() => {
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let term: import('@xterm/xterm').Terminal | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    async function start() {
+      const { Terminal } = await import('@xterm/xterm');
+      const { FitAddon } = await import('@xterm/addon-fit');
+      if (disposed || !containerRef.current) return;
+
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        theme: { background: '#0f172a' },
+      });
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(containerRef.current);
+      fitAddon.fit();
+
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${protocol}://${location.host}/terminal?serverId=${serverId}&token=${getToken()}`);
+
+      ws.onopen = () => setStatus('connected');
+      ws.onclose = () => setStatus('closed');
+      ws.onerror = () => setStatus('error');
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'data') term?.write(msg.data);
+        else if (msg.type === 'error') term?.write(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n`);
+        else if (msg.type === 'closed') term?.write('\r\n\x1b[33mConexão encerrada.\x1b[0m\r\n');
+      };
+
+      term.onData((data) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'input', data })));
+
+      const sendResize = () => {
+        fitAddon.fit();
+        if (ws?.readyState === WebSocket.OPEN && term) {
+          ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        }
+      };
+      resizeObserver = new ResizeObserver(sendResize);
+      resizeObserver.observe(containerRef.current);
+    }
+
+    start();
+
+    return () => {
+      disposed = true;
+      resizeObserver?.disconnect();
+      ws?.close();
+      term?.dispose();
+    };
+  }, [serverId]);
+
+  return (
+    <div>
+      <p className="mb-2 text-xs text-slate-400">
+        {status === 'connecting' && 'Conectando...'}
+        {status === 'connected' && 'Conectado'}
+        {status === 'closed' && 'Desconectado'}
+        {status === 'error' && 'Falha na conexão do terminal'}
+      </p>
+      <div ref={containerRef} className="h-[70vh] overflow-hidden rounded-xl border border-slate-800 bg-[#0f172a] p-2" />
     </div>
   );
 }

@@ -10,15 +10,17 @@ Implementado até agora, tudo com execução real via SSH (nada simulado):
 - Docker: instalação real (get.docker.com) + status/containers
 - EasyPanel: instalação real (get.easypanel.io) + DNS automático via Cloudflare
 - MySQL: instalação via Docker já pronta para replicação, criação de réplica (dump + SFTP + `CHANGE REPLICATION SOURCE` com GTID), monitoramento de sincronização e **promoção manual** de réplica (com confirmação explícita — sem failover automático)
+- Métricas reais por SSH (uptime, load average, memória, disco) com auto-refresh a cada 10s (dashboard e página do servidor) + atualização manual, e reboot do servidor
+- Terminal web real via WebSocket + `xterm.js` (abre um shell SSH de verdade no servidor, direto do navegador)
 
 Ainda não implementado: Docker Swarm/clusters, PostgreSQL, backups, failover automático com máquina de estados.
 
 ## Stack
 
-- `apps/api`: NestJS + Prisma + PostgreSQL, autenticação JWT, teste de conexão SSH real (`ssh2`)
+- `apps/api`: NestJS + Prisma + PostgreSQL, autenticação JWT, teste de conexão SSH real (`ssh2`), WebSocket cru (`ws`) pro terminal
 - `apps/web`: Next.js (App Router) + Tailwind, tema claro/escuro, dashboard e cadastro de servidores
 
-Só a porta do Next.js (3000) fica exposta: `next.config.js` proxeia `/api/*` para o NestJS internamente (`rewrites`), então o browser nunca faz requisição cross-origin e não há CORS pra configurar.
+Só a porta do Next.js (3000) fica exposta. Requisições HTTP (`/api/*`) são proxeadas pro NestJS via `rewrites` do `next.config.js`; o terminal web (WebSocket em `/terminal`, que `rewrites` não cobre) é proxeado por um servidor Node customizado (`apps/web/server.js`, usado tanto em dev quanto em produção) que repassa a conexão crua pro backend. Em nenhum dos dois casos o browser fala diretamente com a API.
 
 ## Rodando em produção (Ubuntu)
 
@@ -71,4 +73,4 @@ Veja [.env.example](.env.example) (raiz, usado pelo `docker-compose.yml`) e [app
 
 ## Próximos passos
 
-Docker Swarm/clusters, PostgreSQL, backups agendados, e failover automático com máquina de estados e fencing real (o que existe hoje é promoção manual, de propósito — ver seção acima).
+Docker Swarm/clusters, PostgreSQL, backups agendados, e failover automático com máquina de estados e fencing real (o que existe hoje é promoção manual, de propósito — ver seção acima). O terminal web também ainda não tem MFA, gravação de sessão ou limite de sessões simultâneas (seção 33 do spec original).

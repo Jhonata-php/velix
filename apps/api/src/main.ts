@@ -1,7 +1,11 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma/prisma.service';
+import { SshService } from './ssh/ssh.service';
+import { attachTerminalServer } from './terminal/terminal-server';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,6 +20,12 @@ async function bootstrap() {
   const httpServer = app.getHttpServer();
   httpServer.requestTimeout = 0;
   httpServer.headersTimeout = 0;
+
+  attachTerminalServer(httpServer, {
+    jwt: app.get(JwtService),
+    prisma: app.get(PrismaService),
+    ssh: app.get(SshService),
+  });
 
   console.log(`Velix API rodando na porta ${port}`);
 }

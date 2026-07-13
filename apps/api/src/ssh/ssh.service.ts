@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Client } from 'ssh2';
+import { Client, ClientChannel } from 'ssh2';
 
 export interface SshConnectOptions {
   host: string;
@@ -154,5 +154,40 @@ export class SshService {
       },
       timeoutMs,
     );
+  }
+
+  /**
+   * Abre um shell interativo (PTY) e mantém a conexão viva — usado pelo
+   * terminal web. Quem chama é responsável por fechar `conn` quando acabar.
+   */
+  openShell(options: SshConnectOptions, timeoutMs = 15_000): Promise<{ conn: Client; stream: ClientChannel }> {
+    return new Promise((resolve, reject) => {
+      const conn = new Client();
+      let settled = false;
+      conn
+        .on('ready', () => {
+          conn.shell({ term: 'xterm-256color' }, (err, stream) => {
+            if (err) {
+              settled = true;
+              conn.end();
+              reject(err);
+              return;
+            }
+            settled = true;
+            resolve({ conn, stream });
+          });
+        })
+        .on('error', (err) => {
+          if (!settled) reject(err);
+        })
+        .connect({
+          host: options.host,
+          port: options.port,
+          username: options.username,
+          password: options.password,
+          privateKey: options.privateKey,
+          readyTimeout: timeoutMs,
+        });
+    });
   }
 }
