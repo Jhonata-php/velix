@@ -16,7 +16,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const data = await apiFetch<{ accessToken: string; user: { name: string; email: string } }>('/auth/login', {
+      const data = await apiFetch<{ accessToken: string; user: { name: string; email: string; role: string } }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });

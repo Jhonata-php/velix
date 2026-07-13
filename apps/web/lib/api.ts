@@ -19,6 +19,7 @@ export function clearToken() {
 export interface StoredUser {
   name: string;
   email: string;
+  role: string;
 }
 
 export function setUser(user: StoredUser) {
