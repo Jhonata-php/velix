@@ -150,6 +150,31 @@ export class ServersService {
     return pm === 'apt' || pm === 'dnf' || pm === 'yum' ? pm : 'unknown';
   }
 
+  /** Garante curl + ca-certificates antes de instalar Docker/EasyPanel — imagens mínimas costumam vir sem isso. */
+  private async ensurePrerequisites(options: SshConnectOptions) {
+    const hasCurl = await this.ssh.runCommand(options, 'command -v curl', 10_000);
+    if (hasCurl.ok) return;
+
+    const packageManager = await this.detectPackageManager(options);
+    const installCmd =
+      packageManager === 'apt'
+        ? 'sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates'
+        : packageManager === 'dnf'
+          ? 'sudo dnf install -y curl ca-certificates'
+          : packageManager === 'yum'
+            ? 'sudo yum install -y curl ca-certificates'
+            : null;
+
+    if (!installCmd) {
+      throw new BadRequestException('curl não está instalado e o gerenciador de pacotes do servidor não foi reconhecido (apt/dnf/yum) para instalá-lo automaticamente');
+    }
+
+    const result = await this.ssh.runCommand(options, installCmd, 120_000);
+    if (!result.ok) {
+      throw new BadRequestException(`Falha ao instalar pré-requisitos (curl/ca-certificates): ${result.stderr || result.message}`);
+    }
+  }
+
   async checkUpdates(id: string) {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
@@ -218,6 +243,7 @@ export class ServersService {
   async installDocker(id: string) {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
+    await this.ensurePrerequisites(options);
 
     // ponytail: baixa e executa em passos separados de propósito. Com
     // `curl ... | sudo sh` direto, se o curl falhar (rede, DNS) o `sh` recebe
@@ -302,6 +328,7 @@ export class ServersService {
       throw new BadRequestException('Instale o Docker neste servidor antes do EasyPanel');
     }
     const options = this.toConnectOptions(server);
+    await this.ensurePrerequisites(options);
     const warnings: string[] = [];
 
     if (opts.domain && opts.createDnsRecord) {
