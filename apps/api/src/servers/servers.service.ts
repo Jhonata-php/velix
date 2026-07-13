@@ -65,6 +65,12 @@ export class ServersService {
     return server;
   }
 
+  /** Usado por outros módulos (ex.: database) que precisam executar comandos no servidor. */
+  async getServerWithConnectOptions(id: string) {
+    const server = await this.getRawServer(id);
+    return { server, options: this.toConnectOptions(server) };
+  }
+
   private toConnectOptions(server: Awaited<ReturnType<ServersService['getRawServer']>>): SshConnectOptions {
     const host = server.publicIp || server.privateIp || server.hostname;
     if (!host) throw new BadRequestException('Servidor não possui IP ou hostname cadastrado');

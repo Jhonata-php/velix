@@ -92,4 +92,67 @@ export class SshService {
     }
     return { ok: true, message: 'Conexão SSH validada com sucesso', osRelease: result.stdout };
   }
+
+  private withConnection<T>(
+    options: SshConnectOptions,
+    handler: (conn: Client, done: (result: T) => void) => void,
+    timeoutMs: number,
+  ): Promise<T> {
+    return new Promise((resolve) => {
+      const conn = new Client();
+      let settled = false;
+      const done = (result: T) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        conn.end();
+        resolve(result);
+      };
+      const timer = setTimeout(() => done({ ok: false, message: 'Timeout na operação SSH/SFTP' } as T), timeoutMs);
+
+      conn
+        .on('ready', () => handler(conn, done))
+        .on('error', (err) => done({ ok: false, message: `Falha na conexão SSH: ${err.message}` } as T))
+        .connect({
+          host: options.host,
+          port: options.port,
+          username: options.username,
+          password: options.password,
+          privateKey: options.privateKey,
+          readyTimeout: Math.min(timeoutMs, 15_000),
+        });
+    });
+  }
+
+  /** Baixa um arquivo remoto via SFTP para o disco local (usado para transferir dumps entre servidores). */
+  downloadFile(options: SshConnectOptions, remotePath: string, localPath: string, timeoutMs = 300_000) {
+    return this.withConnection<{ ok: boolean; message?: string }>(
+      options,
+      (conn, done) => {
+        conn.sftp((err, sftp) => {
+          if (err) return done({ ok: false, message: err.message });
+          sftp.fastGet(remotePath, localPath, (err2) => {
+            done(err2 ? { ok: false, message: err2.message } : { ok: true });
+          });
+        });
+      },
+      timeoutMs,
+    );
+  }
+
+  /** Envia um arquivo local para o servidor remoto via SFTP. */
+  uploadFile(options: SshConnectOptions, localPath: string, remotePath: string, timeoutMs = 300_000) {
+    return this.withConnection<{ ok: boolean; message?: string }>(
+      options,
+      (conn, done) => {
+        conn.sftp((err, sftp) => {
+          if (err) return done({ ok: false, message: err.message });
+          sftp.fastPut(localPath, remotePath, (err2) => {
+            done(err2 ? { ok: false, message: err2.message } : { ok: true });
+          });
+        });
+      },
+      timeoutMs,
+    );
+  }
 }

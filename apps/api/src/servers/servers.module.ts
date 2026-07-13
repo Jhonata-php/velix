@@ -9,5 +9,6 @@ import { CloudflareModule } from '../cloudflare/cloudflare.module';
   imports: [AuthModule, CloudflareModule],
   controllers: [ServersController],
   providers: [ServersService, SshService],
+  exports: [ServersService, SshService],
 })
 export class ServersModule {}

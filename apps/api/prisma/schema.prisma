@@ -65,4 +65,76 @@ model Server {
   environment   String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+
+  databaseInstances DatabaseInstance[]
+}
+
+enum DbEngine {
+  MYSQL
+}
+
+enum DbRole {
+  STANDALONE
+  PRIMARY
+  REPLICA
+}
+
+enum DbInstanceStatus {
+  PENDING
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+// ponytail: todo banco instalado pelo Velix já nasce com binlog/GTID
+// habilitados (server-id, log-bin, gtid-mode=ON) — evita o passo separado de
+// "reconfigurar o primário depois" do spec original. Simplifica o fluxo de
+// criação de réplica ao custo de uma flag a mais no `docker run` sempre ligada.
+model DatabaseInstance {
+  id              String            @id @default(uuid())
+  serverId        String
+  server          Server            @relation(fields: [serverId], references: [id])
+  name            String
+  engine          DbEngine          @default(MYSQL)
+  containerName   String
+  port            Int
+  mysqlServerId   Int
+  role            DbRole            @default(STANDALONE)
+  status          DbInstanceStatus  @default(PENDING)
+  version         String?
+  databaseName    String
+  appUser         String
+  appPasswordEnc  String
+  rootPasswordEnc String
+  lastCheckedAt   DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  replicationsAsPrimary DatabaseReplication[] @relation("PrimaryInstance")
+  replicationAsReplica  DatabaseReplication?  @relation("ReplicaInstance")
+}
+
+enum ReplicationStatus {
+  PROVISIONING
+  SYNCING
+  IN_SYNC
+  DELAYED
+  ERROR
+  PROMOTED
+}
+
+model DatabaseReplication {
+  id                     String             @id @default(uuid())
+  primaryInstanceId      String
+  primaryInstance        DatabaseInstance   @relation("PrimaryInstance", fields: [primaryInstanceId], references: [id])
+  replicaInstanceId      String             @unique
+  replicaInstance        DatabaseInstance   @relation("ReplicaInstance", fields: [replicaInstanceId], references: [id])
+  replicationUser        String
+  replicationPasswordEnc String
+  status                 ReplicationStatus  @default(PROVISIONING)
+  secondsBehind          Int?
+  lastError              String?
+  lastCheckedAt          DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 }

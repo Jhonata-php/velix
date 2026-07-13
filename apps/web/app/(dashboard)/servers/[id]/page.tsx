@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 
 interface Server {
@@ -28,6 +29,7 @@ const TABS = [
   { key: 'updates', label: 'Atualizações' },
   { key: 'docker', label: 'Docker' },
   { key: 'easypanel', label: 'EasyPanel' },
+  { key: 'databases', label: 'Bancos' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -72,6 +74,7 @@ export default function ServerDetailPage() {
       {tab === 'updates' && <UpdatesTab serverId={server.id} />}
       {tab === 'docker' && <DockerTab server={server} onChange={load} />}
       {tab === 'easypanel' && <EasyPanelTab server={server} onChange={load} />}
+      {tab === 'databases' && <DatabasesTab server={server} />}
     </div>
   );
 }
@@ -561,6 +564,166 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+interface DatabaseInstanceSummary {
+  id: string;
+  name: string;
+  engine: string;
+  port: number;
+  role: 'STANDALONE' | 'PRIMARY' | 'REPLICA';
+  status: string;
+  databaseName: string;
+  version: string | null;
+}
+
+function DatabasesTab({ server }: { server: Server }) {
+  const [instances, setInstances] = useState<DatabaseInstanceSummary[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    apiFetch<DatabaseInstanceSummary[]>(`/servers/${server.id}/databases`)
+      .then(setInstances)
+      .catch((e) => setError(e.message));
+  }
+
+  useEffect(load, [server.id]);
+
+  if (!server.dockerInstalled) {
+    return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de criar um banco de dados.</p>;
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-base font-medium">Instâncias MySQL</h2>
+        <button
+          onClick={() => setShowForm(true)}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+        >
+          Instalar MySQL
+        </button>
+      </div>
+
+      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+
+      <div className="space-y-2">
+        {instances.map((inst) => (
+          <Link
+            key={inst.id}
+            href={`/databases/${inst.id}`}
+            className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+          >
+            <span className="font-medium">{inst.name}</span>
+            <span className="text-xs text-slate-400">
+              {inst.engine} · porta {inst.port} · {inst.role} · {inst.status}
+            </span>
+          </Link>
+        ))}
+        {instances.length === 0 && <p className="text-sm text-slate-400">Nenhum banco instalado neste servidor.</p>}
+      </div>
+
+      {showForm && (
+        <InstallMysqlModal
+          serverId={server.id}
+          onClose={() => setShowForm(false)}
+          onCreated={() => {
+            setShowForm(false);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string; onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: '', databaseName: 'app', appUser: 'app' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ rootPassword: string; appPassword: string; warnings: string[] } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ rootPassword: string; appPassword: string; warnings: string[] }>(
+        `/servers/${serverId}/databases`,
+        { method: 'POST', body: JSON.stringify(form) },
+      );
+      setCreated(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao instalar MySQL');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        {created ? (
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">MySQL instalado</h2>
+            <p className="mb-1 text-sm">
+              Senha root: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.rootPassword}</code>
+            </p>
+            <p className="mb-3 text-sm">
+              Senha do app: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.appPassword}</code>
+            </p>
+            {created.warnings.map((w) => (
+              <p key={w} className="mb-2 text-sm text-amber-600 dark:text-amber-400">
+                ⚠️ {w}
+              </p>
+            ))}
+            <button
+              onClick={onCreated}
+              className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <h2 className="mb-4 text-lg font-semibold">Instalar MySQL</h2>
+            <label className="mb-3 block text-sm">
+              <span className="mb-1 block font-medium">Nome da instância</span>
+              <input
+                required
+                placeholder="ex: principal"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="input"
+              />
+            </label>
+            <label className="mb-3 block text-sm">
+              <span className="mb-1 block font-medium">Banco inicial</span>
+              <input required value={form.databaseName} onChange={(e) => setForm({ ...form, databaseName: e.target.value })} className="input" />
+            </label>
+            <label className="mb-3 block text-sm">
+              <span className="mb-1 block font-medium">Usuário inicial</span>
+              <input required value={form.appUser} onChange={(e) => setForm({ ...form, appUser: e.target.value })} className="input" />
+            </label>
+            {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+              >
+                {saving ? 'Instalando (leva um tempinho)...' : 'Instalar'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
