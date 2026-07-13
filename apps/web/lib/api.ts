@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+// Sempre relativo: o rewrite em next.config.js encaminha /api/* pro backend,
+// então o browser nunca faz requisição cross-origin.
+const API_URL = '/api';
 
 export function getToken() {
   if (typeof window === 'undefined') return null;

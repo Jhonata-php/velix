@@ -18,6 +18,8 @@ Ainda não implementado: Docker Swarm/clusters, PostgreSQL, backups, failover au
 - `apps/api`: NestJS + Prisma + PostgreSQL, autenticação JWT, teste de conexão SSH real (`ssh2`)
 - `apps/web`: Next.js (App Router) + Tailwind, tema claro/escuro, dashboard e cadastro de servidores
 
+Só a porta do Next.js (3000) fica exposta: `next.config.js` proxeia `/api/*` para o NestJS internamente (`rewrites`), então o browser nunca faz requisição cross-origin e não há CORS pra configurar.
+
 ## Rodando em produção (Ubuntu)
 
 Em um Ubuntu limpo (20.04+), como root:
@@ -48,12 +50,12 @@ cp .env.example .env   # ajuste DATABASE_URL se necessário
 npm install
 npx prisma db push
 npm run seed            # cria o usuário admin@velix.local / changeme123
-npm run dev              # http://localhost:3001/api
+npm run dev              # roda em :3001, usado só internamente
 
 # Frontend (em outro terminal)
 cd apps/web
 npm install
-npm run dev              # http://localhost:3000
+npm run dev              # abra http://localhost:3000 — o proxy /api/* já aponta pra :3001
 ```
 
 ## Variáveis de ambiente

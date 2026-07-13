@@ -44,7 +44,6 @@ POSTGRES_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 VELIX_CREDENTIAL_SECRET=$(openssl rand -hex 32)
 WEB_ORIGIN=http://${SERVER_IP}:3000
-NEXT_PUBLIC_API_URL=http://${SERVER_IP}:3001/api
 VELIX_ADMIN_EMAIL=admin@velix.local
 VELIX_ADMIN_PASSWORD=$(openssl rand -hex 8)
 EOF
@@ -59,7 +58,6 @@ docker compose up -d --build
 echo "==> Pronto"
 set -a; source .env; set +a
 echo "Painel:  http://${SERVER_IP:-$(hostname -I | awk '{print $1}')}:3000"
-echo "API:     http://${SERVER_IP:-$(hostname -I | awk '{print $1}')}:3001/api"
 echo "Login:   ${VELIX_ADMIN_EMAIL}"
 echo "Senha:   ${VELIX_ADMIN_PASSWORD}"
 echo "(credenciais também salvas em ${INSTALL_DIR}/.env)"

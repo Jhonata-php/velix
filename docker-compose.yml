@@ -28,19 +28,19 @@ services:
       VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
       VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
       PORT: 3001
-    ports:
-      - "3001:3001"
+    # Sem `ports:` aqui de propósito — só o Next.js (serviço web) fica exposto
+    # ao host. O browser fala com o Next, que proxeia /api/* pra cá via rede
+    # interna do compose (ver INTERNAL_API_URL no serviço web).
     # ponytail: `db push` em vez de migrations versionadas — sem histórico de
     # migração ainda. Trocar para `prisma migrate deploy` com migrations
     # commitadas quando houver mais de um ambiente (staging/prod) para sincronizar.
     command: sh -c "npx prisma db push --skip-generate && npm run seed && node dist/main.js"
 
   web:
-    build:
-      context: ./apps/web
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    build: ./apps/web
     restart: unless-stopped
+    environment:
+      INTERNAL_API_URL: http://api:3001/api
     depends_on:
       - api
     ports:
