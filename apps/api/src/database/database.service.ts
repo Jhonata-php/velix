@@ -45,7 +45,18 @@ export class DatabaseService {
     return this.ssh.runCommand(options, command, timeoutMs);
   }
 
-  private async waitForMysqlReady(options: SshConnectOptions, containerName: string, rootPassword: string, attempts = 20, delayMs = 3000) {
+  // ponytail: mesmo motivo do timing do EasyPanel — na primeira instalação o
+  // MySQL ainda baixa a imagem e faz DOIS boots internos (bootstrap +
+  // start real), o que passa fácil de 60s. 40 tentativas de 5s (~200s) dá
+  // margem sem travar pra sempre se algo estiver mesmo quebrado.
+  private async waitForMysqlReady(
+    options: SshConnectOptions,
+    containerName: string,
+    rootPassword: string,
+    onLog?: (line: string) => void,
+    attempts = 40,
+    delayMs = 5000,
+  ) {
     for (let i = 0; i < attempts; i++) {
       const ping = await this.ssh.runCommand(
         options,
@@ -53,6 +64,7 @@ export class DatabaseService {
         10_000,
       );
       if (ping.ok) return true;
+      onLog?.(`Aguardando o MySQL ficar pronto... (tentativa ${i + 1}/${attempts})\n`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
     return false;
@@ -73,7 +85,7 @@ export class DatabaseService {
     return rest;
   }
 
-  async installInstance(serverId: string, dto: CreateInstanceDto) {
+  async installInstance(serverId: string, dto: CreateInstanceDto, onLog?: (line: string) => void) {
     const { server, options } = await this.servers.getServerWithConnectOptions(serverId);
     if (!server.dockerInstalled) {
       throw new BadRequestException('Instale o Docker neste servidor antes de criar um banco de dados');
@@ -104,6 +116,7 @@ export class DatabaseService {
       '--binlog-format=ROW',
     ].join(' ');
 
+    onLog?.('Criando container do MySQL...\n');
     const run = await this.ssh.runCommand(options, runCmd, 60_000);
     if (!run.ok) {
       throw new BadRequestException(`Falha ao criar container MySQL: ${run.stderr || run.stdout}`);
@@ -123,7 +136,8 @@ export class DatabaseService {
       },
     });
 
-    const ready = await this.waitForMysqlReady(options, containerName, rootPassword);
+    onLog?.('Aguardando o MySQL inicializar (baixa a imagem e faz o bootstrap inicial — pode levar 1-2 minutos)...\n');
+    const ready = await this.waitForMysqlReady(options, containerName, rootPassword, onLog);
     let version: string | undefined;
     if (ready) {
       const versionRes = await this.runMysql(options, containerName, rootPassword, 'SELECT VERSION()');

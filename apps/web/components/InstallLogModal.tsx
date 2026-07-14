@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getToken } from '@/lib/api';
 import '@xterm/xterm/css/xterm.css';
 
-type Op = 'docker-install' | 'easypanel-install' | 'updates-install';
+type Op = 'docker-install' | 'easypanel-install' | 'updates-install' | 'mysql-install';
 
 interface Props {
   serverId: string;

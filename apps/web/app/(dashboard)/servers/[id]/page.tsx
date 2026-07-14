@@ -944,30 +944,40 @@ function DatabasesTab({ server }: { server: Server }) {
 
 function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string; onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({ name: '', databaseName: 'app', appUser: 'app' });
-  const [saving, setSaving] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ rootPassword: string; appPassword: string; warnings: string[] } | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await apiFetch<{ rootPassword: string; appPassword: string; warnings: string[] }>(
-        `/servers/${serverId}/databases`,
-        { method: 'POST', body: JSON.stringify(form) },
-      );
+  function handleDone(ok: boolean, result: unknown) {
+    const res = result as { rootPassword: string; appPassword: string; warnings: string[]; status: string };
+    if (ok) {
       setCreated(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao instalar MySQL');
-    } finally {
-      setSaving(false);
+    } else {
+      setError(`Falha ao instalar MySQL (status: ${res?.status ?? 'desconhecido'}) — veja o log acima.`);
     }
+  }
+
+  if (showLog && !created) {
+    return (
+      <InstallLogModal
+        serverId={serverId}
+        op="mysql-install"
+        params={form}
+        title="Instalando MySQL"
+        onClose={() => (error ? setShowLog(false) : onClose())}
+        onDone={handleDone}
+      />
+    );
   }
 
   return (
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        {error && (
+          <div className="mb-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         {created ? (
           <div>
             <h2 className="mb-3 text-lg font-semibold">MySQL instalado</h2>
@@ -994,7 +1004,13 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError(null);
+              setShowLog(true);
+            }}
+          >
             <h2 className="mb-4 text-lg font-semibold">Instalar MySQL</h2>
             <label className="mb-3 block text-sm">
               <span className="mb-1 block font-medium">Nome da instância</span>
@@ -1014,21 +1030,12 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
               <span className="mb-1 block font-medium">Usuário inicial</span>
               <input required value={form.appUser} onChange={(e) => setForm({ ...form, appUser: e.target.value })} className="input" />
             </label>
-            {error && (
-              <div className="mb-3">
-                <Alert variant="error">{error}</Alert>
-              </div>
-            )}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                 Cancelar
               </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn-primary px-4 py-2 text-sm"
-              >
-                {saving ? 'Instalando (leva um tempinho)...' : 'Instalar'}
+              <button type="submit" className="btn-primary px-4 py-2 text-sm">
+                Instalar
               </button>
             </div>
           </form>

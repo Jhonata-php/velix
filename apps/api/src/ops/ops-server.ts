@@ -3,11 +3,17 @@ import { parse } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { JwtService } from '@nestjs/jwt';
 import { ServersService } from '../servers/servers.service';
+import { DatabaseService } from '../database/database.service';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
   | { type: 'start'; op: 'easypanel-install'; params: { domain?: string; createDnsRecord?: boolean } }
-  | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } };
+  | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
+  | {
+      type: 'start';
+      op: 'mysql-install';
+      params: { name: string; port?: number; databaseName: string; appUser: string; appPassword?: string; rootPassword?: string };
+    };
 
 function send(ws: WebSocket, msg: object) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -19,7 +25,7 @@ function send(ws: WebSocket, msg: object) {
  * query string, um comando roda no servidor de destino e cada linha de saída
  * é repassada em tempo real em vez de só devolver tudo no final.
  */
-export function attachOpsServer(httpServer: HttpServer, deps: { jwt: JwtService; servers: ServersService }) {
+export function attachOpsServer(httpServer: HttpServer, deps: { jwt: JwtService; servers: ServersService; database: DatabaseService }) {
   const wss = new WebSocketServer({ noServer: true });
 
   httpServer.on('upgrade', (req, socket, head) => {
@@ -38,7 +44,7 @@ export function attachOpsServer(httpServer: HttpServer, deps: { jwt: JwtService;
 async function handleConnection(
   ws: WebSocket,
   query: Record<string, string>,
-  deps: { jwt: JwtService; servers: ServersService },
+  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService },
 ) {
   const { token, serverId } = query;
   if (!token || !serverId) {
@@ -68,19 +74,22 @@ async function handleConnection(
     const onLog = (line: string) => send(ws, { type: 'log', data: line });
 
     try {
-      let result: { ok?: boolean };
+      let result: { ok?: boolean; status?: string };
       if (msg.op === 'docker-install') {
         result = await deps.servers.installDocker(serverId, onLog);
       } else if (msg.op === 'easypanel-install') {
         result = await deps.servers.installEasyPanel(serverId, msg.params, onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
+      } else if (msg.op === 'mysql-install') {
+        result = await deps.database.installInstance(serverId, msg.params, onLog);
       } else {
         send(ws, { type: 'done', ok: false, error: 'Operação desconhecida' });
         ws.close();
         return;
       }
-      send(ws, { type: 'done', ok: result.ok ?? true, result });
+      const ok = result.status ? result.status === 'ONLINE' : (result.ok ?? true);
+      send(ws, { type: 'done', ok, result });
     } catch (err) {
       send(ws, { type: 'done', ok: false, error: err instanceof Error ? err.message : 'Falha na operação' });
     } finally {

@@ -8,6 +8,7 @@ import { SshService } from './ssh/ssh.service';
 import { attachTerminalServer } from './terminal/terminal-server';
 import { attachOpsServer } from './ops/ops-server';
 import { ServersService } from './servers/servers.service';
+import { DatabaseService } from './database/database.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -32,6 +33,7 @@ async function bootstrap() {
   attachOpsServer(httpServer, {
     jwt: app.get(JwtService),
     servers: app.get(ServersService),
+    database: app.get(DatabaseService),
   });
 
   console.log(`Velix API rodando na porta ${port}`);
