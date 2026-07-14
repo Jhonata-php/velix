@@ -1,12 +1,9 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Proxeia /api/* para o backend Nest no servidor do Next.js — o browser só
-  // fala com esta porta, então não existe requisição cross-origin (nem CORS
-  // pra configurar) e o usuário só precisa expor/acessar uma porta só.
-  async rewrites() {
-    const apiUrl = process.env.INTERNAL_API_URL ?? 'http://localhost:3001/api';
-    return [{ source: '/api/:path*', destination: `${apiUrl}/:path*` }];
-  },
-};
+const nextConfig = {};
 
+// ponytail-bugfix: o proxy de /api/* (e dos WebSockets /terminal, /ops) mora
+// em server.js, não aqui. `rewrites()` resolveria INTERNAL_API_URL uma única
+// vez no build e congelaria isso no routes-manifest.json — quebraria em
+// produção Docker, onde o hostname do backend (ex. "api") só existe em
+// runtime, não durante `docker build`.
 module.exports = nextConfig;

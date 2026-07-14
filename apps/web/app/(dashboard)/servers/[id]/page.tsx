@@ -66,7 +66,7 @@ export default function ServerDetailPage() {
   if (!server) return null;
 
   return (
-    <div className={tab === 'terminal' ? '' : 'max-w-5xl'}>
+    <div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{server.name}</h1>
@@ -282,70 +282,74 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </div>
       </div>
 
-      <h2 className="section-title mb-3">Ações</h2>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={handleTest} disabled={testing} className="btn-primary px-4 py-2 text-sm">
-          {testing ? 'Testando conexão...' : 'Testar conexão'}
-        </button>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="card p-5">
+          <h2 className="section-title mb-3">Ações</h2>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handleTest} disabled={testing} className="btn-primary px-4 py-2 text-sm">
+              {testing ? 'Testando conexão...' : 'Testar conexão'}
+            </button>
 
-        {!rebootConfirm ? (
-          <button onClick={() => setRebootConfirm(true)} className="btn-danger px-4 py-2 text-sm">
-            Reiniciar servidor
+            {!rebootConfirm ? (
+              <button onClick={() => setRebootConfirm(true)} className="btn-danger px-4 py-2 text-sm">
+                Reiniciar servidor
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm dark:border-red-800">
+                <span className="text-red-600 dark:text-red-400">Confirma o reboot?</span>
+                <button onClick={handleReboot} disabled={rebooting} className="btn-danger px-3 py-1 text-xs">
+                  {rebooting ? 'Enviando...' : 'Sim, reiniciar'}
+                </button>
+                <button onClick={() => setRebootConfirm(false)} className="text-xs text-slate-500 hover:underline">
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {result && (
+            <div className="mt-4">
+              <Alert variant={result.ok ? 'success' : 'error'}>{result.message}</Alert>
+            </div>
+          )}
+          {rebootMessage && (
+            <div className="mt-4">
+              <Alert variant="info">{rebootMessage}</Alert>
+            </div>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <h2 className="section-title mb-2">Domínios Cloudflare</h2>
+          <p className="mb-3 text-sm text-slate-500">Localiza registros DNS que apontam para o IP público deste servidor.</p>
+          <button
+            onClick={handleLookupDomains}
+            disabled={lookingUp}
+            className="btn-secondary px-4 py-2 text-sm"
+          >
+            {lookingUp ? 'Buscando...' : 'Localizar domínios'}
           </button>
-        ) : (
-          <div className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm dark:border-red-800">
-            <span className="text-red-600 dark:text-red-400">Confirma o reboot?</span>
-            <button onClick={handleReboot} disabled={rebooting} className="btn-danger px-3 py-1 text-xs">
-              {rebooting ? 'Enviando...' : 'Sim, reiniciar'}
-            </button>
-            <button onClick={() => setRebootConfirm(false)} className="text-xs text-slate-500 hover:underline">
-              Cancelar
-            </button>
-          </div>
-        )}
-      </div>
 
-      {result && (
-        <div className="mt-4">
-          <Alert variant={result.ok ? 'success' : 'error'}>{result.message}</Alert>
+          {domainsError && (
+            <div className="mt-3">
+              <Alert variant="error">{domainsError}</Alert>
+            </div>
+          )}
+
+          {domains && (
+            <ul className="mt-3 space-y-1 text-sm">
+              {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
+              {domains.map((d) => (
+                <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+                  <span>{d.name}</span>
+                  <span className="text-xs text-slate-400">
+                    {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
-      {rebootMessage && (
-        <div className="mt-4">
-          <Alert variant="info">{rebootMessage}</Alert>
-        </div>
-      )}
-
-      <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
-        <h2 className="section-title mb-2">Domínios Cloudflare</h2>
-        <p className="mb-3 text-sm text-slate-500">Localiza registros DNS que apontam para o IP público deste servidor.</p>
-        <button
-          onClick={handleLookupDomains}
-          disabled={lookingUp}
-          className="btn-secondary px-4 py-2 text-sm"
-        >
-          {lookingUp ? 'Buscando...' : 'Localizar domínios'}
-        </button>
-
-        {domainsError && (
-          <div className="mt-3">
-            <Alert variant="error">{domainsError}</Alert>
-          </div>
-        )}
-
-        {domains && (
-          <ul className="mt-3 space-y-1 text-sm">
-            {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
-            {domains.map((d) => (
-              <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
-                <span>{d.name}</span>
-                <span className="text-xs text-slate-400">
-                  {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );
