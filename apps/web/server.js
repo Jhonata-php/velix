@@ -18,9 +18,14 @@ app.prepare().then(() => {
   // Repassa upgrades de WebSocket em /terminal e /ops direto pro backend, via
   // socket TCP cru — assim terminal e logs ao vivo funcionam sem precisar de
   // uma segunda porta exposta (rewrites do Next não proxeiam upgrade de WebSocket).
+  //
+  // ponytail-bugfix: pra qualquer OUTRO upgrade (ex.: o WebSocket de Hot
+  // Reload do próprio Next em dev, /_next/webpack-hmr) a gente só ignora e
+  // retorna — nunca dar `socket.destroy()` aqui, senão quebra o HMR do Next
+  // (que registra seu próprio listener de 'upgrade' no mesmo server), o que
+  // em cascata quebra até o carregamento de chunks dinâmicos no browser.
   server.on('upgrade', (req, socket, head) => {
     if (!req.url.startsWith('/terminal') && !req.url.startsWith('/ops')) {
-      socket.destroy();
       return;
     }
 

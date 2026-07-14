@@ -66,7 +66,7 @@ export default function ServerDetailPage() {
   if (!server) return null;
 
   return (
-    <div className={tab === 'terminal' ? '' : 'max-w-3xl'}>
+    <div className={tab === 'terminal' ? '' : 'max-w-5xl'}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{server.name}</h1>
@@ -249,7 +249,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </button>
       </div>
 
-      <div className="card mb-6 grid grid-cols-2 gap-5 p-4 text-sm sm:grid-cols-3">
+      <div className="card mb-6 grid grid-cols-2 gap-6 p-5 text-sm sm:grid-cols-3 lg:grid-cols-5">
         <Info label="Sistema operacional" value={server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'} />
         <Info label="Uptime" value={server.metrics?.uptimeText ?? '—'} />
         <Info label="Load average" value={server.metrics?.loadAvg ? server.metrics.loadAvg.join(', ') : '—'} />

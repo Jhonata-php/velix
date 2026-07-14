@@ -60,7 +60,7 @@ export default function DatabaseDetailPage() {
   if (!instance) return null;
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-4xl">
       <h1 className="mb-1 text-xl font-semibold">{instance.name}</h1>
       <p className="mb-6 text-sm text-slate-500">
         MySQL {instance.version ?? ''} · porta {instance.port} · banco {instance.databaseName}

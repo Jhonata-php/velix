@@ -47,6 +47,8 @@ function Avatar({ user }: { user: StoredUser }) {
   );
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'velix_sidebar_collapsed';
+
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -54,6 +56,20 @@ export function Sidebar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const user = useLoggedUser();
   const logout = useLogout();
+
+  // Lembra se a sidebar estava recolhida — sem isso, ela volta a abrir toda
+  // vez que a página recarrega.
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      return next;
+    });
+  }
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -72,7 +88,7 @@ export function Sidebar() {
         }`}
       >
         <button
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={toggleCollapsed}
           className="absolute -right-3 top-6 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:hover:text-indigo-400"
         >
           {collapsed ? <IconChevronRight className="h-3.5 w-3.5" /> : <IconChevronLeft className="h-3.5 w-3.5" />}
