@@ -57,13 +57,24 @@ export class DatabaseService {
     attempts = 40,
     delayMs = 5000,
   ) {
+    // ponytail: `mysqladmin ping` sozinho dá falso positivo — ele responde com
+    // sucesso já contra a instância de bootstrap (que sobe só pra rodar o SQL de
+    // inicialização e cai pra dar lugar à definitiva). Confirmado via `docker logs`:
+    // a entrypoint da imagem oficial loga "Stopping temporary server" quando a
+    // bootstrap termina — exigir "ready for connections" DEPOIS dessa marca garante
+    // que é o mysqld definitivo, não a instância temporária de bootstrap.
     for (let i = 0; i < attempts; i++) {
-      const ping = await this.ssh.runCommand(
-        options,
-        `sudo docker exec ${containerName} mysqladmin ping -uroot -p${shellSingleQuote(rootPassword)} --silent`,
-        10_000,
-      );
-      if (ping.ok) return true;
+      const logs = await this.ssh.runCommand(options, `sudo docker logs --tail 300 ${containerName} 2>&1`, 10_000);
+      const stopIdx = logs.stdout.search(/stopping temporary server/i);
+      const trulyReady = stopIdx !== -1 && /ready for connections/i.test(logs.stdout.slice(stopIdx));
+      if (trulyReady) {
+        const ping = await this.ssh.runCommand(
+          options,
+          `sudo docker exec ${containerName} mysqladmin ping -uroot -p${shellSingleQuote(rootPassword)} --silent`,
+          10_000,
+        );
+        if (ping.ok) return true;
+      }
       onLog?.(`Aguardando o MySQL ficar pronto... (tentativa ${i + 1}/${attempts})\n`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -73,6 +84,16 @@ export class DatabaseService {
   async listInstances(serverId: string) {
     const instances = await this.prisma.databaseInstance.findMany({ where: { serverId }, orderBy: { createdAt: 'desc' } });
     return instances.map(toPublicInstance);
+  }
+
+  /** Instâncias STANDALONE/PRIMARY de qualquer servidor — candidatas a virar réplica em outro lugar. */
+  async listEligiblePrimaries(excludeServerId?: string) {
+    const instances = await this.prisma.databaseInstance.findMany({
+      where: { role: { in: ['STANDALONE', 'PRIMARY'] }, ...(excludeServerId ? { serverId: { not: excludeServerId } } : {}) },
+      orderBy: { createdAt: 'desc' },
+      include: { server: { select: { name: true } } },
+    });
+    return instances.map((i) => ({ id: i.id, name: i.name, serverName: i.server.name, databaseName: i.databaseName }));
   }
 
   async findOne(id: string) {
@@ -107,7 +128,7 @@ export class DatabaseService {
       `-e MYSQL_USER=${shellSingleQuote(dto.appUser)}`,
       `-e MYSQL_PASSWORD=${shellSingleQuote(appPassword)}`,
       `-v ${containerName}_data:/var/lib/mysql`,
-      'mysql:8',
+      'mysql:8.0',
       `--server-id=${mysqlServerId}`,
       '--log-bin=mysql-bin',
       '--gtid-mode=ON',
@@ -117,9 +138,15 @@ export class DatabaseService {
     ].join(' ');
 
     onLog?.('Criando container do MySQL...\n');
-    const run = await this.ssh.runCommand(options, runCmd, 60_000);
+    const run = await this.ssh.runCommand(options, runCmd, 180_000);
     if (!run.ok) {
-      throw new BadRequestException(`Falha ao criar container MySQL: ${run.stderr || run.stdout}`);
+      // ponytail: mesmo motivo do createReplica — sem isso, um container/volume
+      // órfão (docker create sucedeu, start falhou por porta em uso etc.) trava
+      // a próxima tentativa com o mesmo nome com um erro de conflito confuso.
+      await this.ssh
+        .runCommand(options, `sudo docker rm -f ${containerName}; sudo docker volume rm ${containerName}_data`, 30_000)
+        .catch(() => undefined);
+      throw new BadRequestException(`Falha ao criar container MySQL: ${run.stderr || run.stdout || run.message}`);
     }
 
     const instance = await this.prisma.databaseInstance.create({
@@ -148,6 +175,20 @@ export class DatabaseService {
       where: { id: instance.id },
       data: { status: ready ? 'ONLINE' : 'ERROR', version, lastCheckedAt: new Date() },
     });
+
+    if (ready) {
+      const mirror = await this.prisma.serverMirror.findUnique({ where: { sourceServerId: serverId } });
+      if (mirror) {
+        onLog?.(`Espelhamento ativo — replicando "${dto.name}" para o servidor espelho em segundo plano...\n`);
+        // ponytail: fire-and-forget — não trava a resposta do install nisso, é
+        // exatamente pra rodar em segundo plano. Falha aqui só fica no log do
+        // servidor; a réplica simplesmente não aparece se der errado (mesma
+        // limitação de visibilidade que qualquer job sem fila neste projeto).
+        this.createReplica(updated.id, { targetServerId: mirror.targetServerId, name: dto.name }).catch((err) => {
+          console.error(`[mirror] falha ao replicar "${dto.name}" para o servidor espelho:`, err);
+        });
+      }
+    }
 
     return {
       ...toPublicInstance(updated),
@@ -188,6 +229,27 @@ export class DatabaseService {
     if (!result.ok) throw new BadRequestException(`Falha ao parar instância: ${result.stderr || result.message}`);
     await this.prisma.databaseInstance.update({ where: { id }, data: { status: 'OFFLINE', lastCheckedAt: new Date() } });
     return { ok: true };
+  }
+
+  /**
+   * Dispara réplica de vários bancos primários pro mesmo destino de uma vez —
+   * usado tanto pela seleção em massa quanto pelo "pegar os que já existem"
+   * ao ativar o espelhamento. Roda em segundo plano, uma de cada vez (não em
+   * paralelo, pra não sobrecarregar o primário com vários dumps simultâneos).
+   */
+  replicateBulk(primaryInstanceIds: string[], targetServerId: string) {
+    void (async () => {
+      for (const id of primaryInstanceIds) {
+        const primary = await this.prisma.databaseInstance.findUnique({ where: { id } });
+        if (!primary) continue;
+        try {
+          await this.createReplica(id, { targetServerId, name: primary.name });
+        } catch (err) {
+          console.error(`[bulk-replicate] falha ao replicar "${primary.name}":`, err);
+        }
+      }
+    })();
+    return { ok: true, queued: primaryInstanceIds.length };
   }
 
   async status(id: string) {
@@ -238,10 +300,27 @@ export class DatabaseService {
     try {
       // 2. Sobe o MySQL de destino já como réplica (read-only, GTID habilitado).
       const containerName = `velix-mysql-${dto.name}`;
-      const port = dto.port ?? 3306;
+      // ponytail: sem porta explícita, escolhe a primeira livre no destino —
+      // essencial pro espelhamento automático (sem ninguém pra escolher a porta
+      // na hora) quando o destino já tem outra instância na 3306.
+      let port = dto.port;
+      if (!port) {
+        const used = await this.prisma.databaseInstance.findMany({
+          where: { serverId: dto.targetServerId },
+          select: { port: true },
+        });
+        const usedPorts = new Set(used.map((u) => u.port));
+        port = 3306;
+        while (usedPorts.has(port)) port++;
+      }
       const replicaRootPassword = generatePassword();
       const mysqlServerId = Math.floor(Math.random() * 900_000) + 100_000;
 
+      // ponytail: read-only/super-read-only NÃO entram como flag de boot do mysqld —
+      // super_read_only bloqueia até a própria escrita interna da entrypoint oficial
+      // (criar usuário root, aplicar senha), travando o container num crash-loop
+      // silencioso (confirmado via docker inspect: restarts > 0, sem erro explícito).
+      // Aplicado depois, via SQL, uma vez a réplica já configurada.
       const runCmd = [
         'sudo docker run -d',
         `--name ${containerName}`,
@@ -249,59 +328,89 @@ export class DatabaseService {
         `-p ${port}:3306`,
         `-e MYSQL_ROOT_PASSWORD=${shellSingleQuote(replicaRootPassword)}`,
         `-v ${containerName}_data:/var/lib/mysql`,
-        'mysql:8',
+        'mysql:8.0',
         `--server-id=${mysqlServerId}`,
         '--log-bin=mysql-bin',
         '--gtid-mode=ON',
         '--enforce-gtid-consistency=ON',
         '--log-replica-updates=ON',
         '--binlog-format=ROW',
-        '--read-only=ON',
-        '--super-read-only=ON',
       ].join(' ');
 
-      const run = await this.ssh.runCommand(targetConn.options, runCmd, 60_000);
-      if (!run.ok) {
-        throw new BadRequestException(`Falha ao criar container MySQL de destino: ${run.stderr || run.stdout}`);
-      }
+      let replUser = '';
+      let replPassword = '';
+      try {
+        const run = await this.ssh.runCommand(targetConn.options, runCmd, 180_000);
+        if (!run.ok) {
+          throw new BadRequestException(`Falha ao criar container MySQL de destino: ${run.stderr || run.stdout || run.message}`);
+        }
 
-      const ready = await this.waitForMysqlReady(targetConn.options, containerName, replicaRootPassword);
-      if (!ready) {
-        throw new BadRequestException('MySQL de destino não respondeu a tempo após a criação do container');
-      }
+        const ready = await this.waitForMysqlReady(targetConn.options, containerName, replicaRootPassword);
+        if (!ready) {
+          throw new BadRequestException('MySQL de destino não respondeu a tempo após a criação do container');
+        }
 
-      // 3. Copia e carrega o dump.
-      const remoteDumpPath = `/tmp/velix-dump-${randomUUID()}.sql`;
-      const upload = await this.ssh.uploadFile(targetConn.options, localDumpPath, remoteDumpPath);
-      if (!upload.ok) {
-        throw new BadRequestException(`Falha ao copiar dump para o servidor de destino: ${upload.message}`);
-      }
-      const load = await this.ssh.runCommand(
-        targetConn.options,
-        `sudo docker exec -i ${containerName} mysql -uroot -p${shellSingleQuote(replicaRootPassword)} < ${remoteDumpPath}`,
-        300_000,
-      );
-      await this.ssh.runCommand(targetConn.options, `rm -f ${remoteDumpPath}`, 10_000);
-      if (!load.ok) {
-        throw new BadRequestException(`Falha ao carregar dump no destino: ${load.stderr || load.message}`);
-      }
+        // 3. Copia e carrega o dump.
+        const remoteDumpPath = `/tmp/velix-dump-${randomUUID()}.sql`;
+        const upload = await this.ssh.uploadFile(targetConn.options, localDumpPath, remoteDumpPath);
+        if (!upload.ok) {
+          throw new BadRequestException(`Falha ao copiar dump para o servidor de destino: ${upload.message}`);
+        }
+        const loadCmd = `sudo docker exec -i ${containerName} mysql -uroot -p${shellSingleQuote(replicaRootPassword)} < ${remoteDumpPath}`;
+        let load = await this.ssh.runCommand(targetConn.options, loadCmd, 300_000);
+        if (!load.ok) {
+          // ponytail: às vezes o próprio auth ainda não assentou logo após o ping de
+          // prontidão confirmar a senha (visto em produção como "Access denied"
+          // pontual) — uma segunda tentativa após pausa curta cobre isso sem
+          // precisar investigar mais a fundo o boot interno do mysql:8.
+          await new Promise((r) => setTimeout(r, 5000));
+          load = await this.ssh.runCommand(targetConn.options, loadCmd, 300_000);
+        }
+        await this.ssh.runCommand(targetConn.options, `rm -f ${remoteDumpPath}`, 10_000);
+        if (!load.ok) {
+          const logs = await this.ssh.runCommand(targetConn.options, `sudo docker logs --tail 60 ${containerName}`, 10_000);
+          const inspect = await this.ssh.runCommand(
+            targetConn.options,
+            `sudo docker inspect ${containerName} --format '{{.State.Status}} restarts={{.RestartCount}} exitCode={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}'`,
+            10_000,
+          );
+          throw new BadRequestException(
+            `Falha ao carregar dump no destino: ${load.stderr || load.message}\n\n--- docker inspect ---\n${inspect.stdout || inspect.stderr}\n\n--- docker logs ${containerName} ---\n${logs.stdout || logs.stderr || '(sem log)'}`,
+          );
+        }
 
-      // 4. Cria o usuário de replicação no primário e aponta a réplica pra ele (GTID auto-position).
-      const replUser = `repl_${dto.name}`;
-      const replPassword = generatePassword();
-      await this.runMysql(
-        primaryConn.options,
-        primary.containerName,
-        primaryRootPassword,
-        `CREATE USER IF NOT EXISTS '${replUser}'@'%' IDENTIFIED BY '${replPassword}'; GRANT REPLICATION SLAVE ON *.* TO '${replUser}'@'%'; FLUSH PRIVILEGES;`,
-      );
+        // 4. Cria o usuário de replicação no primário e aponta a réplica pra ele (GTID auto-position).
+        replUser = `repl_${dto.name}`;
+        replPassword = generatePassword();
+        await this.runMysql(
+          primaryConn.options,
+          primary.containerName,
+          primaryRootPassword,
+          `CREATE USER IF NOT EXISTS '${replUser}'@'%' IDENTIFIED BY '${replPassword}'; GRANT REPLICATION SLAVE ON *.* TO '${replUser}'@'%'; FLUSH PRIVILEGES;`,
+        );
 
-      await this.runMysql(
-        targetConn.options,
-        containerName,
-        replicaRootPassword,
-        `CHANGE REPLICATION SOURCE TO SOURCE_HOST='${primaryHost}', SOURCE_PORT=${primary.port}, SOURCE_USER='${replUser}', SOURCE_PASSWORD='${replPassword}', SOURCE_AUTO_POSITION=1; START REPLICA;`,
-      );
+        await this.runMysql(
+          targetConn.options,
+          containerName,
+          replicaRootPassword,
+          // ponytail: GET_SOURCE_PUBLIC_KEY=1 — a réplica conecta pela rede real (não
+          // localhost), e o plugin padrão caching_sha2_password recusa autenticar sem
+          // canal seguro a menos que o cliente busque a chave pública do servidor.
+          `CHANGE REPLICATION SOURCE TO SOURCE_HOST='${primaryHost}', SOURCE_PORT=${primary.port}, SOURCE_USER='${replUser}', SOURCE_PASSWORD='${replPassword}', SOURCE_AUTO_POSITION=1, GET_SOURCE_PUBLIC_KEY=1; START REPLICA;`,
+        );
+
+        // ponytail: read_only/super_read_only só depois da réplica no ar — a thread de
+        // replicação continua podendo aplicar escritas mesmo com super_read_only=ON.
+        await this.runMysql(targetConn.options, containerName, replicaRootPassword, 'SET GLOBAL super_read_only = ON;');
+      } catch (err) {
+        // ponytail: sem isso, um container/volume órfão do destino trava a próxima
+        // tentativa com o mesmo nome (conflito de nome, ou volume reaproveitado com
+        // senha antiga). Remove os dois — best-effort, o erro original é o que importa.
+        await this.ssh
+          .runCommand(targetConn.options, `sudo docker rm -f ${containerName}; sudo docker volume rm ${containerName}_data`, 30_000)
+          .catch(() => undefined);
+        throw err;
+      }
 
       // 5. Valida sincronização.
       const statusRes = await this.runMysql(targetConn.options, containerName, replicaRootPassword, 'SHOW REPLICA STATUS', { vertical: true });

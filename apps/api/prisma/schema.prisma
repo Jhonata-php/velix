@@ -69,6 +69,37 @@ model Server {
   updatedAt     DateTime     @updatedAt
 
   databaseInstances DatabaseInstance[]
+  metricSamples ServerMetricSample[]
+  mirrorAsSource ServerMirror?  @relation("MirrorSource")
+  mirrorsAsTarget ServerMirror[] @relation("MirrorTarget")
+}
+
+// ponytail: um espelho por servidor de origem (1 destino) — cobre o caso
+// pedido (A -> B automático). Fan-out pra vários destinos vira modelo
+// many-to-many quando surgir um caso real de mais de um espelho por origem.
+model ServerMirror {
+  id             String   @id @default(uuid())
+  sourceServerId String   @unique
+  sourceServer   Server   @relation("MirrorSource", fields: [sourceServerId], references: [id], onDelete: Cascade)
+  targetServerId String
+  targetServer   Server   @relation("MirrorTarget", fields: [targetServerId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+}
+
+// ponytail: uma amostra por coleta (~10s de intervalo no front), podada pra
+// manter só os últimos 7 dias — sem job de limpeza separado, a poda roda
+// junto de cada inserção.
+model ServerMetricSample {
+  id          String   @id @default(uuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  loadAvg1    Float?
+  memUsedMb   Int?
+  memTotalMb  Int?
+  diskPercent Float?
+  capturedAt  DateTime @default(now())
+
+  @@index([serverId, capturedAt])
 }
 
 enum DbEngine {

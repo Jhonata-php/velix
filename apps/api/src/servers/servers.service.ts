@@ -148,7 +148,59 @@ export class ServersService {
       where: { id },
       data: { status: 'ONLINE', metrics: metrics as object, metricsCheckedAt: new Date(), lastCheckedAt: new Date() },
     });
+
+    await this.prisma.serverMetricSample.create({
+      data: {
+        serverId: id,
+        loadAvg1: metrics.loadAvg?.[0] ?? null,
+        memUsedMb: metrics.memUsedMb,
+        memTotalMb: metrics.memTotalMb,
+        diskPercent: metrics.diskPercent ? Number(metrics.diskPercent.replace('%', '')) : null,
+      },
+    });
+    // ponytail: poda direto aqui em vez de um job separado — cada coleta já é
+    // uma chance barata de limpar o que passou dos 7 dias de retenção.
+    await this.prisma.serverMetricSample.deleteMany({
+      where: { serverId: id, capturedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+    });
+
     return { online: true, metrics };
+  }
+
+  async metricsHistory(id: string, hours: number) {
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const samples = await this.prisma.serverMetricSample.findMany({
+      where: { serverId: id, capturedAt: { gte: since } },
+      orderBy: { capturedAt: 'asc' },
+      select: { loadAvg1: true, memUsedMb: true, memTotalMb: true, diskPercent: true, capturedAt: true },
+    });
+    return samples;
+  }
+
+  async getMirror(sourceServerId: string) {
+    const mirror = await this.prisma.serverMirror.findUnique({
+      where: { sourceServerId },
+      include: { targetServer: { select: { id: true, name: true } } },
+    });
+    return mirror ? { targetServerId: mirror.targetServerId, targetServerName: mirror.targetServer.name } : null;
+  }
+
+  async setMirror(sourceServerId: string, targetServerId: string) {
+    if (sourceServerId === targetServerId) {
+      throw new BadRequestException('O servidor de destino do espelhamento precisa ser diferente da origem');
+    }
+    await this.getRawServer(targetServerId);
+    await this.prisma.serverMirror.upsert({
+      where: { sourceServerId },
+      create: { sourceServerId, targetServerId },
+      update: { targetServerId },
+    });
+    return { ok: true };
+  }
+
+  async clearMirror(sourceServerId: string) {
+    await this.prisma.serverMirror.deleteMany({ where: { sourceServerId } });
+    return { ok: true };
   }
 
   async reboot(id: string) {

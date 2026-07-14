@@ -68,7 +68,7 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
           term?.write(`\r\n\x1b[${ok ? '32' : '31'}m${ok ? '✓ Concluído com sucesso.' : '✗ Falhou.'}\x1b[0m\r\n`);
           setStatus(ok ? 'done-ok' : 'done-error');
           setCanClose(true);
-          onDone(ok, msg.result);
+          onDone(ok, ok ? msg.result : msg.error);
         }
       };
     }

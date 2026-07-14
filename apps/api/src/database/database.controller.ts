@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DatabaseService } from './database.service';
 import { CreateInstanceDto } from './dto/create-instance.dto';
 import { CreateReplicaDto } from './dto/create-replica.dto';
 import { PromoteReplicaDto } from './dto/promote-replica.dto';
+import { BulkReplicateDto } from './dto/bulk-replicate.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -18,6 +19,11 @@ export class DatabaseController {
   @Get('servers/:serverId/databases')
   list(@Param('serverId') serverId: string) {
     return this.db.listInstances(serverId);
+  }
+
+  @Get('databases/eligible-primaries')
+  eligiblePrimaries(@Query('excludeServerId') excludeServerId?: string) {
+    return this.db.listEligiblePrimaries(excludeServerId);
   }
 
   @Get('databases/:id')
@@ -48,6 +54,11 @@ export class DatabaseController {
   @Post('databases/:id/replicate')
   createReplica(@Param('id') id: string, @Body() dto: CreateReplicaDto) {
     return this.db.createReplica(id, dto);
+  }
+
+  @Post('databases/replicate-bulk')
+  replicateBulk(@Body() dto: BulkReplicateDto) {
+    return this.db.replicateBulk(dto.primaryInstanceIds, dto.targetServerId);
   }
 
   @Get('replications/:id')

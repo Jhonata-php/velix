@@ -12,8 +12,10 @@ import { InstallLogModal } from '@/components/InstallLogModal';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { ServerFormModal } from '@/components/ServerFormModal';
 import { Sparkline } from '@/components/Sparkline';
+import { MetricHistoryModal } from '@/components/MetricHistoryModal';
 import {
   IconDownload,
+  IconPlus,
   IconPlug,
   IconClock,
   IconActivity,
@@ -23,6 +25,7 @@ import {
   IconPencil,
   IconTrash,
   IconPower,
+  IconRefresh,
 } from '@/components/icons';
 import '@xterm/xterm/css/xterm.css';
 
@@ -176,9 +179,21 @@ export default function ServerDetailPage() {
   );
 }
 
-function StatCard({ icon, label, chip, children }: { icon: React.ReactNode; label: string; chip: string; children: React.ReactNode }) {
+function StatCard({
+  icon,
+  label,
+  chip,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  chip: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="card card-hover p-4">
+    <div className={`card card-hover p-4 ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       <div className="mb-3 flex items-center gap-2.5">
         <span className={`icon-chip h-8 w-8 ${chip}`}>{icon}</span>
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
@@ -242,22 +257,28 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const [rebooting, setRebooting] = useState(false);
   const [rebootConfirm, setRebootConfirm] = useState(false);
   const [rebootMessage, setRebootMessage] = useState<string | null>(null);
-  // ponytail: histórico só em memória (últimos ~5min via polling de 10s), reseta
-  // ao trocar de aba/recarregar — suficiente pra mostrar tendência, sem precisar
-  // de série temporal persistida no backend.
   const [loadHistory, setLoadHistory] = useState<number[]>([]);
   const [memHistory, setMemHistory] = useState<number[]>([]);
+  const [diskHistory, setDiskHistory] = useState<number[]>([]);
+  const [expandedMetric, setExpandedMetric] = useState<'load' | 'mem' | 'disk' | null>(null);
+
+  function loadRecentHistory() {
+    apiFetch<{ loadAvg1: number | null; memUsedMb: number | null; memTotalMb: number | null; diskPercent: number | null }[]>(
+      `/servers/${server.id}/metrics/history?hours=1`,
+    ).then((samples) => {
+      setLoadHistory(samples.map((s) => s.loadAvg1).filter((v): v is number => v != null));
+      setMemHistory(
+        samples.filter((s) => s.memTotalMb && s.memUsedMb != null).map((s) => (s.memUsedMb! / s.memTotalMb!) * 100),
+      );
+      setDiskHistory(samples.map((s) => s.diskPercent).filter((v): v is number => v != null));
+    });
+  }
 
   function collectMetrics() {
     setCollecting(true);
     apiFetch<{ online: boolean; metrics: ServerMetrics | null }>(`/servers/${server.id}/metrics`)
-      .then((res) => {
-        if (res.metrics?.loadAvg) {
-          setLoadHistory((h) => [...h.slice(-29), res.metrics!.loadAvg![0]]);
-        }
-        if (res.metrics?.memTotalMb && res.metrics.memUsedMb != null) {
-          setMemHistory((h) => [...h.slice(-29), (res.metrics!.memUsedMb! / res.metrics!.memTotalMb!) * 100]);
-        }
+      .then(() => {
+        loadRecentHistory();
         onChange();
       })
       .finally(() => setCollecting(false));
@@ -335,7 +356,12 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           <p className="text-sm font-semibold">{server.metrics?.uptimeText ?? '—'}</p>
         </StatCard>
 
-        <StatCard icon={<IconActivity className="h-4 w-4" />} chip="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400" label="Load average">
+        <StatCard
+          icon={<IconActivity className="h-4 w-4" />}
+          chip="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+          label="Load average"
+          onClick={() => setExpandedMetric('load')}
+        >
           {server.metrics?.loadAvg ? (
             <>
               <p className="text-sm font-semibold">{server.metrics.loadAvg.join(' · ')}</p>
@@ -346,7 +372,12 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           )}
         </StatCard>
 
-        <StatCard icon={<IconMemory className="h-4 w-4" />} chip="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400" label="Memória">
+        <StatCard
+          icon={<IconMemory className="h-4 w-4" />}
+          chip="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+          label="Memória"
+          onClick={() => setExpandedMetric('mem')}
+        >
           {memPercent !== null ? (
             <>
               <div className="flex items-center gap-2">
@@ -362,19 +393,44 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           )}
         </StatCard>
 
-        <StatCard icon={<IconDisk className="h-4 w-4" />} chip="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400" label="Disco">
+        <StatCard
+          icon={<IconDisk className="h-4 w-4" />}
+          chip="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400"
+          label="Disco"
+          onClick={() => setExpandedMetric('disk')}
+        >
           {diskPercent !== null ? (
-            <div className="flex items-center gap-2">
-              <Bar percent={diskPercent} />
-              <span className="shrink-0 text-xs text-slate-500">
-                {server.metrics?.diskUsed}/{server.metrics?.diskTotal}
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <Bar percent={diskPercent} />
+                <span className="shrink-0 text-xs text-slate-500">
+                  {server.metrics?.diskUsed}/{server.metrics?.diskTotal}
+                </span>
+              </div>
+              <Sparkline data={diskHistory} className="mt-2 h-12 w-full text-teal-500 dark:text-teal-400" />
+            </>
           ) : (
             <p className="text-sm font-semibold">—</p>
           )}
         </StatCard>
       </div>
+
+      {expandedMetric && (
+        <MetricHistoryModal
+          serverId={server.id}
+          metric={expandedMetric}
+          label={expandedMetric === 'load' ? 'Load average' : expandedMetric === 'mem' ? 'Memória' : 'Disco'}
+          unit={expandedMetric === 'load' ? '' : '%'}
+          colorClass={
+            expandedMetric === 'load'
+              ? 'text-violet-500 dark:text-violet-400'
+              : expandedMetric === 'mem'
+                ? 'text-amber-500 dark:text-amber-400'
+                : 'text-teal-500 dark:text-teal-400'
+          }
+          onClose={() => setExpandedMetric(null)}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="card p-5">
@@ -579,6 +635,8 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   const [confirmRemove, setConfirmRemove] = useState<DockerContainer | null>(null);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [showUninstallLog, setShowUninstallLog] = useState(false);
+  const [instances, setInstances] = useState<DatabaseInstanceSummary[]>([]);
+  const [replicateTarget, setReplicateTarget] = useState<DatabaseInstanceSummary | null>(null);
 
   function loadStatus() {
     apiFetch<DockerStatusResp>(`/servers/${server.id}/docker/status`)
@@ -586,8 +644,17 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
       .catch((e) => setError(e.message));
   }
 
+  // ponytail: pra saber quais containers são bancos MySQL geridos pelo Velix
+  // (e mostrar o botão de replicação só neles) — casa pelo containerName.
+  function loadInstances() {
+    apiFetch<DatabaseInstanceSummary[]>(`/servers/${server.id}/databases`).then(setInstances);
+  }
+
   useEffect(() => {
-    if (server.dockerInstalled) loadStatus();
+    if (server.dockerInstalled) {
+      loadStatus();
+      loadInstances();
+    }
   }, [server.dockerInstalled]);
   useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
 
@@ -682,6 +749,8 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
             {status?.containers?.map((c) => {
               const running = c.status.toLowerCase().includes('up');
               const busy = containerLoading === c.id;
+              const instance = instances.find((i) => i.containerName === c.names);
+              const canReplicate = instance && instance.role !== 'REPLICA';
               return (
                 <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
                   <td className="px-4 py-3">{c.names}</td>
@@ -689,6 +758,15 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
                   <td className="px-4 py-3">{c.status}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
+                      {canReplicate && (
+                        <button
+                          onClick={() => setReplicateTarget(instance)}
+                          title="Configurar replicação"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
+                        >
+                          <IconRefresh className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggle(c)}
                         disabled={busy}
@@ -756,6 +834,18 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
           onDone={() => {
             onChange();
             setStatus(null);
+          }}
+        />
+      )}
+
+      {replicateTarget && (
+        <QuickReplicateModal
+          instance={replicateTarget}
+          currentServerId={server.id}
+          onClose={() => setReplicateTarget(null)}
+          onCreated={() => {
+            setReplicateTarget(null);
+            loadInstances();
           }}
         />
       )}
@@ -1188,6 +1278,7 @@ interface DatabaseInstanceSummary {
   id: string;
   name: string;
   engine: string;
+  containerName: string;
   port: number;
   role: 'STANDALONE' | 'PRIMARY' | 'REPLICA';
   status: string;
@@ -1195,9 +1286,107 @@ interface DatabaseInstanceSummary {
   version: string | null;
 }
 
+interface MirrorInfo {
+  targetServerId: string;
+  targetServerName: string;
+}
+
+function MirrorSection({ serverId }: { serverId: string }) {
+  const [servers, setServers] = useState<{ id: string; name: string }[]>([]);
+  const [mirror, setMirror] = useState<MirrorInfo | null>(null);
+  const [selected, setSelected] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    apiFetch<{ id: string; name: string }[]>('/servers').then((all) => setServers(all.filter((s) => s.id !== serverId)));
+    apiFetch<MirrorInfo | null>(`/servers/${serverId}/mirror`).then(setMirror);
+  }
+
+  useEffect(load, [serverId]);
+
+  async function handleActivate() {
+    if (!selected) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiFetch(`/servers/${serverId}/mirror`, { method: 'POST', body: JSON.stringify({ targetServerId: selected }) });
+      // ponytail: ativar o espelho só cobre bancos futuros — sem isso, o que já
+      // existia no servidor ficava de fora e precisava ser replicado um por um
+      // à parte.
+      const existing = await apiFetch<DatabaseInstanceSummary[]>(`/servers/${serverId}/databases`);
+      const primaryIds = existing.filter((i) => i.role === 'STANDALONE' || i.role === 'PRIMARY').map((i) => i.id);
+      if (primaryIds.length > 0) {
+        await apiFetch('/databases/replicate-bulk', {
+          method: 'POST',
+          body: JSON.stringify({ primaryInstanceIds: primaryIds, targetServerId: selected }),
+        });
+      }
+      setSelected('');
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao ativar espelhamento');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeactivate() {
+    setLoading(true);
+    try {
+      await apiFetch(`/servers/${serverId}/mirror`, { method: 'DELETE' });
+      load();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card mb-4 p-4">
+      <h2 className="section-title mb-1">Espelhamento automático</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        Ao ativar, os bancos que já existem aqui são replicados agora, e todo banco novo instalado neste servidor também já sobe replicado
+        automaticamente — sem precisar clicar em nada.
+      </p>
+
+      {mirror ? (
+        <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm dark:border-green-900 dark:bg-green-900/20">
+          <span className="text-green-800 dark:text-green-300">
+            Espelhando bancos novos para <strong>{mirror.targetServerName}</strong>
+          </span>
+          <button onClick={handleDeactivate} disabled={loading} className="text-red-600 hover:underline disabled:opacity-50 dark:text-red-400">
+            {loading ? 'Desativando...' : 'Desativar'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <select value={selected} onChange={(e) => setSelected(e.target.value)} className="input max-w-xs">
+            <option value="">Selecione o servidor espelho...</option>
+            {servers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={handleActivate} disabled={loading || !selected} className="btn-secondary px-3 py-2 text-sm">
+            {loading ? 'Ativando...' : 'Ativar espelhamento'}
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-2">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DatabasesTab({ server }: { server: Server }) {
   const [instances, setInstances] = useState<DatabaseInstanceSummary[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showAddReplica, setShowAddReplica] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [instanceLoading, setInstanceLoading] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<DatabaseInstanceSummary | null>(null);
@@ -1244,15 +1433,23 @@ function DatabasesTab({ server }: { server: Server }) {
 
   return (
     <div>
+      <MirrorSection serverId={server.id} />
+
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-base font-medium">Instâncias MySQL</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
-        >
-          <IconDownload className="h-4 w-4" />
-          Instalar MySQL
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowAddReplica(true)} className="btn-secondary flex items-center gap-2 px-4 py-2 text-sm">
+            <IconPlus className="h-4 w-4" />
+            Adicionar réplica existente
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
+          >
+            <IconDownload className="h-4 w-4" />
+            Instalar MySQL
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1317,6 +1514,17 @@ function DatabasesTab({ server }: { server: Server }) {
         />
       )}
 
+      {showAddReplica && (
+        <AddExistingReplicaModal
+          targetServerId={server.id}
+          onClose={() => setShowAddReplica(false)}
+          onCreated={() => {
+            setShowAddReplica(false);
+            load();
+          }}
+        />
+      )}
+
       {confirmRemove && (
         <ConfirmModal
           title="Excluir instância MySQL"
@@ -1332,18 +1540,216 @@ function DatabasesTab({ server }: { server: Server }) {
   );
 }
 
+interface EligiblePrimary {
+  id: string;
+  name: string;
+  serverName: string;
+  databaseName: string;
+}
+
+function AddExistingReplicaModal({
+  targetServerId,
+  onClose,
+  onCreated,
+}: {
+  targetServerId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [primaries, setPrimaries] = useState<EligiblePrimary[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [queued, setQueued] = useState<number | null>(null);
+
+  useEffect(() => {
+    apiFetch<EligiblePrimary[]>(`/databases/eligible-primaries?excludeServerId=${targetServerId}`).then(setPrimaries);
+  }, [targetServerId]);
+
+  const allSelected = primaries.length > 0 && selectedIds.size === primaries.length;
+
+  function toggleAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(primaries.map((p) => p.id)));
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (selectedIds.size === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ ok: boolean; queued: number }>('/databases/replicate-bulk', {
+        method: 'POST',
+        body: JSON.stringify({ primaryInstanceIds: Array.from(selectedIds), targetServerId }),
+      });
+      setQueued(res.queued);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao enviar réplicas');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={queued != null ? 'Réplicas na fila' : 'Adicionar réplica existente'} onClose={queued != null ? onCreated : onClose} closeDisabled={saving}>
+      {queued != null ? (
+        <div>
+          <Alert variant="info">
+            {queued} réplica{queued === 1 ? '' : 's'} sendo criada{queued === 1 ? '' : 's'} em segundo plano — cada uma leva alguns minutos
+            (dump + cópia). Atualize a lista daqui a pouco pra ver o status.
+          </Alert>
+          <button onClick={onCreated} className="mt-4 w-full btn-primary px-4 py-2 text-sm">
+            Fechar
+          </button>
+        </div>
+      ) : primaries.length === 0 ? (
+        <div>
+          <Alert variant="info">
+            Nenhum banco primário/standalone disponível em outro servidor pra replicar aqui — instale um em outro servidor primeiro.
+          </Alert>
+          <button type="button" onClick={onClose} className="mt-4 w-full btn-secondary px-4 py-2 text-sm">
+            Fechar
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <label className="mb-2 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm font-medium dark:border-slate-800">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            Selecionar todos
+          </label>
+          <div className="mb-3 max-h-56 space-y-1 overflow-y-auto">
+            {primaries.map((p) => (
+              <label
+                key={p.id}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleOne(p.id)} />
+                <span className="font-medium">{p.name}</span>
+                <span className="text-xs text-slate-400">({p.serverName})</span>
+              </label>
+            ))}
+          </div>
+          {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving || selectedIds.size === 0} className="btn-primary px-4 py-2 text-sm">
+              {saving ? 'Enviando...' : `Replicar selecionados (${selectedIds.size})`}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function QuickReplicateModal({
+  instance,
+  currentServerId,
+  onClose,
+  onCreated,
+}: {
+  instance: DatabaseInstanceSummary;
+  currentServerId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [servers, setServers] = useState<{ id: string; name: string; dockerInstalled: boolean }[]>([]);
+  const [targetServerId, setTargetServerId] = useState('');
+  const [name, setName] = useState(`${instance.name}-replica`);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ id: string; name: string; dockerInstalled: boolean }[]>('/servers').then((all) =>
+      setServers(all.filter((s) => s.id !== currentServerId)),
+    );
+  }, [currentServerId]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ warnings: string[] }>(`/databases/${instance.id}/replicate`, {
+        method: 'POST',
+        body: JSON.stringify({ targetServerId, name }),
+      });
+      setWarnings(res.warnings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao criar réplica');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={warnings ? 'Réplica criada' : `Replicar "${instance.name}"`} onClose={warnings ? onCreated : onClose} closeDisabled={saving}>
+      {warnings ? (
+        <div>
+          {warnings.map((w) => (
+            <p key={w} className="mb-2 text-sm text-amber-600 dark:text-amber-400">
+              ⚠️ {w}
+            </p>
+          ))}
+          <button onClick={onCreated} className="mt-2 w-full btn-primary px-4 py-2 text-sm">
+            Fechar
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <label className="mb-3 block text-sm">
+            <span className="mb-1 block font-medium">Servidor de destino</span>
+            <select required value={targetServerId} onChange={(e) => setTargetServerId(e.target.value)} className="input">
+              <option value="">Selecione...</option>
+              {servers.map((s) => (
+                <option key={s.id} value={s.id} disabled={!s.dockerInstalled}>
+                  {s.name} {!s.dockerInstalled ? '(sem Docker)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mb-3 block text-sm">
+            <span className="mb-1 block font-medium">Nome da réplica</span>
+            <input required value={name} onChange={(e) => setName(e.target.value)} className="input" />
+          </label>
+          {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving} className="btn-primary px-4 py-2 text-sm">
+              {saving ? 'Criando...' : 'Criar réplica'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: '', databaseName: 'app', appUser: 'app' });
+  const [form, setForm] = useState({ name: '', port: 3306, databaseName: 'app', appUser: 'app' });
   const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ rootPassword: string; appPassword: string; warnings: string[] } | null>(null);
 
   function handleDone(ok: boolean, result: unknown) {
-    const res = result as { rootPassword: string; appPassword: string; warnings: string[]; status: string };
     if (ok) {
-      setCreated(res);
+      setCreated(result as { rootPassword: string; appPassword: string; warnings: string[] });
     } else {
-      setError(`Falha ao instalar MySQL (status: ${res?.status ?? 'desconhecido'}) — veja o log acima.`);
+      setError(typeof result === 'string' ? result : 'Falha ao instalar MySQL — veja o log acima.');
     }
   }
 
@@ -1399,16 +1805,28 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
               setShowLog(true);
             }}
           >
-            <label className="mb-3 block text-sm">
-              <span className="mb-1 block font-medium">Nome da instância</span>
-              <input
-                required
-                placeholder="ex: principal"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="input"
-              />
-            </label>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="col-span-2 mb-3 block text-sm">
+                <span className="mb-1 block font-medium">Nome da instância</span>
+                <input
+                  required
+                  placeholder="ex: principal"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="input"
+                />
+              </label>
+              <label className="mb-3 block text-sm">
+                <span className="mb-1 block font-medium">Porta</span>
+                <input
+                  required
+                  type="number"
+                  value={form.port}
+                  onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                  className="input"
+                />
+              </label>
+            </div>
             <label className="mb-3 block text-sm">
               <span className="mb-1 block font-medium">Banco inicial</span>
               <input required value={form.databaseName} onChange={(e) => setForm({ ...form, databaseName: e.target.value })} className="input" />

@@ -5,6 +5,7 @@ import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { InstallUpdatesDto } from './dto/install-updates.dto';
 import { InstallEasyPanelDto } from './dto/install-easypanel.dto';
+import { SetMirrorDto } from './dto/set-mirror.dto';
 
 @Controller('servers')
 @UseGuards(JwtAuthGuard)
@@ -49,6 +50,27 @@ export class ServersController {
   @Get(':id/metrics')
   collectMetrics(@Param('id') id: string) {
     return this.servers.collectMetrics(id);
+  }
+
+  @Get(':id/metrics/history')
+  metricsHistory(@Param('id') id: string, @Query('hours') hours?: string) {
+    const parsed = Number(hours);
+    return this.servers.metricsHistory(id, Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+  }
+
+  @Get(':id/mirror')
+  getMirror(@Param('id') id: string) {
+    return this.servers.getMirror(id);
+  }
+
+  @Post(':id/mirror')
+  setMirror(@Param('id') id: string, @Body() dto: SetMirrorDto) {
+    return this.servers.setMirror(id, dto.targetServerId);
+  }
+
+  @Delete(':id/mirror')
+  clearMirror(@Param('id') id: string) {
+    return this.servers.clearMirror(id);
   }
 
   @Post(':id/reboot')

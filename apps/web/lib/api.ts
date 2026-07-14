@@ -57,5 +57,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json();
+  // ponytail: NestJS manda corpo vazio (não a string "null") quando o handler
+  // retorna null/undefined — res.json() quebra em corpo vazio independente do
+  // status, então lê como texto primeiro em vez de confiar só no 204.
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
 }
