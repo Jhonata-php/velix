@@ -34,15 +34,15 @@ export default function LoginPage() {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-950">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.15),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.18),transparent_60%),radial-gradient(circle_at_100%_100%,rgba(99,102,241,0.08),transparent_50%)]"
       />
 
-      <form onSubmit={handleSubmit} className="card relative z-10 w-full max-w-sm p-8 shadow-sm">
+      <form onSubmit={handleSubmit} className="card relative z-10 w-full max-w-sm p-8 shadow-2xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-lg font-bold text-white shadow-md shadow-indigo-500/30">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-xl font-bold text-white shadow-lg shadow-indigo-500/30">
             V
           </div>
-          <h1 className="text-2xl font-semibold">Velix</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Velix</h1>
           <p className="mt-1 text-sm text-slate-500">Controle. Continuidade. Disponibilidade.</p>
         </div>
 

@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServersService } from './servers.service';
 import { CreateServerDto } from './dto/create-server.dto';
+import { UpdateServerDto } from './dto/update-server.dto';
 import { InstallUpdatesDto } from './dto/install-updates.dto';
 import { InstallEasyPanelDto } from './dto/install-easypanel.dto';
 
@@ -28,6 +29,11 @@ export class ServersController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.servers.findOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateServerDto) {
+    return this.servers.update(id, dto);
   }
 
   @Delete(':id')
@@ -68,6 +74,21 @@ export class ServersController {
   @Get(':id/docker/status')
   dockerStatus(@Param('id') id: string) {
     return this.servers.dockerStatus(id);
+  }
+
+  @Post(':id/docker/containers/:containerId/start')
+  startContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
+    return this.servers.startContainer(id, containerId);
+  }
+
+  @Post(':id/docker/containers/:containerId/stop')
+  stopContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
+    return this.servers.stopContainer(id, containerId);
+  }
+
+  @Delete(':id/docker/containers/:containerId')
+  removeContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
+    return this.servers.removeContainer(id, containerId);
   }
 
   @Post(':id/easypanel/install')

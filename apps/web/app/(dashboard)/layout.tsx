@@ -37,7 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex">
       <Sidebar />
       <div className="min-w-0 flex-1">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-6">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200/80 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/80 md:px-6">
           <h1 className="text-sm font-medium text-slate-500">{pageTitleFor(pathname)}</h1>
           <ThemeToggle />
         </header>

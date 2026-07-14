@@ -86,8 +86,9 @@ export default function SettingsPage() {
         </p>
 
         {account?.connected ? (
-          <div className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-3 text-sm dark:bg-green-900/20">
-            <span>
+          <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm dark:border-green-900 dark:bg-green-900/20">
+            <span className="flex items-center gap-2 text-green-800 dark:text-green-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               Conectado{account.email ? ` como ${account.email}` : ''}
             </span>
             <button onClick={handleDisconnect} className="text-red-600 hover:underline dark:text-red-400">
@@ -130,7 +131,7 @@ export default function SettingsPage() {
           )}
           <div className="space-y-2">
             {zones.map((zone) => (
-              <div key={zone.id} className="rounded-lg border border-slate-200 dark:border-slate-800">
+              <div key={zone.id} className="rounded-xl border border-slate-200 transition hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700">
                 <button
                   onClick={() => setExpandedZone(expandedZone === zone.id ? null : zone.id)}
                   className="flex w-full items-center justify-between px-4 py-3 text-left text-sm"

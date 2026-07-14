@@ -7,7 +7,9 @@ import { DatabaseService } from '../database/database.service';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
+  | { type: 'start'; op: 'docker-uninstall' }
   | { type: 'start'; op: 'easypanel-install'; params: { domain?: string; createDnsRecord?: boolean } }
+  | { type: 'start'; op: 'easypanel-uninstall' }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
       type: 'start';
@@ -77,8 +79,12 @@ async function handleConnection(
       let result: { ok?: boolean; status?: string };
       if (msg.op === 'docker-install') {
         result = await deps.servers.installDocker(serverId, onLog);
+      } else if (msg.op === 'docker-uninstall') {
+        result = await deps.servers.uninstallDocker(serverId, onLog);
       } else if (msg.op === 'easypanel-install') {
         result = await deps.servers.installEasyPanel(serverId, msg.params, onLog);
+      } else if (msg.op === 'easypanel-uninstall') {
+        result = await deps.servers.uninstallEasyPanel(serverId, onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
       } else if (msg.op === 'mysql-install') {

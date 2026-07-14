@@ -1,13 +1,29 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { TERMINAL_THEME } from '@/lib/terminalTheme';
 import { Bar } from '@/components/Bar';
 import { Alert } from '@/components/Alert';
 import { InstallLogModal } from '@/components/InstallLogModal';
+import { Modal, ConfirmModal } from '@/components/Modal';
+import { ServerFormModal } from '@/components/ServerFormModal';
+import { Sparkline } from '@/components/Sparkline';
+import {
+  IconDownload,
+  IconPlug,
+  IconClock,
+  IconActivity,
+  IconMemory,
+  IconDisk,
+  IconServer,
+  IconPencil,
+  IconTrash,
+  IconPower,
+} from '@/components/icons';
 import '@xterm/xterm/css/xterm.css';
 
 interface ServerMetrics {
@@ -28,6 +44,7 @@ interface Server {
   hostname: string | null;
   sshPort: number;
   sshUser: string;
+  authMethod: 'PASSWORD' | 'PRIVATE_KEY';
   status: string;
   osName: string | null;
   osVersion: string | null;
@@ -54,14 +71,32 @@ type TabKey = (typeof TABS)[number]['key'];
 
 export default function ServerDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [server, setServer] = useState<Server | null>(null);
   const [tab, setTab] = useState<TabKey>('overview');
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function load() {
     apiFetch<Server>(`/servers/${params.id}`).then(setServer);
   }
 
   useEffect(load, [params.id]);
+
+  async function handleDelete() {
+    if (!server) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/servers/${server.id}`, { method: 'DELETE' });
+      router.push('/servers');
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Falha ao excluir servidor');
+      setDeleteLoading(false);
+    }
+  }
 
   if (!server) return null;
 
@@ -74,7 +109,17 @@ export default function ServerDetailPage() {
             {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
           </p>
         </div>
-        <StatusPill status={server.status} />
+        <div className="flex items-center gap-2">
+          <button onClick={() => setEditing(true)} className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm">
+            <IconPencil className="h-4 w-4" />
+            Editar
+          </button>
+          <button onClick={() => setDeleting(true)} className="btn-danger flex items-center gap-2 px-3 py-2 text-sm">
+            <IconTrash className="h-4 w-4" />
+            Excluir
+          </button>
+          <StatusPill status={server.status} />
+        </div>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -85,16 +130,12 @@ export default function ServerDetailPage() {
         />
       </div>
 
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+      <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium ${
-              tab === t.key
-                ? 'border-b-2 border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-400'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
+            className={`tab-pill ${tab === t.key ? 'tab-pill-active' : ''}`}
           >
             {t.label}
           </button>
@@ -107,15 +148,42 @@ export default function ServerDetailPage() {
       {tab === 'easypanel' && <EasyPanelTab server={server} onChange={load} />}
       {tab === 'databases' && <DatabasesTab server={server} />}
       {tab === 'terminal' && <TerminalTab serverId={server.id} />}
+
+      {editing && (
+        <ServerFormModal
+          server={server}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            load();
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Excluir servidor"
+          message={`Tem certeza que quer excluir "${server.name}"? Isso remove o cadastro do Velix — nada é desinstalado no servidor.`}
+          confirmLabel="Excluir"
+          danger
+          loading={deleteLoading}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleting(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function StatCard({ icon, label, chip, children }: { icon: React.ReactNode; label: string; chip: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="text-slate-500">{label}</p>
-      <p className="font-medium">{value}</p>
+    <div className="card card-hover p-4">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className={`icon-chip h-8 w-8 ${chip}`}>{icon}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+      </div>
+      {children}
     </div>
   );
 }
@@ -129,11 +197,7 @@ const STATUS_PILL_STYLE: Record<string, string> = {
 
 function StatusPill({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-        STATUS_PILL_STYLE[status] ?? STATUS_PILL_STYLE.OFFLINE
-      }`}
-    >
+    <span className={`badge ${STATUS_PILL_STYLE[status] ?? STATUS_PILL_STYLE.OFFLINE}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {status}
     </span>
@@ -143,7 +207,7 @@ function StatusPill({ status }: { status: string }) {
 function Badge({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+      className={`badge border ${
         ok
           ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400'
           : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
@@ -178,11 +242,24 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const [rebooting, setRebooting] = useState(false);
   const [rebootConfirm, setRebootConfirm] = useState(false);
   const [rebootMessage, setRebootMessage] = useState<string | null>(null);
+  // ponytail: histórico só em memória (últimos ~5min via polling de 10s), reseta
+  // ao trocar de aba/recarregar — suficiente pra mostrar tendência, sem precisar
+  // de série temporal persistida no backend.
+  const [loadHistory, setLoadHistory] = useState<number[]>([]);
+  const [memHistory, setMemHistory] = useState<number[]>([]);
 
   function collectMetrics() {
     setCollecting(true);
-    apiFetch(`/servers/${server.id}/metrics`)
-      .then(onChange)
+    apiFetch<{ online: boolean; metrics: ServerMetrics | null }>(`/servers/${server.id}/metrics`)
+      .then((res) => {
+        if (res.metrics?.loadAvg) {
+          setLoadHistory((h) => [...h.slice(-29), res.metrics!.loadAvg![0]]);
+        }
+        if (res.metrics?.memTotalMb && res.metrics.memUsedMb != null) {
+          setMemHistory((h) => [...h.slice(-29), (res.metrics!.memUsedMb! / res.metrics!.memTotalMb!) * 100]);
+        }
+        onChange();
+      })
       .finally(() => setCollecting(false));
   }
 
@@ -249,44 +326,62 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </button>
       </div>
 
-      <div className="card mb-6 grid grid-cols-2 gap-6 p-5 text-sm sm:grid-cols-3 lg:grid-cols-5">
-        <Info label="Sistema operacional" value={server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'} />
-        <Info label="Uptime" value={server.metrics?.uptimeText ?? '—'} />
-        <Info label="Load average" value={server.metrics?.loadAvg ? server.metrics.loadAvg.join(', ') : '—'} />
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard icon={<IconServer className="h-4 w-4" />} chip="bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" label="Sistema operacional">
+          <p className="truncate text-sm font-semibold">{server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'}</p>
+        </StatCard>
 
-        <div>
-          <p className="text-slate-500">Memória</p>
+        <StatCard icon={<IconClock className="h-4 w-4" />} chip="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400" label="Uptime">
+          <p className="text-sm font-semibold">{server.metrics?.uptimeText ?? '—'}</p>
+        </StatCard>
+
+        <StatCard icon={<IconActivity className="h-4 w-4" />} chip="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400" label="Load average">
+          {server.metrics?.loadAvg ? (
+            <>
+              <p className="text-sm font-semibold">{server.metrics.loadAvg.join(' · ')}</p>
+              <Sparkline data={loadHistory} className="mt-2 h-12 w-full text-violet-500 dark:text-violet-400" />
+            </>
+          ) : (
+            <p className="text-sm font-semibold">—</p>
+          )}
+        </StatCard>
+
+        <StatCard icon={<IconMemory className="h-4 w-4" />} chip="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400" label="Memória">
           {memPercent !== null ? (
-            <div className="mt-1 flex items-center gap-2">
-              <Bar percent={memPercent} />
-              <span className="text-xs">
-                {server.metrics?.memUsedMb}MB / {server.metrics?.memTotalMb}MB
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <Bar percent={memPercent} />
+                <span className="shrink-0 text-xs text-slate-500">
+                  {server.metrics?.memUsedMb}/{server.metrics?.memTotalMb}MB
+                </span>
+              </div>
+              <Sparkline data={memHistory} className="mt-2 h-12 w-full text-amber-500 dark:text-amber-400" />
+            </>
           ) : (
-            <p className="font-medium">—</p>
+            <p className="text-sm font-semibold">—</p>
           )}
-        </div>
-        <div>
-          <p className="text-slate-500">Disco</p>
+        </StatCard>
+
+        <StatCard icon={<IconDisk className="h-4 w-4" />} chip="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400" label="Disco">
           {diskPercent !== null ? (
-            <div className="mt-1 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <Bar percent={diskPercent} />
-              <span className="text-xs">
-                {server.metrics?.diskUsed} / {server.metrics?.diskTotal}
+              <span className="shrink-0 text-xs text-slate-500">
+                {server.metrics?.diskUsed}/{server.metrics?.diskTotal}
               </span>
             </div>
           ) : (
-            <p className="font-medium">—</p>
+            <p className="text-sm font-semibold">—</p>
           )}
-        </div>
+        </StatCard>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="card p-5">
           <h2 className="section-title mb-3">Ações</h2>
           <div className="flex flex-wrap gap-2">
-            <button onClick={handleTest} disabled={testing} className="btn-primary px-4 py-2 text-sm">
+            <button onClick={handleTest} disabled={testing} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+              <IconPlug className="h-4 w-4" />
               {testing ? 'Testando conexão...' : 'Testar conexão'}
             </button>
 
@@ -427,21 +522,21 @@ function UpdatesTab({ serverId }: { serverId: string }) {
       )}
 
       {info && info.packages.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+        <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
+            <thead className="border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="px-4 py-2">Pacote</th>
-                <th className="px-4 py-2">Versão</th>
-                <th className="px-4 py-2">Segurança</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Pacote</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Versão</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Segurança</th>
               </tr>
             </thead>
             <tbody>
               {info.packages.map((p) => (
-                <tr key={p.name} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-4 py-2">{p.name}</td>
-                  <td className="px-4 py-2 text-slate-500">{p.version}</td>
-                  <td className="px-4 py-2">{p.security ? '⚠️ sim' : '—'}</td>
+                <tr key={p.name} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3">{p.name}</td>
+                  <td className="px-4 py-3 text-slate-500">{p.version}</td>
+                  <td className="px-4 py-3">{p.security ? '⚠️ sim' : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -480,6 +575,10 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   const [status, setStatus] = useState<DockerStatusResp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [containerLoading, setContainerLoading] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<DockerContainer | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [showUninstallLog, setShowUninstallLog] = useState(false);
 
   function loadStatus() {
     apiFetch<DockerStatusResp>(`/servers/${server.id}/docker/status`)
@@ -492,11 +591,40 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   }, [server.dockerInstalled]);
   useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
 
+  async function handleToggle(c: DockerContainer) {
+    const running = c.status.toLowerCase().includes('up');
+    setContainerLoading(c.id);
+    setError(null);
+    try {
+      await apiFetch(`/servers/${server.id}/docker/containers/${c.id}/${running ? 'stop' : 'start'}`, { method: 'POST' });
+      loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Falha ao ${running ? 'parar' : 'iniciar'} container`);
+    } finally {
+      setContainerLoading(null);
+    }
+  }
+
+  async function handleRemoveConfirmed() {
+    if (!confirmRemove) return;
+    setContainerLoading(confirmRemove.id);
+    try {
+      await apiFetch(`/servers/${server.id}/docker/containers/${confirmRemove.id}`, { method: 'DELETE' });
+      setConfirmRemove(null);
+      loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover container');
+    } finally {
+      setContainerLoading(null);
+    }
+  }
+
   if (!server.dockerInstalled) {
     return (
       <div>
         <p className="mb-4 text-sm text-slate-500">Docker ainda não foi instalado neste servidor.</p>
-        <button onClick={() => setShowLog(true)} className="btn-primary px-4 py-2 text-sm">
+        <button onClick={() => setShowLog(true)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+          <IconDownload className="h-4 w-4" />
           Instalar Docker
         </button>
         {error && (
@@ -524,12 +652,14 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
     <div>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-slate-500">Versão do Docker: {status?.version ?? server.dockerVersion}</p>
-        <button
-          onClick={loadStatus}
-          className="btn-secondary px-3 py-1.5 text-xs"
-        >
-          ↻ Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
+            ↻ Atualizar
+          </button>
+          <button onClick={() => setConfirmUninstall(true)} className="btn-danger px-3 py-1.5 text-xs">
+            Desinstalar Docker
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -538,26 +668,51 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="card overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900">
+          <thead className="border-b border-slate-200 dark:border-slate-800">
             <tr>
-              <th className="px-4 py-2">Container</th>
-              <th className="px-4 py-2">Imagem</th>
-              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {status?.containers?.map((c) => (
-              <tr key={c.id} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="px-4 py-2">{c.names}</td>
-                <td className="px-4 py-2 text-slate-500">{c.image}</td>
-                <td className="px-4 py-2">{c.status}</td>
-              </tr>
-            ))}
+            {status?.containers?.map((c) => {
+              const running = c.status.toLowerCase().includes('up');
+              const busy = containerLoading === c.id;
+              return (
+                <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3">{c.names}</td>
+                  <td className="px-4 py-3 text-slate-500">{c.image}</td>
+                  <td className="px-4 py-3">{c.status}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => handleToggle(c)}
+                        disabled={busy}
+                        title={running ? 'Parar' : 'Iniciar'}
+                        className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                      >
+                        <IconPower className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmRemove(c)}
+                        disabled={busy}
+                        title="Remover"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                      >
+                        <IconTrash className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {(!status?.containers || status.containers.length === 0) && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
                   Nenhum container em execução.
                 </td>
               </tr>
@@ -565,6 +720,45 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
           </tbody>
         </table>
       </div>
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remover container"
+          message={`Remover o container "${confirmRemove.names}"? Essa ação não pode ser desfeita.`}
+          confirmLabel="Remover"
+          danger
+          loading={containerLoading === confirmRemove.id}
+          onConfirm={handleRemoveConfirmed}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+
+      {confirmUninstall && (
+        <ConfirmModal
+          title="Desinstalar Docker"
+          message="Isso remove o Docker Engine e todos os containers deste servidor — incluindo EasyPanel e bancos MySQL geridos por ele. Essa ação não pode ser desfeita."
+          confirmLabel="Desinstalar"
+          danger
+          onConfirm={() => {
+            setConfirmUninstall(false);
+            setShowUninstallLog(true);
+          }}
+          onCancel={() => setConfirmUninstall(false)}
+        />
+      )}
+
+      {showUninstallLog && (
+        <InstallLogModal
+          serverId={server.id}
+          op="docker-uninstall"
+          title="Desinstalando Docker"
+          onClose={() => setShowUninstallLog(false)}
+          onDone={() => {
+            onChange();
+            setStatus(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -582,6 +776,10 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<EasyPanelStatusResp | null>(null);
   const [checked, setChecked] = useState(false);
+  const [containerLoading, setContainerLoading] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<DockerContainer | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [showUninstallLog, setShowUninstallLog] = useState(false);
 
   function loadStatus() {
     apiFetch<EasyPanelStatusResp>(`/servers/${server.id}/easypanel/status`)
@@ -605,6 +803,34 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server.id]);
   useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
+
+  async function handleToggle(c: DockerContainer) {
+    const running = c.status.toLowerCase().includes('up');
+    setContainerLoading(c.id);
+    setError(null);
+    try {
+      await apiFetch(`/servers/${server.id}/docker/containers/${c.id}/${running ? 'stop' : 'start'}`, { method: 'POST' });
+      loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Falha ao ${running ? 'parar' : 'iniciar'} container`);
+    } finally {
+      setContainerLoading(null);
+    }
+  }
+
+  async function handleRemoveConfirmed() {
+    if (!confirmRemove) return;
+    setContainerLoading(confirmRemove.id);
+    try {
+      await apiFetch(`/servers/${server.id}/docker/containers/${confirmRemove.id}`, { method: 'DELETE' });
+      setConfirmRemove(null);
+      loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover container');
+    } finally {
+      setContainerLoading(null);
+    }
+  }
 
   if (!server.dockerInstalled) {
     return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
@@ -635,7 +861,8 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
               Criar registro DNS na Cloudflare automaticamente
             </label>
           )}
-          <button type="submit" className="btn-primary px-4 py-2 text-sm">
+          <button type="submit" className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+            <IconDownload className="h-4 w-4" />
             Instalar EasyPanel
           </button>
         </form>
@@ -674,9 +901,14 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
         <a href={status.url ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
           Abrir EasyPanel ({status.url})
         </a>
-        <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
-          ↻ Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
+            ↻ Atualizar
+          </button>
+          <button onClick={() => setConfirmUninstall(true)} className="btn-danger px-3 py-1.5 text-xs">
+            Desinstalar EasyPanel
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -691,22 +923,47 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 dark:border-slate-800">
             <tr>
-              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
-              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
-              <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
+              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {status?.containers?.map((c) => (
-              <tr key={c.id} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="px-4 py-2">{c.names}</td>
-                <td className="px-4 py-2 text-slate-500">{c.image}</td>
-                <td className="px-4 py-2">{c.status}</td>
-              </tr>
-            ))}
+            {status?.containers?.map((c) => {
+              const running = c.status.toLowerCase().includes('up');
+              const busy = containerLoading === c.id;
+              return (
+                <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3">{c.names}</td>
+                  <td className="px-4 py-3 text-slate-500">{c.image}</td>
+                  <td className="px-4 py-3">{c.status}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => handleToggle(c)}
+                        disabled={busy}
+                        title={running ? 'Parar' : 'Iniciar'}
+                        className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                      >
+                        <IconPower className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmRemove(c)}
+                        disabled={busy}
+                        title="Remover"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                      >
+                        <IconTrash className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {(!status?.containers || status.containers.length === 0) && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
                   Nenhum container encontrado.
                 </td>
               </tr>
@@ -714,6 +971,45 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
           </tbody>
         </table>
       </div>
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remover container"
+          message={`Remover o container "${confirmRemove.names}"? Essa ação não pode ser desfeita.`}
+          confirmLabel="Remover"
+          danger
+          loading={containerLoading === confirmRemove.id}
+          onConfirm={handleRemoveConfirmed}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+
+      {confirmUninstall && (
+        <ConfirmModal
+          title="Desinstalar EasyPanel"
+          message="Isso remove o stack do EasyPanel e sai do Docker Swarm. Os containers e volumes criados por ele são perdidos. Essa ação não pode ser desfeita."
+          confirmLabel="Desinstalar"
+          danger
+          onConfirm={() => {
+            setConfirmUninstall(false);
+            setShowUninstallLog(true);
+          }}
+          onCancel={() => setConfirmUninstall(false)}
+        />
+      )}
+
+      {showUninstallLog && (
+        <InstallLogModal
+          serverId={server.id}
+          op="easypanel-uninstall"
+          title="Desinstalando EasyPanel"
+          onClose={() => setShowUninstallLog(false)}
+          onDone={() => {
+            onChange();
+            loadStatus();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -814,8 +1110,9 @@ function TerminalTab({ serverId }: { serverId: string }) {
       term = new Terminal({
         cursorBlink: true,
         fontSize: 13,
+        lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: { background: '#0f172a' },
+        theme: TERMINAL_THEME,
       });
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -857,15 +1154,32 @@ function TerminalTab({ serverId }: { serverId: string }) {
     };
   }, [serverId]);
 
+  const STATUS_DOT: Record<typeof status, string> = {
+    connecting: 'bg-slate-500 animate-pulse',
+    connected: 'bg-green-400',
+    closed: 'bg-slate-500',
+    error: 'bg-red-400',
+  };
+
   return (
     <div>
-      <p className="mb-2 text-xs text-slate-400">
-        {status === 'connecting' && 'Conectando...'}
-        {status === 'connected' && 'Conectado'}
-        {status === 'closed' && 'Desconectado'}
-        {status === 'error' && 'Falha na conexão do terminal'}
-      </p>
-      <div ref={containerRef} className="h-[70vh] overflow-hidden rounded-xl border border-slate-800 bg-[#0f172a] p-2" />
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#111318]">
+        <div className="flex items-center gap-3 border-b border-white/5 bg-[#16181f] px-4 py-2.5">
+          <div className="flex shrink-0 gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+          </div>
+          <span className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`} />
+            {status === 'connecting' && 'Conectando...'}
+            {status === 'connected' && 'Conectado'}
+            {status === 'closed' && 'Desconectado'}
+            {status === 'error' && 'Falha na conexão do terminal'}
+          </span>
+        </div>
+        <div ref={containerRef} className="h-[70vh] overflow-hidden bg-[#0a0a0f] p-3" />
+      </div>
     </div>
   );
 }
@@ -885,6 +1199,8 @@ function DatabasesTab({ server }: { server: Server }) {
   const [instances, setInstances] = useState<DatabaseInstanceSummary[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [instanceLoading, setInstanceLoading] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<DatabaseInstanceSummary | null>(null);
 
   function load() {
     apiFetch<DatabaseInstanceSummary[]>(`/servers/${server.id}/databases`)
@@ -893,6 +1209,34 @@ function DatabasesTab({ server }: { server: Server }) {
   }
 
   useEffect(load, [server.id]);
+
+  async function handleToggle(inst: DatabaseInstanceSummary) {
+    const running = inst.status === 'ONLINE';
+    setInstanceLoading(inst.id);
+    setError(null);
+    try {
+      await apiFetch(`/databases/${inst.id}/${running ? 'stop' : 'start'}`, { method: 'POST' });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Falha ao ${running ? 'parar' : 'iniciar'} instância`);
+    } finally {
+      setInstanceLoading(null);
+    }
+  }
+
+  async function handleRemoveConfirmed() {
+    if (!confirmRemove) return;
+    setInstanceLoading(confirmRemove.id);
+    try {
+      await apiFetch(`/databases/${confirmRemove.id}`, { method: 'DELETE' });
+      setConfirmRemove(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao excluir instância');
+    } finally {
+      setInstanceLoading(null);
+    }
+  }
 
   if (!server.dockerInstalled) {
     return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de criar um banco de dados.</p>;
@@ -904,8 +1248,9 @@ function DatabasesTab({ server }: { server: Server }) {
         <h2 className="text-base font-medium">Instâncias MySQL</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="btn-primary px-4 py-2 text-sm"
+          className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
         >
+          <IconDownload className="h-4 w-4" />
           Instalar MySQL
         </button>
       </div>
@@ -917,18 +1262,47 @@ function DatabasesTab({ server }: { server: Server }) {
       )}
 
       <div className="space-y-2">
-        {instances.map((inst) => (
-          <Link
-            key={inst.id}
-            href={`/databases/${inst.id}`}
-            className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-          >
-            <span className="font-medium">{inst.name}</span>
-            <span className="text-xs text-slate-400">
-              {inst.engine} · porta {inst.port} · {inst.role} · {inst.status}
-            </span>
-          </Link>
-        ))}
+        {instances.map((inst) => {
+          const running = inst.status === 'ONLINE';
+          const busy = instanceLoading === inst.id;
+          return (
+            <div
+              key={inst.id}
+              className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+            >
+              <Link href={`/databases/${inst.id}`} className="flex flex-1 items-center justify-between">
+                <span className="font-medium">{inst.name}</span>
+                <span className="mr-4 text-xs text-slate-400">
+                  {inst.engine} · porta {inst.port} · {inst.role} · {inst.status}
+                </span>
+              </Link>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleToggle(inst);
+                  }}
+                  disabled={busy}
+                  title={running ? 'Parar' : 'Iniciar'}
+                  className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                >
+                  <IconPower className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setConfirmRemove(inst);
+                  }}
+                  disabled={busy}
+                  title="Excluir"
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                >
+                  <IconTrash className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {instances.length === 0 && <p className="text-sm text-slate-400">Nenhum banco instalado neste servidor.</p>}
       </div>
 
@@ -940,6 +1314,18 @@ function DatabasesTab({ server }: { server: Server }) {
             setShowForm(false);
             load();
           }}
+        />
+      )}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Excluir instância MySQL"
+          message={`Tem certeza que quer excluir "${confirmRemove.name}"? O container e seus dados são removidos permanentemente.`}
+          confirmLabel="Excluir"
+          danger
+          loading={instanceLoading === confirmRemove.id}
+          onConfirm={handleRemoveConfirmed}
+          onCancel={() => setConfirmRemove(null)}
         />
       )}
     </div>
@@ -975,39 +1361,37 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
-        {error && (
-          <div className="mb-3">
-            <Alert variant="error">{error}</Alert>
-          </div>
-        )}
-        {created ? (
-          <div>
-            <h2 className="mb-3 text-lg font-semibold">MySQL instalado</h2>
-            <p className="mb-1 text-sm">
-              Senha root: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.rootPassword}</code>
-            </p>
-            <p className="mb-3 text-sm">
-              Senha do app: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.appPassword}</code>
-            </p>
-            {created.warnings.length > 0 && (
-              <div className="mb-2 space-y-2">
-                {created.warnings.map((w) => (
-                  <Alert key={w} variant="warning">
-                    {w}
-                  </Alert>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={onCreated}
-              className="mt-2 w-full btn-primary px-4 py-2 text-sm"
-            >
-              Fechar
-            </button>
-          </div>
-        ) : (
+    <Modal title={created ? 'MySQL instalado' : 'Instalar MySQL'} onClose={created ? onCreated : onClose}>
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+      {created ? (
+        <div>
+          <p className="mb-1 text-sm">
+            Senha root: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.rootPassword}</code>
+          </p>
+          <p className="mb-3 text-sm">
+            Senha do app: <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{created.appPassword}</code>
+          </p>
+          {created.warnings.length > 0 && (
+            <div className="mb-2 space-y-2">
+              {created.warnings.map((w) => (
+                <Alert key={w} variant="warning">
+                  {w}
+                </Alert>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={onCreated}
+            className="mt-2 w-full btn-primary px-4 py-2 text-sm"
+          >
+            Fechar
+          </button>
+        </div>
+      ) : (
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -1015,7 +1399,6 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
               setShowLog(true);
             }}
           >
-            <h2 className="mb-4 text-lg font-semibold">Instalar MySQL</h2>
             <label className="mb-3 block text-sm">
               <span className="mb-1 block font-medium">Nome da instância</span>
               <input
@@ -1044,7 +1427,6 @@ function InstallMysqlModal({ serverId, onClose, onCreated }: { serverId: string;
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -4,25 +4,69 @@
 
 body {
   @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  background-image: radial-gradient(circle at 15% 0%, rgba(99, 102, 241, 0.07), transparent 45%),
+    radial-gradient(circle at 100% 20%, rgba(99, 102, 241, 0.05), transparent 40%);
+  background-attachment: fixed;
 }
 
 @layer components {
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700;
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100;
   }
   .btn-primary {
-    @apply rounded-lg bg-indigo-600 font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400;
+    @apply rounded-lg bg-indigo-600 font-medium text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:bg-indigo-500 dark:hover:bg-indigo-400;
   }
   .btn-secondary {
-    @apply rounded-lg border border-slate-300 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800;
+    @apply rounded-lg border border-slate-300 font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800;
   }
   .btn-danger {
-    @apply rounded-lg border border-red-300 font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20;
+    @apply rounded-lg border border-red-300 font-medium text-red-600 transition hover:bg-red-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20;
   }
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none;
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_24px_-16px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.02)];
+  }
+  .card-hover {
+    @apply transition hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_32px_-16px_rgba(15,23,42,0.24)] dark:hover:border-slate-700;
   }
   .section-title {
-    @apply text-base font-semibold text-slate-900 dark:text-slate-100;
+    @apply text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100;
   }
+  .badge {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .icon-chip {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl;
+  }
+  .tab-pill {
+    @apply whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200;
+  }
+  .tab-pill-active {
+    @apply bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white;
+  }
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.modal-pop {
+  animation: modal-pop 150ms ease-out;
+}
+
+@keyframes overlay-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.overlay-fade {
+  animation: overlay-fade 150ms ease-out;
 }

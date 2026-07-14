@@ -172,6 +172,24 @@ export class DatabaseService {
     return { ok: true };
   }
 
+  async start(id: string) {
+    const instance = await this.getRawInstance(id);
+    const { options } = await this.servers.getServerWithConnectOptions(instance.serverId);
+    const result = await this.ssh.runCommand(options, `sudo docker start ${instance.containerName}`, 30_000);
+    if (!result.ok) throw new BadRequestException(`Falha ao iniciar instância: ${result.stderr || result.message}`);
+    await this.prisma.databaseInstance.update({ where: { id }, data: { status: 'ONLINE', lastCheckedAt: new Date() } });
+    return { ok: true };
+  }
+
+  async stop(id: string) {
+    const instance = await this.getRawInstance(id);
+    const { options } = await this.servers.getServerWithConnectOptions(instance.serverId);
+    const result = await this.ssh.runCommand(options, `sudo docker stop ${instance.containerName}`, 30_000);
+    if (!result.ok) throw new BadRequestException(`Falha ao parar instância: ${result.stderr || result.message}`);
+    await this.prisma.databaseInstance.update({ where: { id }, data: { status: 'OFFLINE', lastCheckedAt: new Date() } });
+    return { ok: true };
+  }
+
   async status(id: string) {
     const instance = await this.getRawInstance(id);
     const { options } = await this.servers.getServerWithConnectOptions(instance.serverId);

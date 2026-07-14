@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { getToken } from '@/lib/api';
+import { TERMINAL_THEME } from '@/lib/terminalTheme';
 import '@xterm/xterm/css/xterm.css';
 
-type Op = 'docker-install' | 'easypanel-install' | 'updates-install' | 'mysql-install';
+type Op = 'docker-install' | 'docker-uninstall' | 'easypanel-install' | 'easypanel-uninstall' | 'updates-install' | 'mysql-install';
 
 interface Props {
   serverId: string;
@@ -35,8 +36,9 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
         disableStdin: true,
         cursorBlink: false,
         fontSize: 12,
+        lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: { background: '#0f172a' },
+        theme: TERMINAL_THEME,
       });
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -82,28 +84,43 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, op]);
 
+  const STATUS_BADGE: Record<typeof status, string> = {
+    connecting: 'bg-slate-800 text-slate-300',
+    running: 'bg-amber-500/15 text-amber-400',
+    'done-ok': 'bg-green-500/15 text-green-400',
+    'done-error': 'bg-red-500/15 text-red-400',
+  };
+
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
-            <p className="text-xs text-slate-400">
-              {status === 'connecting' && 'Conectando...'}
-              {status === 'running' && 'Executando...'}
-              {status === 'done-ok' && 'Concluído com sucesso'}
-              {status === 'done-error' && 'Falhou — veja o log abaixo'}
-            </p>
+    <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-md">
+      <div className="modal-pop flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#111318] shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-[#16181f] px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex shrink-0 gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+            </div>
+            <h2 className="truncate text-sm font-medium text-slate-200">{title}</h2>
           </div>
-          <button
-            onClick={onClose}
-            disabled={!canClose}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Fechar
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={`badge ${STATUS_BADGE[status]}`}>
+              {(status === 'running' || status === 'connecting') && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+              {status === 'connecting' && 'Conectando'}
+              {status === 'running' && 'Executando'}
+              {status === 'done-ok' && 'Concluído'}
+              {status === 'done-error' && 'Falhou'}
+            </span>
+            <button
+              onClick={onClose}
+              disabled={!canClose}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
-        <div ref={containerRef} className="h-[50vh] flex-1 overflow-hidden p-2" />
+        <div ref={containerRef} className="h-[50vh] flex-1 overflow-hidden bg-[#0a0a0f] p-3" />
       </div>
     </div>
   );

@@ -35,6 +35,16 @@ export class DatabaseController {
     return this.db.status(id);
   }
 
+  @Post('databases/:id/start')
+  start(@Param('id') id: string) {
+    return this.db.start(id);
+  }
+
+  @Post('databases/:id/stop')
+  stop(@Param('id') id: string) {
+    return this.db.stop(id);
+  }
+
   @Post('databases/:id/replicate')
   createReplica(@Param('id') id: string, @Body() dto: CreateReplicaDto) {
     return this.db.createReplica(id, dto);

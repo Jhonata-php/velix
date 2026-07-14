@@ -6,6 +6,7 @@ import { buildConnectOptions } from '../ssh/connect-options.util';
 import { CloudflareService } from '../cloudflare/cloudflare.service';
 import { generateSshKeyPair } from '../ssh/keygen.util';
 import { CreateServerDto } from './dto/create-server.dto';
+import { UpdateServerDto } from './dto/update-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
 import { METRICS_COMMAND, parseMetrics } from './metrics.util';
 
@@ -61,6 +62,27 @@ export class ServersService {
   async findOne(id: string) {
     const server = await this.prisma.server.findUnique({ where: { id } });
     if (!server) throw new NotFoundException('Servidor não encontrado');
+    return toPublic(server);
+  }
+
+  async update(id: string, dto: UpdateServerDto) {
+    await this.findOne(id);
+    const secret = dto.authMethod === 'PASSWORD' ? dto.password : dto.authMethod === 'PRIVATE_KEY' ? dto.privateKey : undefined;
+
+    const server = await this.prisma.server.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.publicIp !== undefined ? { publicIp: dto.publicIp } : {}),
+        ...(dto.privateIp !== undefined ? { privateIp: dto.privateIp } : {}),
+        ...(dto.hostname !== undefined ? { hostname: dto.hostname } : {}),
+        ...(dto.sshPort !== undefined ? { sshPort: dto.sshPort } : {}),
+        ...(dto.sshUser !== undefined ? { sshUser: dto.sshUser } : {}),
+        ...(dto.authMethod !== undefined ? { authMethod: dto.authMethod } : {}),
+        ...(secret ? { credentialEnc: encryptCredential(secret) } : {}),
+      },
+    });
     return toPublic(server);
   }
 
@@ -317,6 +339,69 @@ export class ServersService {
       });
   }
 
+  async startContainer(id: string, containerId: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const result = await this.ssh.runCommand(options, `sudo docker start ${containerId}`, 30_000);
+    if (!result.ok) throw new BadRequestException(`Falha ao iniciar container: ${result.stderr || result.message}`);
+    return { ok: true };
+  }
+
+  async stopContainer(id: string, containerId: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const result = await this.ssh.runCommand(options, `sudo docker stop ${containerId}`, 30_000);
+    if (!result.ok) throw new BadRequestException(`Falha ao parar container: ${result.stderr || result.message}`);
+    return { ok: true };
+  }
+
+  async removeContainer(id: string, containerId: string) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const result = await this.ssh.runCommand(options, `sudo docker rm -f ${containerId}`, 30_000);
+    if (!result.ok) throw new BadRequestException(`Falha ao remover container: ${result.stderr || result.message}`);
+    return { ok: true };
+  }
+
+  async uninstallDocker(id: string, onLog?: LogFn) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const packageManager = server.packageManager ?? (await this.detectPackageManager(options));
+    const stream: LogFn | undefined = onLog && ((chunk) => onLog(chunk));
+
+    onLog?.('Parando containers em execução...\n');
+    await this.ssh.runCommand(options, 'sudo docker ps -aq | xargs -r sudo docker rm -f', 60_000);
+
+    const purgeCmd =
+      packageManager === 'apt'
+        ? 'sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin && sudo apt-get autoremove -y'
+        : packageManager === 'dnf'
+          ? 'sudo dnf remove -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin'
+          : packageManager === 'yum'
+            ? 'sudo yum remove -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin'
+            : null;
+
+    if (!purgeCmd) {
+      throw new BadRequestException('Gerenciador de pacotes não identificado — não é possível desinstalar automaticamente');
+    }
+
+    onLog?.('Removendo pacotes do Docker...\n');
+    const remove = await this.ssh.runCommand(options, purgeCmd, 180_000, stream);
+    if (!remove.ok) {
+      throw new BadRequestException(`Falha ao remover pacotes do Docker: ${remove.stderr || remove.message}`);
+    }
+
+    onLog?.('Removendo dados residuais (/var/lib/docker, /etc/docker)...\n');
+    await this.ssh.runCommand(options, 'sudo rm -rf /var/lib/docker /etc/docker', 30_000);
+
+    await this.prisma.server.update({
+      where: { id },
+      data: { dockerInstalled: false, dockerVersion: null, easypanelInstalled: false, easypanelUrl: null },
+    });
+
+    return { ok: true };
+  }
+
   private async upsertCloudflareRecord(domain: string, ip: string) {
     const zones = await this.cloudflare.listZones();
     const zone = zones
@@ -461,5 +546,30 @@ export class ServersService {
       throw new BadRequestException(`Falha ao configurar o firewall: ${result.stderr || result.message}`);
     }
     return { ok: true, message: 'Porta 3000 bloqueada para acesso externo. O painel continua acessível pelo domínio.' };
+  }
+
+  async uninstallEasyPanel(id: string, onLog?: LogFn) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const stream: LogFn | undefined = onLog && ((chunk) => onLog(chunk));
+
+    onLog?.('Removendo stack do EasyPanel...\n');
+    await this.ssh.runCommand(options, 'sudo docker stack rm easypanel', 60_000, stream);
+
+    onLog?.('Aguardando containers finalizarem...\n');
+    await new Promise((r) => setTimeout(r, 5000));
+
+    onLog?.('Saindo do Docker Swarm...\n');
+    await this.ssh.runCommand(options, 'sudo docker swarm leave --force', 30_000, stream);
+
+    onLog?.('Removendo dados residuais (/etc/easypanel)...\n');
+    await this.ssh.runCommand(options, 'sudo rm -rf /etc/easypanel', 15_000);
+
+    await this.prisma.server.update({
+      where: { id },
+      data: { easypanelInstalled: false, easypanelUrl: null },
+    });
+
+    return { ok: true };
   }
 }

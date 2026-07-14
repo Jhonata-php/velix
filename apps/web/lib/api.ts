@@ -1,5 +1,5 @@
-// Sempre relativo: o rewrite em next.config.js encaminha /api/* pro backend,
-// então o browser nunca faz requisição cross-origin.
+// Sempre relativo: server.js repassa /api/* pro backend (ver ponytail-bugfix
+// lá), então o browser nunca faz requisição cross-origin.
 const API_URL = '/api';
 
 export function getToken() {
@@ -42,6 +42,14 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       ...init.headers,
     },
   });
+
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    throw new Error('Sessão expirada — faça login novamente');
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
