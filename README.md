@@ -1,76 +1,162 @@
 # Velix
 
-Plataforma para gerenciamento de servidores Linux via SSH — cadastro de servidores, teste de conexão real, dashboard e autenticação.
+Velix é uma plataforma para gerenciamento de servidores Linux via SSH, criada para centralizar infraestrutura, aplicações, atualizações, Docker, bancos de dados, DNS, métricas e acesso remoto em uma única interface.
 
-Implementado até agora, tudo com execução real via SSH (nada simulado):
+O sistema executa operações reais nos servidores cadastrados, sem simulações.
 
-- Autenticação, dashboard, tema claro/escuro, cadastro de servidores
-- Cloudflare: conta/token na aba Configurações, zonas, CRUD de registros DNS, descoberta de domínios por IP
-- Atualizações de Linux (apt/dnf/yum): checar e instalar (todas ou só segurança)
-- Docker: instalação real (get.docker.com) + status/containers
-- EasyPanel: instalação real (get.easypanel.io) + DNS automático via Cloudflare
-- MySQL: instalação via Docker já pronta para replicação, criação de réplica (dump + SFTP + `CHANGE REPLICATION SOURCE` com GTID), monitoramento de sincronização e **promoção manual** de réplica (com confirmação explícita — sem failover automático)
-- Métricas reais por SSH (uptime, load average, memória, disco) com auto-refresh a cada 10s (dashboard e página do servidor) + atualização manual, e reboot do servidor
-- Terminal web real via WebSocket + `xterm.js` (abre um shell SSH de verdade no servidor, direto do navegador)
+## Recursos implementados
 
-Ainda não implementado: Docker Swarm/clusters, PostgreSQL, backups, failover automático com máquina de estados.
+Atualmente o Velix possui:
 
-## Stack
+- autenticação com JWT;
+- dashboard de infraestrutura;
+- tema claro e escuro;
+- cadastro e gerenciamento de servidores Linux;
+- teste real de conexão SSH;
+- métricas reais coletadas por SSH;
+- terminal web com shell SSH real;
+- gerenciamento de atualizações Linux;
+- gerenciamento de Docker;
+- instalação automatizada do EasyPanel;
+- integração com Cloudflare;
+- gerenciamento de DNS;
+- instalação de MySQL via Docker;
+- replicação MySQL com GTID;
+- promoção manual de réplica;
+- monitoramento de sincronização MySQL;
+- reinicialização remota de servidores.
 
-- `apps/api`: NestJS + Prisma + PostgreSQL, autenticação JWT, teste de conexão SSH real (`ssh2`), WebSocket cru (`ws`) pro terminal
-- `apps/web`: Next.js (App Router) + Tailwind, tema claro/escuro, dashboard e cadastro de servidores
+## Funcionalidades detalhadas
 
-Só a porta do Next.js (3000) fica exposta. Requisições HTTP (`/api/*`) são proxeadas pro NestJS via `rewrites` do `next.config.js`; o terminal web (WebSocket em `/terminal`, que `rewrites` não cobre) é proxeado por um servidor Node customizado (`apps/web/server.js`, usado tanto em dev quanto em produção) que repassa a conexão crua pro backend. Em nenhum dos dois casos o browser fala diretamente com a API.
+### Servidores Linux
 
-## Rodando em produção (Ubuntu)
+O Velix permite cadastrar servidores utilizando:
 
-Em um Ubuntu limpo (20.04+), como root:
+- endereço IP ou hostname;
+- porta SSH;
+- usuário SSH;
+- senha ou chave privada;
+- descrição e identificação do servidor.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jhonata-php/velix/main/install.sh | sudo bash
-```
+As credenciais são utilizadas para estabelecer conexões SSH reais.
 
-O script instala o Docker se necessário, clona o repositório em `/opt/velix`, gera segredos aleatórios em `.env` e sobe tudo com `docker compose`. No final ele imprime a URL do painel e a senha do admin gerada.
+### Métricas
 
-Se você já clonou o repositório manualmente:
+O sistema coleta por SSH:
 
-```bash
-cd velix
-sudo REPO_DIR=$(pwd) ./install.sh
-```
+- uptime;
+- load average;
+- uso de memória RAM;
+- utilização de disco;
+- status do servidor.
 
-Para atualizar depois de um `git pull`, basta rodar `docker compose up -d --build` novamente.
+As métricas são atualizadas automaticamente a cada 10 segundos no dashboard e na página do servidor.
 
-## Rodando localmente (desenvolvimento)
+Também é possível solicitar uma atualização manual.
 
-Requer Node 20+ e um PostgreSQL local (ou `docker compose up postgres` só do banco).
+### Terminal web
 
-**Primeira vez** — instala as dependências das duas apps e prepara o banco:
+O terminal web utiliza:
 
-```bash
-cd apps/api && cp .env.example .env   # ajuste DATABASE_URL se necessário
-npm install
-npx prisma db push
-npm run seed              # cria o usuário admin@velix.local / changeme123
-cd ../../apps/web && npm install
-cd ../..
-```
+- WebSocket;
+- `xterm.js`;
+- conexão SSH real;
+- proxy interno pelo frontend.
 
-**Depois disso, um comando só sobe backend e frontend juntos:**
+O navegador não se conecta diretamente à API ou ao servidor SSH.
 
-```bash
-npm install   # só na primeira vez, instala o `concurrently` na raiz
-npm run dev   # sobe apps/api (:3001, interno) e apps/web (:3000) juntos
-```
+### Atualizações Linux
 
-Abra http://localhost:3000 — o proxy `/api/*` do Next.js já aponta pra `:3001` automaticamente.
+O Velix identifica automaticamente o gerenciador de pacotes do servidor:
 
-Se preferir rodar cada um em um terminal separado (ex.: pra ver os logs isolados), pode continuar usando `npm run dev` dentro de `apps/api` e de `apps/web` individualmente — os scripts continuam existindo, o `npm run dev` da raiz só chama os dois ao mesmo tempo.
+- `apt`;
+- `dnf`;
+- `yum`.
 
-## Variáveis de ambiente
+É possível:
 
-Veja [.env.example](.env.example) (raiz, usado pelo `docker-compose.yml`) e [apps/api/.env.example](apps/api/.env.example) (uso local sem Docker).
+- verificar atualizações disponíveis;
+- instalar todas as atualizações;
+- instalar somente atualizações de segurança.
 
-## Próximos passos
+### Docker
 
-Docker Swarm/clusters, PostgreSQL, backups agendados, e failover automático com máquina de estados e fencing real (o que existe hoje é promoção manual, de propósito — ver seção acima). O terminal web também ainda não tem MFA, gravação de sessão ou limite de sessões simultâneas (seção 33 do spec original).
+O Velix pode:
+
+- verificar se o Docker está instalado;
+- instalar Docker usando o instalador oficial;
+- consultar o status do serviço;
+- listar containers;
+- visualizar o estado dos containers.
+
+### EasyPanel
+
+É possível instalar o EasyPanel remotamente utilizando o instalador oficial.
+
+Quando a integração com Cloudflare está configurada, o Velix também pode criar automaticamente o registro DNS necessário.
+
+### Cloudflare
+
+Na área de configurações, é possível cadastrar:
+
+- token da API;
+- conta Cloudflare;
+- zona DNS.
+
+O sistema permite:
+
+- listar zonas;
+- listar registros DNS;
+- criar registros;
+- editar registros;
+- excluir registros;
+- descobrir domínios que apontam para determinado IP.
+
+### MySQL
+
+O Velix possui instalação de MySQL via Docker preparada para replicação.
+
+Recursos atuais:
+
+- instalação do MySQL principal;
+- criação de réplica;
+- dump do banco;
+- transferência por SFTP;
+- configuração com `CHANGE REPLICATION SOURCE`;
+- replicação com GTID;
+- acompanhamento do status da réplica;
+- promoção manual da réplica.
+
+A promoção exige confirmação explícita.
+
+O failover automático ainda não está habilitado para evitar cenários de split-brain e corrupção de dados.
+
+## Recursos ainda não implementados
+
+Os seguintes recursos estão planejados:
+
+- Docker Swarm;
+- gerenciamento de clusters;
+- PostgreSQL;
+- backups agendados;
+- restauração de backups;
+- failover automático;
+- máquina de estados para failover;
+- fencing real;
+- MFA para terminal;
+- gravação de sessões SSH;
+- limite de sessões simultâneas;
+- auditoria avançada;
+- biblioteca de aplicações;
+- deploy de aplicações por templates.
+
+## Arquitetura
+
+O projeto é dividido em duas aplicações principais.
+
+### API
+
+Localização:
+
+```text
+apps/api
