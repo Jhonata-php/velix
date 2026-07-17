@@ -1,7 +1,11 @@
 node_modules/
 dist/
 .next/
+
 .env
+docker-compose.override.yml
+*.backup.*
+
 *.log
 .DS_Store
 

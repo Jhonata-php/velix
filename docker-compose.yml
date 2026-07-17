@@ -1,50 +1,104 @@
+name: velix
+
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: velix-postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_USER: velix
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: velix
+
     volumes:
       - velix_postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - velix_internal
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U velix"]
+      test: ["CMD-SHELL", "pg_isready -U velix -d velix"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 10s
 
   api:
-    build: ./apps/api
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+
+    container_name: velix-api
     restart: unless-stopped
+
     depends_on:
       postgres:
         condition: service_healthy
+
     environment:
+      NODE_ENV: production
+      PORT: 3001
+
       DATABASE_URL: postgresql://velix:${POSTGRES_PASSWORD}@postgres:5432/velix?schema=public
+
       JWT_SECRET: ${JWT_SECRET}
       VELIX_CREDENTIAL_SECRET: ${VELIX_CREDENTIAL_SECRET}
+
       WEB_ORIGIN: ${WEB_ORIGIN}
+
       VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
       VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
-      PORT: 3001
-    # Sem `ports:` aqui de propósito — só o Next.js (serviço web) fica exposto
-    # ao host. O browser fala com o Next, que proxeia /api/* pra cá via rede
-    # interna do compose (ver INTERNAL_API_URL no serviço web).
-    # ponytail: `db push` em vez de migrations versionadas — sem histórico de
-    # migração ainda. Trocar para `prisma migrate deploy` com migrations
-    # commitadas quando houver mais de um ambiente (staging/prod) para sincronizar.
-    command: sh -c "npx prisma db push --skip-generate && npm run seed && node dist/main.js"
+
+    command: >
+      sh -c "
+        npx prisma db push --skip-generate &&
+        npm run seed &&
+        node dist/main.js
+      "
+
+    expose:
+      - "3001"
+
+    networks:
+      - velix_internal
 
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+
+    container_name: velix-web
     restart: unless-stopped
-    environment:
-      INTERNAL_API_URL: http://api:3001/api
+
     depends_on:
       - api
-    ports:
-      - "3000:3000"
+
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_URL: http://api:3001/api
+      NEXT_PUBLIC_APP_URL: ${WEB_ORIGIN}
+
+    expose:
+      - "3000"
+
+    networks:
+      - velix_internal
+      - velix_proxy
+
+    # A publicação da porta ou as configurações do Traefik
+    # serão adicionadas automaticamente pelo install.sh através
+    # do docker-compose.override.yml.
 
 volumes:
   velix_postgres_data:
+    name: velix_postgres_data
+
+networks:
+  velix_internal:
+    name: velix_internal
+    driver: bridge
+
+  velix_proxy:
+    name: velix_proxy
+    driver: bridge
