@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Client, ClientChannel } from 'ssh2';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
 
 export interface SshConnectOptions {
   host: string;
@@ -163,6 +167,33 @@ export class SshService {
       },
       timeoutMs,
     );
+  }
+
+  /**
+   * Escreve conteúdo num arquivo do servidor remoto de forma seguindo o padrão
+   * usado pra qualquer arquivo gerenciado pelo Velix (config do Traefik, compose
+   * de aplicação): grava local, envia via SFTP pra /tmp (sempre gravável) e move
+   * pro destino final com sudo — evita problemas de permissão/escape de shell e
+   * não expõe conteúdo sensível no `ps`. Usado por 2+ módulos (Traefik, Aplicações).
+   */
+  async writeRemoteFile(options: SshConnectOptions, remotePath: string, content: string, mode = '644', timeoutMs = 60_000) {
+    const localTmp = join(tmpdir(), `velix-${randomUUID()}`);
+    const remoteTmp = `/tmp/velix-${randomUUID()}`;
+    await fs.writeFile(localTmp, content, { mode: 0o600 });
+    try {
+      const up = await this.uploadFile(options, localTmp, remoteTmp, timeoutMs);
+      if (!up.ok) return { ok: false, message: `Falha ao enviar arquivo ao servidor: ${up.message}` };
+      const dir = remotePath.slice(0, remotePath.lastIndexOf('/'));
+      const mv = await this.runCommand(
+        options,
+        `sudo mkdir -p ${dir} && sudo mv ${remoteTmp} ${remotePath} && sudo chmod ${mode} ${remotePath}`,
+        20_000,
+      );
+      if (!mv.ok) return { ok: false, message: `Falha ao gravar ${remotePath}: ${mv.stderr || mv.message}` };
+      return { ok: true as const };
+    } finally {
+      await fs.unlink(localTmp).catch(() => undefined);
+    }
   }
 
   /**

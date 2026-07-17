@@ -4,12 +4,20 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { JwtService } from '@nestjs/jwt';
 import { ServersService } from '../servers/servers.service';
 import { DatabaseService } from '../database/database.service';
+import { TraefikService } from '../traefik/traefik.service';
+import { ApplicationsService } from '../applications/applications.service';
+import { DeployApplicationDto } from '../applications/dto/deploy-application.dto';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
   | { type: 'start'; op: 'docker-uninstall' }
   | { type: 'start'; op: 'easypanel-install'; params: { domain?: string; createDnsRecord?: boolean } }
   | { type: 'start'; op: 'easypanel-uninstall' }
+  | { type: 'start'; op: 'traefik-install'; params?: { acmeEmail?: string } }
+  | { type: 'start'; op: 'traefik-uninstall' }
+  | { type: 'start'; op: 'server-prepare'; params?: { acmeEmail?: string } }
+  | { type: 'start'; op: 'app-deploy'; params: DeployApplicationDto }
+  | { type: 'start'; op: 'service-add'; params: { applicationId: string; serviceName: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
       type: 'start';
@@ -27,7 +35,10 @@ function send(ws: WebSocket, msg: object) {
  * query string, um comando roda no servidor de destino e cada linha de saída
  * é repassada em tempo real em vez de só devolver tudo no final.
  */
-export function attachOpsServer(httpServer: HttpServer, deps: { jwt: JwtService; servers: ServersService; database: DatabaseService }) {
+export function attachOpsServer(
+  httpServer: HttpServer,
+  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService; traefik: TraefikService; applications: ApplicationsService },
+) {
   const wss = new WebSocketServer({ noServer: true });
 
   httpServer.on('upgrade', (req, socket, head) => {
@@ -46,7 +57,7 @@ export function attachOpsServer(httpServer: HttpServer, deps: { jwt: JwtService;
 async function handleConnection(
   ws: WebSocket,
   query: Record<string, string>,
-  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService },
+  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService; traefik: TraefikService; applications: ApplicationsService },
 ) {
   const { token, serverId } = query;
   if (!token || !serverId) {
@@ -85,6 +96,16 @@ async function handleConnection(
         result = await deps.servers.installEasyPanel(serverId, msg.params, onLog);
       } else if (msg.op === 'easypanel-uninstall') {
         result = await deps.servers.uninstallEasyPanel(serverId, onLog);
+      } else if (msg.op === 'traefik-install') {
+        result = await deps.traefik.installTraefik(serverId, msg.params ?? {}, onLog);
+      } else if (msg.op === 'traefik-uninstall') {
+        result = await deps.traefik.uninstallTraefik(serverId, onLog);
+      } else if (msg.op === 'server-prepare') {
+        result = await deps.traefik.prepareServer(serverId, msg.params ?? {}, onLog);
+      } else if (msg.op === 'app-deploy') {
+        result = await deps.applications.deploy(serverId, msg.params, onLog);
+      } else if (msg.op === 'service-add') {
+        result = await deps.applications.addService(msg.params.applicationId, msg.params.serviceName, onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
       } else if (msg.op === 'mysql-install') {

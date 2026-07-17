@@ -5,6 +5,8 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService } from '../ssh/ssh.service';
 import { buildConnectOptions } from '../ssh/connect-options.util';
+import { decryptCredential } from '../ssh/crypto.util';
+import { shellSingleQuote } from '../database/mysql.util';
 
 type ClientMessage = { type: 'input'; data: string } | { type: 'resize'; cols: number; rows: number };
 
@@ -28,15 +30,43 @@ export function attachTerminalServer(
 
   httpServer.on('upgrade', (req, socket, head) => {
     const { pathname, query } = parse(req.url ?? '', true);
-    if (pathname !== '/terminal') return;
+    if (pathname !== '/terminal' && pathname !== '/db-console') return;
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      handleConnection(ws, query as Record<string, string>, deps).catch(() => {
+      const handler = pathname === '/terminal' ? handleConnection : handleDbConsole;
+      handler(ws, query as Record<string, string>, deps).catch(() => {
         send(ws, { type: 'error', message: 'Falha ao abrir terminal' });
         ws.close();
       });
     });
   });
+}
+
+/** Abre o shell, liga o proxy bidirecional WS<->PTY, e devolve o stream (quem chama pode escrever nele antes de retornar). */
+async function wirePty(ws: WebSocket, ssh: SshService, options: Parameters<SshService['openShell']>[0]) {
+  const { conn, stream } = await ssh.openShell(options);
+
+  stream.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
+  stream.stderr.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
+  stream.on('close', () => {
+    send(ws, { type: 'closed' });
+    ws.close();
+  });
+
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString()) as ClientMessage;
+      if (msg.type === 'input') stream.write(msg.data);
+      else if (msg.type === 'resize') stream.setWindow(msg.rows, msg.cols, 0, 0);
+    } catch {
+      // ignora mensagem mal formada
+    }
+  });
+
+  ws.on('close', () => conn.end());
+  ws.on('error', () => conn.end());
+
+  return stream;
 }
 
 async function handleConnection(
@@ -75,25 +105,51 @@ async function handleConnection(
     return;
   }
 
-  const { conn, stream } = await deps.ssh.openShell(options);
+  await wirePty(ws, deps.ssh, options);
+}
 
-  stream.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
-  stream.stderr.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
-  stream.on('close', () => {
-    send(ws, { type: 'closed' });
+/**
+ * Console do MySQL (via `docker exec -it`) — mesma infra do terminal SSH,
+ * só que ao abrir já digita o comando de entrar no container e faz login,
+ * sem o usuário precisar saber a senha de cor.
+ */
+async function handleDbConsole(
+  ws: WebSocket,
+  query: Record<string, string>,
+  deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
+) {
+  const { token, instanceId } = query;
+  if (!token || !instanceId) {
+    send(ws, { type: 'error', message: 'Parâmetros ausentes' });
     ws.close();
-  });
+    return;
+  }
 
-  ws.on('message', (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString()) as ClientMessage;
-      if (msg.type === 'input') stream.write(msg.data);
-      else if (msg.type === 'resize') stream.setWindow(msg.rows, msg.cols, 0, 0);
-    } catch {
-      // ignora mensagem mal formada
-    }
-  });
+  try {
+    await deps.jwt.verifyAsync(token);
+  } catch {
+    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
+    ws.close();
+    return;
+  }
 
-  ws.on('close', () => conn.end());
-  ws.on('error', () => conn.end());
+  const instance = await deps.prisma.databaseInstance.findUnique({ where: { id: instanceId }, include: { server: true } });
+  if (!instance) {
+    send(ws, { type: 'error', message: 'Banco de dados não encontrado' });
+    ws.close();
+    return;
+  }
+
+  let options;
+  try {
+    options = buildConnectOptions(instance.server);
+  } catch (err) {
+    send(ws, { type: 'error', message: err instanceof Error ? err.message : 'Credenciais inválidas' });
+    ws.close();
+    return;
+  }
+
+  const rootPassword = decryptCredential(instance.rootPasswordEnc);
+  const stream = await wirePty(ws, deps.ssh, options);
+  stream.write(`sudo docker exec -it ${instance.containerName} mysql -uroot -p${shellSingleQuote(rootPassword)}\n`);
 }

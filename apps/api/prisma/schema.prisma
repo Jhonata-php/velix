@@ -58,8 +58,17 @@ model Server {
   packageManager String?
   dockerInstalled Boolean    @default(false)
   dockerVersion String?
+  // ponytail: colunas do EasyPanel mantidas só pra não quebrar a leitura de
+  // servidores já cadastrados (migração segura — etapa 1). Nenhum fluxo novo
+  // escreve nelas; some da experiência via frontend. Dropar só quando não
+  // houver mais nenhuma linha com easypanelInstalled=true.
   easypanelInstalled Boolean @default(false)
   easypanelUrl  String?
+  // Proxy reverso nativo do Velix (substitui o EasyPanel como plataforma).
+  traefikInstalled Boolean  @default(false)
+  traefikVersion String?
+  // Estado da plataforma Velix no servidor: NOT_PREPARED | PREPARING | READY | DEGRADED | ERROR
+  platformState String      @default("NOT_PREPARED")
   metrics       Json?
   metricsCheckedAt DateTime?
   lastCheckedAt DateTime?
@@ -72,6 +81,125 @@ model Server {
   metricSamples ServerMetricSample[]
   mirrorAsSource ServerMirror?  @relation("MirrorSource")
   mirrorsAsTarget ServerMirror[] @relation("MirrorTarget")
+  domains       Domain[]
+  applications  Application[]
+}
+
+enum DomainStatus {
+  PENDING   // criado, ainda não verificado/roteando
+  ACTIVE    // roteando e respondendo em HTTPS
+  ERROR     // falha ao emitir certificado ou registrar DNS
+}
+
+// Domínio roteado pelo Traefik do servidor. `applicationId` é opcional: um
+// domínio pode apontar pra uma porta solta (fase anterior) ou pra uma
+// aplicação implantada pelo Velix — quando a aplicação existe, o Traefik
+// roteia pro nome do container na rede velix-proxy em vez do host.
+model Domain {
+  id                 String       @id @default(uuid())
+  serverId           String
+  server             Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  applicationId      String?
+  application        Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  hostname           String       @unique
+  // Nome do serviço (dentro da aplicação) que recebe a rota — null pras portas soltas da fase anterior.
+  serviceName        String?
+  targetPort         Int
+  createDnsRecord    Boolean      @default(true)
+  cloudflareRecordId String?
+  cloudflareZoneId   String?
+  status             DomainStatus @default(PENDING)
+  lastError          String?
+  lastCheckedAt      DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([serverId])
+}
+
+enum ApplicationStatus {
+  DEPLOYING
+  RUNNING
+  STOPPED
+  ERROR
+  REMOVING
+}
+
+enum ApplicationEnvironment {
+  PRODUCTION
+  STAGING
+  DEVELOPMENT
+  LAB
+}
+
+// Aplicação implantada pelo Velix a partir de um manifesto do catálogo (fase
+// atual: só o catálogo oficial embutido no código — ver apps/api/src/catalog).
+// `composeRendered` é o compose efetivamente aplicado, guardado pra permitir
+// diff/rollback quando essa feature existir; não há tabela de histórico ainda
+// porque nada além da versão atual precisa dela por ora.
+model Application {
+  id               String            @id @default(uuid())
+  serverId         String
+  server           Server            @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String            @unique
+  description      String?
+  environment      ApplicationEnvironment @default(PRODUCTION)
+  tags             String[]          @default([])
+  manifestSlug     String
+  manifestVersion  String
+  status           ApplicationStatus @default(DEPLOYING)
+  composeRendered  String
+  containerNames   String[]          @default([])
+  // Nomes dos serviços opcionais do manifesto que o usuário escolheu incluir —
+  // os obrigatórios não precisam estar aqui (sempre implícitos). Junto de
+  // manifestSlug, é o que permite reconfigurar o compose ao adicionar um
+  // serviço novo depois do deploy inicial.
+  selectedServices String[]          @default([])
+  // Segredos gerados no deploy (ex.: senha de banco), cifrados como um blob JSON —
+  // mesmo padrão AES-256-GCM já usado pra credenciais SSH/Cloudflare.
+  secretsEnc       String?
+  // Valores de `{{var:...}}` resolvidos no deploy (não sensíveis — texto puro).
+  // Reaproveitado ao adicionar um serviço depois, senão o compose recalculado
+  // voltaria os valores pro padrão do manifesto e recriaria os containers já
+  // no ar com uma configuração diferente da que o usuário escolheu.
+  variablesJson    String?
+  lastError        String?
+  deployedAt       DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  domains          Domain[]
+  services         ProjectService[]
+
+  @@index([serverId])
+}
+
+enum ProjectServiceStatus {
+  DEPLOYING
+  RUNNING
+  STOPPED
+  ERROR
+}
+
+// Um componente (container) dentro de um projeto — o projeto (Application)
+// deixa de ser um container isolado e passa a ter vários desses, cada um
+// com ciclo de vida próprio (iniciar/parar/reiniciar individualmente).
+model ProjectService {
+  id              String                @id @default(uuid())
+  applicationId   String
+  application     Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  // Nome do serviço dentro do compose (ex.: "app", "db", "onlyoffice") — igual
+  // ao `name` declarado no VelixManifestService de origem.
+  name            String
+  image           String
+  containerName   String
+  required        Boolean               @default(true)
+  status          ProjectServiceStatus  @default(DEPLOYING)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([applicationId, name])
+  @@index([applicationId])
 }
 
 // ponytail: um espelho por servidor de origem (1 destino) — cobre o caso

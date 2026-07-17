@@ -36,6 +36,11 @@ export class DatabaseController {
     return this.db.remove(id);
   }
 
+  @Get('databases/:id/credentials')
+  credentials(@Param('id') id: string) {
+    return this.db.getCredentials(id);
+  }
+
   @Get('databases/:id/status')
   status(@Param('id') id: string) {
     return this.db.status(id);

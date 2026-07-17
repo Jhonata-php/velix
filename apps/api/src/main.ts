@@ -9,6 +9,8 @@ import { attachTerminalServer } from './terminal/terminal-server';
 import { attachOpsServer } from './ops/ops-server';
 import { ServersService } from './servers/servers.service';
 import { DatabaseService } from './database/database.service';
+import { TraefikService } from './traefik/traefik.service';
+import { ApplicationsService } from './applications/applications.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -34,6 +36,8 @@ async function bootstrap() {
     jwt: app.get(JwtService),
     servers: app.get(ServersService),
     database: app.get(DatabaseService),
+    traefik: app.get(TraefikService),
+    applications: app.get(ApplicationsService),
   });
 
   console.log(`Velix API rodando na porta ${port}`);

@@ -3,23 +3,39 @@
 import { useEffect, useRef, useState } from 'react';
 import { getToken } from '@/lib/api';
 import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { TerminalModal } from './TerminalChrome';
 import '@xterm/xterm/css/xterm.css';
 
-type Op = 'docker-install' | 'docker-uninstall' | 'easypanel-install' | 'easypanel-uninstall' | 'updates-install' | 'mysql-install';
+export type Op =
+  | 'docker-install'
+  | 'docker-uninstall'
+  | 'traefik-install'
+  | 'traefik-uninstall'
+  | 'server-prepare'
+  | 'app-deploy'
+  | 'service-add'
+  | 'updates-install'
+  | 'mysql-install';
 
-interface Props {
+export type OpsLogStatus = 'connecting' | 'running' | 'done-ok' | 'done-error';
+
+interface PanelProps {
   serverId: string;
   op: Op;
   params?: Record<string, unknown>;
-  title: string;
-  onClose: () => void;
   onDone: (ok: boolean, result: unknown) => void;
+  onStatusChange?: (status: OpsLogStatus) => void;
 }
 
-export function InstallLogModal({ serverId, op, params, title, onClose, onDone }: Props) {
+/** Terminal + WebSocket do canal /ops, sem moldura de modal — reutilizável tanto
+ * pelo `InstallLogModal` (overlay de tela cheia) quanto embutido dentro de outro
+ * layout (ex.: a etapa "Implantação" do assistente de instalação). */
+export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange }: PanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<'connecting' | 'running' | 'done-ok' | 'done-error'>('connecting');
-  const [canClose, setCanClose] = useState(false);
+
+  function setStatus(s: OpsLogStatus) {
+    onStatusChange?.(s);
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -57,7 +73,6 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
       ws.onerror = () => {
         term?.write('\r\n\x1b[31mFalha na conexão do canal de log.\x1b[0m\r\n');
         setStatus('done-error');
-        setCanClose(true);
       };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
@@ -67,7 +82,6 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
           const ok = !!msg.ok;
           term?.write(`\r\n\x1b[${ok ? '32' : '31'}m${ok ? '✓ Concluído com sucesso.' : '✗ Falhou.'}\x1b[0m\r\n`);
           setStatus(ok ? 'done-ok' : 'done-error');
-          setCanClose(true);
           onDone(ok, ok ? msg.result : msg.error);
         }
       };
@@ -84,44 +98,53 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, op]);
 
-  const STATUS_BADGE: Record<typeof status, string> = {
-    connecting: 'bg-slate-800 text-slate-300',
-    running: 'bg-amber-500/15 text-amber-400',
-    'done-ok': 'bg-green-500/15 text-green-400',
-    'done-error': 'bg-red-500/15 text-red-400',
-  };
+  return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
+}
+
+interface Props {
+  serverId: string;
+  op: Op;
+  params?: Record<string, unknown>;
+  title: string;
+  onClose: () => void;
+  onDone: (ok: boolean, result: unknown) => void;
+}
+
+const STATUS_BADGE: Record<OpsLogStatus, string> = {
+  connecting: 'bg-slate-800 text-slate-300',
+  running: 'bg-amber-500/15 text-amber-400',
+  'done-ok': 'bg-green-500/15 text-green-400',
+  'done-error': 'bg-red-500/15 text-red-400',
+};
+
+export function InstallLogModal({ serverId, op, params, title, onClose, onDone }: Props) {
+  const [status, setStatus] = useState<OpsLogStatus>('connecting');
+  const canClose = status === 'done-ok' || status === 'done-error';
 
   return (
-    <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-md">
-      <div className="modal-pop flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#111318] shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-[#16181f] px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex shrink-0 gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-            </div>
-            <h2 className="truncate text-sm font-medium text-slate-200">{title}</h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className={`badge ${STATUS_BADGE[status]}`}>
-              {(status === 'running' || status === 'connecting') && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
-              {status === 'connecting' && 'Conectando'}
-              {status === 'running' && 'Executando'}
-              {status === 'done-ok' && 'Concluído'}
-              {status === 'done-error' && 'Falhou'}
-            </span>
-            <button
-              onClick={onClose}
-              disabled={!canClose}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-        <div ref={containerRef} className="h-[50vh] flex-1 overflow-hidden bg-[#0a0a0f] p-3" />
-      </div>
-    </div>
+    <TerminalModal
+      title={title}
+      actions={
+        <>
+          <span className={`badge ${STATUS_BADGE[status]}`}>
+            {(status === 'running' || status === 'connecting') && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+            {status === 'connecting' && 'Conectando'}
+            {status === 'running' && 'Executando'}
+            {status === 'done-ok' && 'Concluído'}
+            {status === 'done-error' && 'Falhou'}
+          </span>
+          <button
+            onClick={onClose}
+            disabled={!canClose}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Fechar
+          </button>
+        </>
+      }
+      bodyClassName="flex h-[50vh] flex-1 p-3"
+    >
+      <OpsLogPanel serverId={serverId} op={op} params={params} onDone={onDone} onStatusChange={setStatus} />
+    </TerminalModal>
   );
 }

@@ -76,10 +76,13 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
-      <h1 className="text-xl font-semibold">Configurações</h1>
+    <div className="max-w-3xl space-y-5">
+      <div>
+        <h1 className="page-title">Configurações</h1>
+        <p className="text-xs text-slate-400">Sistema e integrações</p>
+      </div>
 
-      <section className="card p-5">
+      <section className="card p-4">
         <h2 className="section-title mb-1">Cloudflare</h2>
         <p className="mb-4 text-sm text-slate-500">
           Conecte um API Token da Cloudflare para gerenciar zonas e registros DNS diretamente pelo Velix.
@@ -122,8 +125,8 @@ export default function SettingsPage() {
       </section>
 
       {account?.connected && (
-        <section className="card p-5">
-          <h2 className="section-title mb-4">Zonas</h2>
+        <section className="card p-4">
+          <h2 className="section-title mb-3">Zonas</h2>
           {zonesError && (
             <div className="mb-3">
               <Alert variant="error">{zonesError}</Alert>
@@ -131,7 +134,7 @@ export default function SettingsPage() {
           )}
           <div className="space-y-2">
             {zones.map((zone) => (
-              <div key={zone.id} className="rounded-xl border border-slate-200 transition hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700">
+              <div key={zone.id} className="rounded-xl border border-slate-200 transition hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-700">
                 <button
                   onClick={() => setExpandedZone(expandedZone === zone.id ? null : zone.id)}
                   className="flex w-full items-center justify-between px-4 py-3 text-left text-sm"
@@ -185,7 +188,7 @@ function ZoneRecords({ zoneId }: { zoneId: string }) {
   }
 
   return (
-    <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+    <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
       {error && (
         <div className="mb-2">
           <Alert variant="error">{error}</Alert>
@@ -203,7 +206,7 @@ function ZoneRecords({ zoneId }: { zoneId: string }) {
         </thead>
         <tbody>
           {records.map((r) => (
-            <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800/60">
+            <tr key={r.id} className="border-t border-slate-100 dark:border-slate-700/60">
               <td className="py-1 pr-2">{r.type}</td>
               <td className="py-1 pr-2">{r.name}</td>
               <td className="py-1 pr-2">{r.content}</td>

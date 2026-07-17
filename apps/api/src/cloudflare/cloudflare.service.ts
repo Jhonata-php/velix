@@ -29,6 +29,18 @@ export class CloudflareService {
     return { connected: true, id: account.id, email: account.email, createdAt: account.createdAt };
   }
 
+  /** Existe uma conta Cloudflare conectada? Usado pra bloquear o Traefik (SSL via DNS-01 exige token). */
+  async hasAccount(): Promise<boolean> {
+    const account = await this.prisma.cloudflareAccount.findFirst();
+    return !!account;
+  }
+
+  /** Token descriptografado — usado SÓ pra passar ao Traefik (desafio DNS-01 do Let's Encrypt).
+   * Nunca deve ser logado nem retornado por endpoint. */
+  async getTokenForDnsChallenge(): Promise<string> {
+    return this.getToken();
+  }
+
   async connect(apiToken: string) {
     const verify = await this.api.verifyToken(apiToken);
     if (verify.status !== 'active') {

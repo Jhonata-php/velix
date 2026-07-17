@@ -4,19 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { clearToken, getUser, type StoredUser } from '@/lib/api';
-import {
-  IconDashboard,
-  IconServer,
-  IconSettings,
-  IconChevronLeft,
-  IconChevronRight,
-  IconChevronUp,
-  IconLogout,
-} from './icons';
+import { IconDashboard, IconServer, IconSettings, IconLogout, IconStore } from './icons';
 
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', description: 'Visão geral da infraestrutura', icon: IconDashboard },
   { href: '/servers', label: 'Servidores', description: 'Cadastro e monitoramento', icon: IconServer },
+  { href: '/library', label: 'Biblioteca', description: 'Catálogo de aplicações', icon: IconStore },
   { href: '/settings', label: 'Configurações', description: 'Sistema e integrações', icon: IconSettings },
 ];
 
@@ -47,29 +40,12 @@ function Avatar({ user }: { user: StoredUser }) {
   );
 }
 
-const SIDEBAR_COLLAPSED_KEY = 'velix_sidebar_collapsed';
-
 export function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const user = useLoggedUser();
   const logout = useLogout();
-
-  // Lembra se a sidebar estava recolhida — sem isso, ela volta a abrir toda
-  // vez que a página recarrega.
-  useEffect(() => {
-    setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
-  }, []);
-
-  function toggleCollapsed() {
-    setCollapsed((v) => {
-      const next = !v;
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
-      return next;
-    });
-  }
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -81,27 +57,13 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop: sidebar lateral recolhível */}
-      <aside
-        className={`relative hidden h-screen flex-col border-r border-slate-200 bg-white transition-all dark:border-slate-800 dark:bg-slate-900 md:flex ${
-          collapsed ? 'w-20' : 'w-72'
-        }`}
-      >
-        <button
-          onClick={toggleCollapsed}
-          className="absolute -right-3 top-6 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:hover:text-indigo-400"
-        >
-          {collapsed ? <IconChevronRight className="h-3.5 w-3.5" /> : <IconChevronLeft className="h-3.5 w-3.5" />}
-        </button>
-
-        <div className={`flex items-center gap-2 p-5 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold text-white shadow-md shadow-indigo-500/30">
-            V
-          </div>
-          {!collapsed && <span className="text-xl font-semibold">Velix</span>}
+      {/* Desktop: trilha de ícones fixa, com submenu flutuante ao passar o mouse */}
+      <aside className="sticky top-0 hidden h-screen w-[72px] shrink-0 [transform:translateZ(0)] flex-col items-center border-r border-slate-200 bg-white py-4 dark:border-slate-700 dark:bg-slate-950 md:flex">
+        <div className="mb-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold text-white shadow-md shadow-indigo-500/30">
+          V
         </div>
 
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3">
+        <nav className="flex flex-1 flex-col items-center gap-1.5">
           {LINKS.map((link) => {
             const active = pathname?.startsWith(link.href);
             const Icon = link.icon;
@@ -109,35 +71,32 @@ export function Sidebar() {
               <Link
                 key={link.href}
                 href={link.href}
-                title={collapsed ? link.label : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                className={`group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition ${
                   active
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                    : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60'
-                } ${collapsed ? 'justify-center' : ''}`}
+                    ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                }`}
               >
-                <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                    active ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
+                {active && <span className="absolute -left-2.5 h-4 w-0.5 rounded-full bg-indigo-500" />}
+                <Icon className="h-[18px] w-[18px]" />
+                {/* Submenu contextual: aparece ao lado ao passar o mouse */}
+                <span className="pointer-events-none absolute left-full top-1/2 z-30 ml-3 w-52 -translate-y-1/2 translate-x-1 rounded-lg border border-slate-200 bg-white p-3 opacity-0 shadow-lg transition group-hover:translate-x-0 group-hover:opacity-100 dark:border-slate-700 dark:bg-slate-800">
+                  <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{link.label}</span>
+                  <span className="mt-0.5 block text-xs text-slate-400">{link.description}</span>
                 </span>
-                {!collapsed && (
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{link.label}</span>
-                    <span className={`block truncate text-xs ${active ? 'text-indigo-100' : 'text-slate-400'}`}>{link.description}</span>
-                  </span>
-                )}
               </Link>
             );
           })}
         </nav>
 
         {user && (
-          <div ref={menuRef} className="relative border-t border-slate-100 p-3 dark:border-slate-800">
-            {menuOpen && !collapsed && (
-              <div className="absolute bottom-full left-3 right-3 mb-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+          <div ref={menuRef} className="relative mt-3">
+            {menuOpen && (
+              <div className="absolute bottom-0 left-full z-30 ml-3 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
+                  <span className="block truncate text-sm font-medium">{user.name}</span>
+                  <span className="block truncate text-xs text-slate-400">{roleLabel(user.role)}</span>
+                </div>
                 <button
                   onClick={logout}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -147,27 +106,15 @@ export function Sidebar() {
                 </button>
               </div>
             )}
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              className={`flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 ${collapsed ? 'justify-center' : ''}`}
-            >
+            <button onClick={() => setMenuOpen((v) => !v)} title={user.name}>
               <Avatar user={user} />
-              {!collapsed && (
-                <>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{user.name}</span>
-                    <span className="block truncate text-xs text-slate-400">{roleLabel(user.role)}</span>
-                  </span>
-                  <IconChevronUp className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${menuOpen ? '' : 'rotate-180'}`} />
-                </>
-              )}
             </button>
           </div>
         )}
       </aside>
 
       {/* Mobile: barra de navegação fixa embaixo */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-slate-800 dark:bg-slate-900 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-slate-700 dark:bg-slate-900 md:hidden">
         {LINKS.map((link) => {
           const active = pathname?.startsWith(link.href);
           const Icon = link.icon;

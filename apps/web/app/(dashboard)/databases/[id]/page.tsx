@@ -5,7 +5,12 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { Alert } from '@/components/Alert';
 import { Modal } from '@/components/Modal';
-import { IconPlus, IconDisk } from '@/components/icons';
+import { ContainerLogsModal } from '@/components/ContainerLogsModal';
+import { DbConsoleModal } from '@/components/DbConsoleModal';
+import { Breadcrumb } from '@/components/Breadcrumb';
+import { Skeleton } from '@/components/Skeleton';
+import { StatusBadge, REPLICATION_STATUS_TONE, INSTANCE_STATUS_TONE } from '@/components/StatusBadge';
+import { IconPlus, IconDisk, IconTerminal, IconKey, IconFileText } from '@/components/icons';
 
 interface Replication {
   id: string;
@@ -20,6 +25,7 @@ interface DatabaseInstanceDetail {
   name: string;
   serverId: string;
   engine: string;
+  containerName: string;
   port: number;
   role: 'STANDALONE' | 'PRIMARY' | 'REPLICA';
   status: string;
@@ -45,25 +51,13 @@ const STATUS_LABEL: Record<Replication['status'], string> = {
   PROMOTED: 'promovida (antiga réplica agora é primário)',
 };
 
-const REPLICATION_BADGE: Record<Replication['status'], string> = {
-  PROVISIONING: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  SYNCING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  IN_SYNC: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-  DELAYED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  ERROR: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-  PROMOTED: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
-};
-
-const INSTANCE_STATUS_BADGE: Record<string, string> = {
-  ONLINE: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-  OFFLINE: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  ERROR: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-};
-
 export default function DatabaseDetailPage() {
   const params = useParams<{ id: string }>();
   const [instance, setInstance] = useState<DatabaseInstanceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   function load() {
     apiFetch<DatabaseInstanceDetail>(`/databases/${params.id}`)
@@ -74,30 +68,54 @@ export default function DatabaseDetailPage() {
   useEffect(load, [params.id]);
 
   if (error) return <Alert variant="error">{error}</Alert>;
-  if (!instance) return null;
+  if (!instance) {
+    return (
+      <div className="max-w-4xl">
+        <Skeleton className="mb-2 h-3 w-32" />
+        <Skeleton className="mb-6 h-9 w-64" />
+        <Skeleton className="h-20" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center gap-3">
-        <span className="icon-chip bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400">
-          <IconDisk className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{instance.name}</h1>
-          <p className="text-sm text-slate-500">
-            MySQL {instance.version ?? ''} · porta {instance.port} · banco {instance.databaseName}
-          </p>
+      <Breadcrumb items={[{ label: 'Servidor', href: `/servers/${instance.serverId}` }, { label: instance.name }]} />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="icon-chip bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400">
+            <IconDisk className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="page-title">{instance.name}</h1>
+            <p className="text-sm text-slate-500">
+              MySQL {instance.version ?? ''} · porta {instance.port} · banco {instance.databaseName}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowCredentials(true)} className="btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm">
+            <IconKey className="h-4 w-4" />
+            Credenciais
+          </button>
+          <button onClick={() => setShowConsole(true)} className="btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm">
+            <IconTerminal className="h-4 w-4" />
+            Console
+          </button>
+          <button onClick={() => setShowLogs(true)} className="btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm">
+            <IconFileText className="h-4 w-4" />
+            Logs
+          </button>
         </div>
       </div>
 
-      <div className="card mb-8 grid grid-cols-2 gap-4 p-5 text-sm">
+      <div className="card mb-6 grid grid-cols-2 gap-4 p-4 text-sm">
         <Info label="Papel" value={instance.role} />
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Status</p>
-          <span className={`badge mt-1 ${INSTANCE_STATUS_BADGE[instance.status] ?? INSTANCE_STATUS_BADGE.OFFLINE}`}>
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            {instance.status}
-          </span>
+          <div className="mt-1">
+            <StatusBadge tone={INSTANCE_STATUS_TONE[instance.status] ?? 'neutral'}>{instance.status}</StatusBadge>
+          </div>
         </div>
       </div>
 
@@ -108,6 +126,117 @@ export default function DatabaseDetailPage() {
       {instance.replicationAsReplica && (
         <ReplicationCard replication={instance.replicationAsReplica} isReplicaSide onChange={load} />
       )}
+
+      {showCredentials && <CredentialsModal instanceId={instance.id} onClose={() => setShowCredentials(false)} />}
+      {showConsole && <DbConsoleModal instanceId={instance.id} title={instance.name} onClose={() => setShowConsole(false)} />}
+      {showLogs && (
+        <ContainerLogsModal
+          serverId={instance.serverId}
+          containerId={instance.containerName}
+          title={instance.containerName}
+          onClose={() => setShowLogs(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface Credentials {
+  host: string | null;
+  port: number;
+  databaseName: string;
+  appUser: string;
+  appPassword: string;
+  rootPassword: string;
+}
+
+function CredentialsModal({ instanceId, onClose }: { instanceId: string; onClose: () => void }) {
+  const [creds, setCreds] = useState<Credentials | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<Credentials>(`/databases/${instanceId}/credentials`)
+      .then(setCreds)
+      .catch((e) => setError(e.message));
+  }, [instanceId]);
+
+  function copy(field: string, value: string) {
+    navigator.clipboard.writeText(value);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1500);
+  }
+
+  return (
+    <Modal title="Credenciais de acesso" onClose={onClose}>
+      {error && <Alert variant="error">{error}</Alert>}
+      {!creds && !error && <p className="text-sm text-slate-400">Carregando...</p>}
+      {creds && (
+        <div>
+          <div className="mb-3 flex justify-end">
+            <button onClick={() => setRevealed((v) => !v)} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+              {revealed ? 'Ocultar senhas' : 'Mostrar senhas'}
+            </button>
+          </div>
+          <div className="space-y-2">
+            <CredentialRow label="Host" value={creds.host ?? '—'} copied={copiedField === 'host'} onCopy={() => copy('host', creds.host ?? '')} />
+            <CredentialRow label="Porta" value={String(creds.port)} copied={copiedField === 'port'} onCopy={() => copy('port', String(creds.port))} />
+            <CredentialRow
+              label="Banco"
+              value={creds.databaseName}
+              copied={copiedField === 'db'}
+              onCopy={() => copy('db', creds.databaseName)}
+            />
+            <CredentialRow
+              label="Usuário app"
+              value={creds.appUser}
+              copied={copiedField === 'user'}
+              onCopy={() => copy('user', creds.appUser)}
+            />
+            <CredentialRow
+              label="Senha app"
+              value={creds.appPassword}
+              masked={!revealed}
+              copied={copiedField === 'apppass'}
+              onCopy={() => copy('apppass', creds.appPassword)}
+            />
+            <CredentialRow
+              label="Senha root"
+              value={creds.rootPassword}
+              masked={!revealed}
+              copied={copiedField === 'rootpass'}
+              onCopy={() => copy('rootpass', creds.rootPassword)}
+            />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function CredentialRow({
+  label,
+  value,
+  masked,
+  copied,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  masked?: boolean;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="truncate font-mono text-sm">{masked ? '••••••••••••' : value}</p>
+      </div>
+      <button onClick={onCopy} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+        {copied ? 'Copiado!' : 'Copiar'}
+      </button>
     </div>
   );
 }
@@ -214,10 +343,7 @@ function ReplicationCard({
   return (
     <div className="card mb-3 p-4 text-sm">
       <div className="mb-2 flex items-center justify-between">
-        <span className={`badge ${REPLICATION_BADGE[replication.status]}`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          {STATUS_LABEL[replication.status]}
-        </span>
+        <StatusBadge tone={REPLICATION_STATUS_TONE[replication.status] ?? 'neutral'}>{STATUS_LABEL[replication.status]}</StatusBadge>
         <button onClick={refresh} disabled={refreshing} className="text-xs text-slate-400 hover:underline">
           {refreshing ? 'Atualizando...' : 'Atualizar status'}
         </button>
@@ -229,7 +355,7 @@ function ReplicationCard({
       )}
 
       {!isReplicaSide && replication.status !== 'PROMOTED' && (
-        <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-700">
           {!showConfirm ? (
             <button
               onClick={() => setShowConfirm(true)}

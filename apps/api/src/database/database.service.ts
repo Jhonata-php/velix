@@ -106,6 +106,19 @@ export class DatabaseService {
     return rest;
   }
 
+  async getCredentials(id: string) {
+    const instance = await this.prisma.databaseInstance.findUnique({ where: { id }, include: { server: true } });
+    if (!instance) throw new NotFoundException('Instância de banco não encontrada');
+    return {
+      host: instance.server.publicIp ?? instance.server.privateIp ?? instance.server.hostname,
+      port: instance.port,
+      databaseName: instance.databaseName,
+      appUser: instance.appUser,
+      appPassword: decryptCredential(instance.appPasswordEnc),
+      rootPassword: decryptCredential(instance.rootPasswordEnc),
+    };
+  }
+
   async installInstance(serverId: string, dto: CreateInstanceDto, onLog?: (line: string) => void) {
     const { server, options } = await this.servers.getServerWithConnectOptions(serverId);
     if (!server.dockerInstalled) {

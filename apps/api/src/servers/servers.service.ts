@@ -9,6 +9,7 @@ import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
 import { METRICS_COMMAND, parseMetrics } from './metrics.util';
+import { shellSingleQuote } from '../database/mysql.util';
 
 type LogFn = (line: string) => void;
 
@@ -389,6 +390,71 @@ export class ServersService {
         const [id, image, status, names] = line.split('|');
         return { id, image, status, names };
       });
+  }
+
+  async containerLogs(id: string, containerId: string, tail: number) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const result = await this.ssh.runCommand(options, `sudo docker logs --tail ${tail} ${containerId} 2>&1`, 15_000);
+    return { logs: result.stdout || result.stderr || '(sem log)' };
+  }
+
+  /**
+   * Clona um container genérico (imagem + env + portas + volumes + restart
+   * policy) num outro servidor — SEM sincronizar dados, só recria a mesma
+   * definição do zero. Diferente da réplica de banco: não há protocolo de
+   * replicação envolvido, é literalmente rodar `docker run` de novo alhures.
+   *
+   * ponytail: não tenta preservar rede customizada/overlay (ex.: rede do
+   * Docker Swarm que o EasyPanel usa) — o clone sobe na rede padrão do
+   * destino. Suficiente pra "levantar uma cópia isolada em outro lugar";
+   * containers que dependem de service discovery do Swarm/Traefik precisam
+   * de reconfiguração manual pós-clone.
+   */
+  async cloneContainer(sourceServerId: string, containerId: string, targetServerId: string) {
+    const source = await this.getRawServer(sourceServerId);
+    const sourceOptions = this.toConnectOptions(source);
+
+    const inspectCmd = `sudo docker inspect ${containerId} --format '{{.Name}}|{{.Config.Image}}|{{json .Config.Env}}|{{json .HostConfig.PortBindings}}|{{json .Mounts}}|{{.HostConfig.RestartPolicy.Name}}'`;
+    const inspectRes = await this.ssh.runCommand(sourceOptions, inspectCmd, 15_000);
+    if (!inspectRes.ok) {
+      throw new BadRequestException(`Falha ao inspecionar container: ${inspectRes.stderr || inspectRes.message}`);
+    }
+
+    const [rawName, image, envJson, portsJson, mountsJson, restartPolicy] = inspectRes.stdout.trim().split('|');
+    const baseName = (rawName || '').replace(/^\//, '') || 'container';
+    const env: string[] = JSON.parse(envJson || 'null') ?? [];
+    const portBindings: Record<string, { HostPort: string }[]> = JSON.parse(portsJson || 'null') ?? {};
+    const mounts: { Type: string; Name?: string; Source: string; Destination: string }[] = JSON.parse(mountsJson || 'null') ?? [];
+
+    const target = await this.getRawServer(targetServerId);
+    if (!target.dockerInstalled) throw new BadRequestException('Instale o Docker no servidor de destino antes de clonar');
+    const targetOptions = this.toConnectOptions(target);
+
+    const cloneName = `${baseName}-clone`;
+    const args = ['sudo docker run -d', `--name ${cloneName}`, `--restart ${restartPolicy || 'unless-stopped'}`];
+
+    for (const [containerPort, bindings] of Object.entries(portBindings)) {
+      const [port, proto] = containerPort.split('/');
+      for (const b of bindings ?? []) {
+        args.push(`-p ${b.HostPort}:${port}${proto === 'udp' ? '/udp' : ''}`);
+      }
+    }
+    for (const e of env) {
+      args.push(`-e ${shellSingleQuote(e)}`);
+    }
+    for (const m of mounts) {
+      if (m.Type === 'volume' && m.Name) args.push(`-v ${m.Name}:${m.Destination}`);
+      else if (m.Type === 'bind') args.push(`-v ${m.Source}:${m.Destination}`);
+    }
+    args.push(image);
+
+    const run = await this.ssh.runCommand(targetOptions, args.join(' '), 180_000);
+    if (!run.ok) {
+      throw new BadRequestException(`Falha ao criar container clonado: ${run.stderr || run.stdout || run.message}`);
+    }
+
+    return { ok: true, containerName: cloneName };
   }
 
   async startContainer(id: string, containerId: string) {

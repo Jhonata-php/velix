@@ -98,6 +98,17 @@ export class ServersController {
     return this.servers.dockerStatus(id);
   }
 
+  @Get(':id/docker/containers/:containerId/logs')
+  containerLogs(@Param('id') id: string, @Param('containerId') containerId: string, @Query('tail') tail?: string) {
+    const parsed = Number(tail);
+    return this.servers.containerLogs(id, containerId, Number.isFinite(parsed) && parsed > 0 ? parsed : 200);
+  }
+
+  @Post(':id/docker/containers/:containerId/clone')
+  cloneContainer(@Param('id') id: string, @Param('containerId') containerId: string, @Body('targetServerId') targetServerId: string) {
+    return this.servers.cloneContainer(id, containerId, targetServerId);
+  }
+
   @Post(':id/docker/containers/:containerId/start')
   startContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
     return this.servers.startContainer(id, containerId);

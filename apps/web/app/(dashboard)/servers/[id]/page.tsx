@@ -5,14 +5,37 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { useInstallWizard } from '@/lib/useInstallWizard';
 import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { type DockerContainer, groupContainers, avatarColor, stripSwarmSuffix } from '@/lib/containerGroups';
+import type { DatabaseInstanceSummary, CatalogApplicationSummary, CatalogApplicationDetail, ProjectService } from '@/lib/types';
 import { Bar } from '@/components/Bar';
 import { Alert } from '@/components/Alert';
-import { InstallLogModal } from '@/components/InstallLogModal';
+import { AppIcon } from '@/components/AppIcon';
+import { CompactAppCard } from '@/components/CompactAppCard';
+import { DeployWizard } from '@/components/DeployWizard';
+import { InstallLogModal, OpsLogPanel, type OpsLogStatus } from '@/components/InstallLogModal';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { ServerFormModal } from '@/components/ServerFormModal';
 import { Sparkline } from '@/components/Sparkline';
 import { MetricHistoryModal } from '@/components/MetricHistoryModal';
+import { ContainerLogsModal } from '@/components/ContainerLogsModal';
+import { CloneContainerModal } from '@/components/CloneContainerModal';
+import { QuickReplicateModal } from '@/components/QuickReplicateModal';
+import { ContainerRow } from '@/components/ContainerRow';
+import { MetricCard } from '@/components/MetricCard';
+import { StatusBadge, CapabilityBadge, type StatusTone } from '@/components/StatusBadge';
+import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu';
+import { Breadcrumb } from '@/components/Breadcrumb';
+import { TerminalWindow, TerminalActionButton } from '@/components/TerminalChrome';
+import { Skeleton, SkeletonRow } from '@/components/Skeleton';
+import { ServerHeader } from '@/components/ServerHeader';
+import { ContextNav, type ContextNavGroup } from '@/components/ContextNav';
+import { ModuleHeader } from '@/components/ModuleHeader';
+import { Toolbar } from '@/components/Toolbar';
+import { DockerSummary } from '@/components/DockerSummary';
+import { OperationalPanel, OperationalPanelSection } from '@/components/OperationalPanel';
+import { EmptyState } from '@/components/EmptyState';
 import {
   IconDownload,
   IconPlus,
@@ -25,7 +48,16 @@ import {
   IconPencil,
   IconTrash,
   IconPower,
+  IconBox,
+  IconTerminal,
   IconRefresh,
+  IconGlobe,
+  IconShield,
+  IconLayoutGrid,
+  IconStore,
+  IconSearch,
+  IconKey,
+  IconLayers,
 } from '@/components/icons';
 import '@xterm/xterm/css/xterm.css';
 
@@ -54,23 +86,52 @@ interface Server {
   packageManager: string | null;
   dockerInstalled: boolean;
   dockerVersion: string | null;
+  // Mantido só pra compat de leitura — não é mais exibido (substituído pelo Traefik/Velix).
   easypanelInstalled: boolean;
   easypanelUrl: string | null;
+  traefikInstalled: boolean;
+  traefikVersion: string | null;
+  platformState: string;
   metrics: ServerMetrics | null;
   metricsCheckedAt: string | null;
   lastCheckedAt: string | null;
 }
 
-const TABS = [
-  { key: 'overview', label: 'Visão geral' },
-  { key: 'updates', label: 'Atualizações' },
-  { key: 'docker', label: 'Docker' },
-  { key: 'easypanel', label: 'EasyPanel' },
-  { key: 'databases', label: 'Bancos' },
-  { key: 'terminal', label: 'Terminal' },
-] as const;
+type TabKey = 'overview' | 'updates' | 'docker' | 'applications' | 'library' | 'proxy' | 'databases' | 'terminal';
 
-type TabKey = (typeof TABS)[number]['key'];
+// Nav contextual agrupada. Só itens com tela real — módulos futuros
+// (Backups, Monitoramento, Rede, Segurança) entram aqui conforme forem construídos.
+const NAV_GROUPS: ContextNavGroup[] = [
+  {
+    label: 'Geral',
+    items: [
+      { key: 'overview', label: 'Visão geral', icon: <IconActivity /> },
+      { key: 'updates', label: 'Atualizações', icon: <IconDownload /> },
+    ],
+  },
+  {
+    label: 'Plataforma',
+    items: [
+      { key: 'docker', label: 'Docker', icon: <IconBox /> },
+      { key: 'applications', label: 'Aplicações', icon: <IconLayoutGrid /> },
+      { key: 'library', label: 'Biblioteca', icon: <IconStore /> },
+      { key: 'proxy', label: 'Proxy e domínios', icon: <IconGlobe /> },
+      { key: 'databases', label: 'Bancos', icon: <IconDisk /> },
+    ],
+  },
+  {
+    label: 'Operação',
+    items: [{ key: 'terminal', label: 'Terminal', icon: <IconTerminal /> }],
+  },
+];
+
+const PLATFORM_STATE: Record<string, { tone: StatusTone; label: string }> = {
+  NOT_PREPARED: { tone: 'neutral', label: 'Não preparado' },
+  PREPARING: { tone: 'info', label: 'Preparando' },
+  READY: { tone: 'success', label: 'Pronto' },
+  DEGRADED: { tone: 'warning', label: 'Degradado' },
+  ERROR: { tone: 'danger', label: 'Erro' },
+};
 
 export default function ServerDetailPage() {
   const params = useParams<{ id: string }>();
@@ -101,56 +162,68 @@ export default function ServerDetailPage() {
     }
   }
 
-  if (!server) return null;
+  if (!server) {
+    return (
+      <div>
+        <Skeleton className="mb-2 h-6 w-48" />
+        <Skeleton className="mb-4 h-3.5 w-64" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const actions: ActionMenuItem[] = [
+    { label: 'Editar servidor', icon: <IconPencil className="h-4 w-4" />, onClick: () => setEditing(true) },
+    { label: 'Excluir servidor', icon: <IconTrash className="h-4 w-4" />, onClick: () => setDeleting(true), danger: true },
+  ];
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{server.name}</h1>
-          <p className="text-sm text-slate-500">
+      <Breadcrumb items={[{ label: 'Servidores', href: '/servers' }, { label: server.name }]} />
+
+      <ServerHeader
+        name={server.name}
+        status={server.status as 'PENDING' | 'ONLINE' | 'OFFLINE' | 'ERROR'}
+        actions={actions}
+        meta={
+          <>
             {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
-          </p>
+            {server.osName && ` · ${server.osName} ${server.osVersion ?? ''}`}
+            {server.lastCheckedAt && ` · verificado ${new Date(server.lastCheckedAt).toLocaleString('pt-BR')}`}
+          </>
+        }
+        badges={
+          <>
+            <StatusBadge tone={(PLATFORM_STATE[server.platformState] ?? PLATFORM_STATE.NOT_PREPARED).tone}>
+              {(PLATFORM_STATE[server.platformState] ?? PLATFORM_STATE.NOT_PREPARED).label}
+            </StatusBadge>
+            <CapabilityBadge ok={server.dockerInstalled} label={server.dockerInstalled ? `Docker ${server.dockerVersion ?? ''}` : 'Docker não instalado'} />
+            <CapabilityBadge
+              ok={server.traefikInstalled}
+              label={server.traefikInstalled ? `Traefik ${server.traefikVersion ?? ''}` : 'Traefik não instalado'}
+            />
+          </>
+        }
+      />
+
+      <div className="flex flex-col gap-6 md:flex-row">
+        <ContextNav groups={NAV_GROUPS} active={tab} onSelect={(key) => setTab(key as TabKey)} />
+
+        <div className="min-w-0 flex-1">
+          {tab === 'overview' && <OverviewTab server={server} onChange={load} />}
+          {tab === 'updates' && <UpdatesTab serverId={server.id} />}
+          {tab === 'docker' && <DockerTab server={server} onChange={load} />}
+          {tab === 'applications' && <ApplicationsTab server={server} onGoToLibrary={() => setTab('library')} />}
+          {tab === 'library' && <LibraryTab server={server} />}
+          {tab === 'proxy' && <ProxyTab server={server} onChange={load} />}
+          {tab === 'databases' && <DatabasesTab server={server} />}
+          {tab === 'terminal' && <TerminalTab serverId={server.id} />}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setEditing(true)} className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm">
-            <IconPencil className="h-4 w-4" />
-            Editar
-          </button>
-          <button onClick={() => setDeleting(true)} className="btn-danger flex items-center gap-2 px-3 py-2 text-sm">
-            <IconTrash className="h-4 w-4" />
-            Excluir
-          </button>
-          <StatusPill status={server.status} />
-        </div>
       </div>
-
-      <div className="mb-6 flex flex-wrap gap-2">
-        <Badge ok={server.dockerInstalled} label={server.dockerInstalled ? `Docker ${server.dockerVersion ?? ''}` : 'Docker não instalado'} />
-        <Badge
-          ok={server.easypanelInstalled}
-          label={server.easypanelInstalled ? 'EasyPanel instalado' : 'EasyPanel não instalado'}
-        />
-      </div>
-
-      <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`tab-pill ${tab === t.key ? 'tab-pill-active' : ''}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'overview' && <OverviewTab server={server} onChange={load} />}
-      {tab === 'updates' && <UpdatesTab serverId={server.id} />}
-      {tab === 'docker' && <DockerTab server={server} onChange={load} />}
-      {tab === 'easypanel' && <EasyPanelTab server={server} onChange={load} />}
-      {tab === 'databases' && <DatabasesTab server={server} />}
-      {tab === 'terminal' && <TerminalTab serverId={server.id} />}
 
       {editing && (
         <ServerFormModal
@@ -176,61 +249,6 @@ export default function ServerDetailPage() {
         />
       )}
     </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  chip,
-  onClick,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  chip: string;
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`card card-hover p-4 ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
-      <div className="mb-3 flex items-center gap-2.5">
-        <span className={`icon-chip h-8 w-8 ${chip}`}>{icon}</span>
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-const STATUS_PILL_STYLE: Record<string, string> = {
-  ONLINE: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-  PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  OFFLINE: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  ERROR: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-};
-
-function StatusPill({ status }: { status: string }) {
-  return (
-    <span className={`badge ${STATUS_PILL_STYLE[status] ?? STATUS_PILL_STYLE.OFFLINE}`}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status}
-    </span>
-  );
-}
-
-function Badge({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <span
-      className={`badge border ${
-        ok
-          ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400'
-          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-green-500' : 'bg-slate-400'}`} />
-      {label}
-    </span>
   );
 }
 
@@ -347,72 +365,72 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </button>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatCard icon={<IconServer className="h-4 w-4" />} chip="bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" label="Sistema operacional">
-          <p className="truncate text-sm font-semibold">{server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'}</p>
-        </StatCard>
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <MetricCard icon={<IconServer className="h-4 w-4" />} chipClassName="bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" label="Sistema operacional">
+          <p className="truncate text-xl font-bold tracking-tight">{server.osName ? `${server.osName} ${server.osVersion ?? ''}` : '—'}</p>
+        </MetricCard>
 
-        <StatCard icon={<IconClock className="h-4 w-4" />} chip="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400" label="Uptime">
-          <p className="text-sm font-semibold">{server.metrics?.uptimeText ?? '—'}</p>
-        </StatCard>
+        <MetricCard icon={<IconClock className="h-4 w-4" />} chipClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400" label="Uptime">
+          <p className="text-xl font-bold tracking-tight">{server.metrics?.uptimeText ?? '—'}</p>
+        </MetricCard>
 
-        <StatCard
+        <MetricCard
           icon={<IconActivity className="h-4 w-4" />}
-          chip="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+          chipClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
           label="Load average"
           onClick={() => setExpandedMetric('load')}
         >
           {server.metrics?.loadAvg ? (
             <>
-              <p className="text-sm font-semibold">{server.metrics.loadAvg.join(' · ')}</p>
-              <Sparkline data={loadHistory} className="mt-2 h-12 w-full text-violet-500 dark:text-violet-400" />
+              <p className="text-xl font-bold tracking-tight">{server.metrics.loadAvg.join(' · ')}</p>
+              <Sparkline data={loadHistory} className="mt-2 h-10 w-full text-violet-500 dark:text-violet-400" />
             </>
           ) : (
-            <p className="text-sm font-semibold">—</p>
+            <p className="text-xl font-bold tracking-tight">—</p>
           )}
-        </StatCard>
+        </MetricCard>
 
-        <StatCard
+        <MetricCard
           icon={<IconMemory className="h-4 w-4" />}
-          chip="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+          chipClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           label="Memória"
           onClick={() => setExpandedMetric('mem')}
         >
           {memPercent !== null ? (
             <>
-              <div className="flex items-center gap-2">
-                <Bar percent={memPercent} />
-                <span className="shrink-0 text-xs text-slate-500">
+              <div className="flex items-baseline justify-between">
+                <p className="text-xl font-bold tracking-tight">{Math.round(memPercent)}%</p>
+                <span className="shrink-0 text-xs text-slate-400">
                   {server.metrics?.memUsedMb}/{server.metrics?.memTotalMb}MB
                 </span>
               </div>
-              <Sparkline data={memHistory} className="mt-2 h-12 w-full text-amber-500 dark:text-amber-400" />
+              <Sparkline data={memHistory} className="mt-2 h-10 w-full text-amber-500 dark:text-amber-400" />
             </>
           ) : (
-            <p className="text-sm font-semibold">—</p>
+            <p className="text-xl font-bold tracking-tight">—</p>
           )}
-        </StatCard>
+        </MetricCard>
 
-        <StatCard
+        <MetricCard
           icon={<IconDisk className="h-4 w-4" />}
-          chip="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400"
+          chipClassName="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400"
           label="Disco"
           onClick={() => setExpandedMetric('disk')}
         >
           {diskPercent !== null ? (
             <>
-              <div className="flex items-center gap-2">
-                <Bar percent={diskPercent} />
-                <span className="shrink-0 text-xs text-slate-500">
+              <div className="flex items-baseline justify-between">
+                <p className="text-xl font-bold tracking-tight">{Math.round(diskPercent)}%</p>
+                <span className="shrink-0 text-xs text-slate-400">
                   {server.metrics?.diskUsed}/{server.metrics?.diskTotal}
                 </span>
               </div>
-              <Sparkline data={diskHistory} className="mt-2 h-12 w-full text-teal-500 dark:text-teal-400" />
+              <Sparkline data={diskHistory} className="mt-2 h-10 w-full text-teal-500 dark:text-teal-400" />
             </>
           ) : (
-            <p className="text-sm font-semibold">—</p>
+            <p className="text-xl font-bold tracking-tight">—</p>
           )}
-        </StatCard>
+        </MetricCard>
       </div>
 
       {expandedMetric && (
@@ -432,7 +450,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
         <div className="card p-5">
           <h2 className="section-title mb-3">Ações</h2>
           <div className="flex flex-wrap gap-2">
@@ -491,7 +509,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
             <ul className="mt-3 space-y-1 text-sm">
               {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
               {domains.map((d) => (
-                <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+                <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
                   <span>{d.name}</span>
                   <span className="text-xs text-slate-400">
                     {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
@@ -580,7 +598,7 @@ function UpdatesTab({ serverId }: { serverId: string }) {
       {info && info.packages.length > 0 && (
         <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 dark:border-slate-800">
+            <thead className="border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Pacote</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Versão</th>
@@ -589,7 +607,7 @@ function UpdatesTab({ serverId }: { serverId: string }) {
             </thead>
             <tbody>
               {info.packages.map((p) => (
-                <tr key={p.name} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                <tr key={p.name} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/40">
                   <td className="px-4 py-3">{p.name}</td>
                   <td className="px-4 py-3 text-slate-500">{p.version}</td>
                   <td className="px-4 py-3">{p.security ? '⚠️ sim' : '—'}</td>
@@ -614,13 +632,6 @@ function UpdatesTab({ serverId }: { serverId: string }) {
   );
 }
 
-interface DockerContainer {
-  id: string;
-  image: string;
-  status: string;
-  names: string;
-}
-
 interface DockerStatusResp {
   installed: boolean;
   version?: string;
@@ -637,6 +648,10 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
   const [showUninstallLog, setShowUninstallLog] = useState(false);
   const [instances, setInstances] = useState<DatabaseInstanceSummary[]>([]);
   const [replicateTarget, setReplicateTarget] = useState<DatabaseInstanceSummary | null>(null);
+  const [logsTarget, setLogsTarget] = useState<DockerContainer | null>(null);
+  const [cloneTarget, setCloneTarget] = useState<DockerContainer | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'stopped' | 'all'>('active');
+  const [search, setSearch] = useState('');
 
   function loadStatus() {
     apiFetch<DockerStatusResp>(`/servers/${server.id}/docker/status`)
@@ -667,6 +682,20 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
       loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao ${running ? 'parar' : 'iniciar'} container`);
+    } finally {
+      setContainerLoading(null);
+    }
+  }
+
+  async function handleRestart(c: DockerContainer) {
+    setContainerLoading(c.id);
+    setError(null);
+    try {
+      await apiFetch(`/servers/${server.id}/docker/containers/${c.id}/stop`, { method: 'POST' });
+      await apiFetch(`/servers/${server.id}/docker/containers/${c.id}/start`, { method: 'POST' });
+      loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao reiniciar container');
     } finally {
       setContainerLoading(null);
     }
@@ -715,89 +744,163 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
     );
   }
 
+  const allContainers = status?.containers ?? [];
+  const searched = search.trim()
+    ? allContainers.filter(
+        (c) => stripSwarmSuffix(c.names).toLowerCase().includes(search.toLowerCase()) || c.image.toLowerCase().includes(search.toLowerCase()),
+      )
+    : allContainers;
+  const visibleContainers = searched.filter((c) => {
+    const running = c.status.toLowerCase().includes('up');
+    if (statusFilter === 'active') return running;
+    if (statusFilter === 'stopped') return !running;
+    return true;
+  });
+  const groups = groupContainers(visibleContainers);
+  const dbInstances = instances.length;
+
+  const dangerMenu: ActionMenuItem[] = [
+    { label: 'Desinstalar Docker', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmUninstall(true), danger: true },
+  ];
+
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-slate-500">Versão do Docker: {status?.version ?? server.dockerVersion}</p>
-        <div className="flex items-center gap-2">
-          <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
-            ↻ Atualizar
-          </button>
-          <button onClick={() => setConfirmUninstall(true)} className="btn-danger px-3 py-1.5 text-xs">
-            Desinstalar Docker
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col gap-5 xl:flex-row">
+      <div className="min-w-0 flex-1">
+        <ModuleHeader
+          title="Docker"
+          description="Containers, projetos e stacks deste servidor"
+          meta={`Versão ${status?.version ?? server.dockerVersion ?? '—'}`}
+          actions={
+            <button onClick={loadStatus} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+              <IconRefresh className="h-3.5 w-3.5" />
+              Atualizar
+            </button>
+          }
+          menu={dangerMenu}
+        />
 
-      {error && (
-        <div className="mb-3">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      )}
+        {error && (
+          <div className="mb-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 dark:border-slate-800">
-            <tr>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {status?.containers?.map((c) => {
-              const running = c.status.toLowerCase().includes('up');
-              const busy = containerLoading === c.id;
-              const instance = instances.find((i) => i.containerName === c.names);
-              const canReplicate = instance && instance.role !== 'REPLICA';
+        <DockerSummary version={status?.version ?? server.dockerVersion ?? undefined} containers={allContainers} />
+
+        <Toolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar por nome ou imagem..."
+          resultCount={`${visibleContainers.length} container${visibleContainers.length === 1 ? '' : 's'}`}
+          filters={
+            <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800/60">
+              {(
+                [
+                  ['active', 'Ativos'],
+                  ['stopped', 'Parados'],
+                  ['all', 'Todos'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(key)}
+                  className={`tab-pill px-3 py-1.5 text-xs ${statusFilter === key ? 'tab-pill-active' : ''}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+
+        {visibleContainers.length === 0 ? (
+          <EmptyState
+            icon={<IconBox className="h-5 w-5" />}
+            title={search ? 'Nenhum container corresponde à busca' : 'Nenhum container encontrado'}
+            description={
+              search
+                ? 'Ajuste o termo buscado ou limpe o filtro.'
+                : statusFilter === 'active'
+                  ? 'Nenhum container ativo no momento.'
+                  : statusFilter === 'stopped'
+                    ? 'Nenhum container parado no momento.'
+                    : undefined
+            }
+            action={
+              search ? (
+                <button onClick={() => setSearch('')} className="btn-secondary px-3 py-1.5 text-xs">
+                  Limpar busca
+                </button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700/80">
+            {groups.map((g) => {
+              if (g.containers.length === 1) {
+                const c = g.containers[0];
+                const busy = containerLoading === c.id;
+                const instance = instances.find((i) => i.containerName === c.names);
+                const isReplica = instance?.role === 'REPLICA';
+                return (
+                  <ContainerRow
+                    key={c.id}
+                    container={c}
+                    label={stripSwarmSuffix(c.names)}
+                    canReplicate={!!instance}
+                    isReplica={isReplica}
+                    busy={busy}
+                    onLogs={() => setLogsTarget(c)}
+                    onReplicate={() => instance && setReplicateTarget(instance)}
+                    onClone={() => setCloneTarget(c)}
+                    onToggle={() => handleToggle(c)}
+                    onRestart={() => handleRestart(c)}
+                    onRemove={() => setConfirmRemove(c)}
+                  />
+                );
+              }
+              const activeCount = g.containers.filter((c) => c.status.toLowerCase().includes('up')).length;
               return (
-                <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3">{c.names}</td>
-                  <td className="px-4 py-3 text-slate-500">{c.image}</td>
-                  <td className="px-4 py-3">{c.status}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      {canReplicate && (
-                        <button
-                          onClick={() => setReplicateTarget(instance)}
-                          title="Configurar replicação"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                        >
-                          <IconRefresh className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleToggle(c)}
-                        disabled={busy}
-                        title={running ? 'Parar' : 'Iniciar'}
-                        className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                      >
-                        <IconPower className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setConfirmRemove(c)}
-                        disabled={busy}
-                        title="Remover"
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
+                <Link
+                  key={g.key}
+                  href={`/servers/${server.id}/projects/${encodeURIComponent(g.key)}`}
+                  className="row-hover group flex items-center gap-4 px-4 py-3"
+                >
+                  <span className={`icon-chip shrink-0 text-sm font-semibold ${avatarColor(g.key)}`}>{g.key.slice(0, 2).toUpperCase()}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{g.key}</p>
+                      <span className="badge shrink-0 bg-sky-500/10 text-sky-600 dark:text-sky-400">Projeto</span>
                     </div>
-                  </td>
-                </tr>
+                    <p className="truncate text-xs text-slate-400">{g.containers.length} containers</p>
+                  </div>
+                  <span className="badge shrink-0 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">{activeCount}/{g.containers.length} ativos</span>
+                  <span className="shrink-0 text-sm text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-500">→</span>
+                </Link>
               );
             })}
-            {(!status?.containers || status.containers.length === 0) && (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                  Nenhum container em execução.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
+
+      <OperationalPanel>
+        <OperationalPanelSection title="Serviços do servidor">
+          <div className="space-y-2.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Docker</span>
+              <StatusBadge tone={server.dockerInstalled ? 'success' : 'neutral'}>{server.dockerInstalled ? 'Ativo' : 'Ausente'}</StatusBadge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Traefik</span>
+              <StatusBadge tone={server.traefikInstalled ? 'success' : 'neutral'}>{server.traefikInstalled ? 'Ativo' : 'Ausente'}</StatusBadge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Bancos MySQL</span>
+              <span className="font-medium tabular-nums">{dbInstances}</span>
+            </div>
+          </div>
+        </OperationalPanelSection>
+      </OperationalPanel>
 
       {confirmRemove && (
         <ConfirmModal
@@ -814,7 +917,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
       {confirmUninstall && (
         <ConfirmModal
           title="Desinstalar Docker"
-          message="Isso remove o Docker Engine e todos os containers deste servidor — incluindo EasyPanel e bancos MySQL geridos por ele. Essa ação não pode ser desfeita."
+          message="Isso remove o Docker Engine e todos os containers deste servidor — incluindo Traefik e bancos MySQL geridos pelo Velix. Essa ação não pode ser desfeita."
           confirmLabel="Desinstalar"
           danger
           onConfirm={() => {
@@ -849,127 +952,1052 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
           }}
         />
       )}
+
+      {logsTarget && (
+        <ContainerLogsModal
+          serverId={server.id}
+          containerId={logsTarget.id}
+          title={logsTarget.names}
+          running={logsTarget.status.toLowerCase().includes('up')}
+          busy={containerLoading === logsTarget.id}
+          onToggle={() => handleToggle(logsTarget)}
+          onRemove={() => {
+            setConfirmRemove(logsTarget);
+            setLogsTarget(null);
+          }}
+          onClose={() => setLogsTarget(null)}
+        />
+      )}
+
+      {cloneTarget && (
+        <CloneContainerModal
+          sourceServerId={server.id}
+          container={cloneTarget}
+          onClose={() => setCloneTarget(null)}
+          onCloned={() => setCloneTarget(null)}
+        />
+      )}
+
     </div>
   );
 }
 
-interface EasyPanelStatusResp {
+interface TraefikStatusResp {
   installed: boolean;
-  url?: string | null;
-  containers?: DockerContainer[];
+  dockerInstalled: boolean;
+  cloudflareConnected: boolean;
+  version?: string | null;
+  running?: boolean;
+  network?: string;
+  ports?: { http: number; https: number };
+  publicIp?: string | null;
+  domainsCount?: number;
+  statusText?: string | null;
 }
 
-function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => void }) {
-  const [domain, setDomain] = useState('');
-  const [createDnsRecord, setCreateDnsRecord] = useState(true);
-  const [showLog, setShowLog] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<EasyPanelStatusResp | null>(null);
-  const [checked, setChecked] = useState(false);
-  const [containerLoading, setContainerLoading] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<DockerContainer | null>(null);
-  const [confirmUninstall, setConfirmUninstall] = useState(false);
-  const [showUninstallLog, setShowUninstallLog] = useState(false);
+interface DomainRow {
+  id: string;
+  hostname: string;
+  targetPort: number;
+  createDnsRecord: boolean;
+  cloudflareRecordId: string | null;
+  status: 'PENDING' | 'ACTIVE' | 'ERROR';
+  lastError: string | null;
+  lastCheckedAt: string | null;
+}
 
-  function loadStatus() {
-    apiFetch<EasyPanelStatusResp>(`/servers/${server.id}/easypanel/status`)
-      .then((res) => {
-        setStatus(res);
-        setChecked(true);
-        // a checagem é sempre real (não confia na flag salva) — se ela
-        // discordar do que a página já tinha carregado, atualiza o resto da UI
-        if (res.installed !== server.easypanelInstalled) onChange();
-      })
-      .catch((e) => {
-        setError(e.message);
-        setChecked(true);
-      });
+const DOMAIN_TONE: Record<DomainRow['status'], StatusTone> = {
+  PENDING: 'warning',
+  ACTIVE: 'success',
+  ERROR: 'danger',
+};
+
+const DOMAIN_LABEL: Record<DomainRow['status'], string> = {
+  PENDING: 'Aguardando SSL',
+  ACTIVE: 'Ativo',
+  ERROR: 'Erro',
+};
+
+function LibraryTab({ server }: { server: Server }) {
+  const [apps, setApps] = useState<CatalogApplicationSummary[] | null>(null);
+  const [search, setSearch] = useState('');
+  const wizard = useInstallWizard();
+
+  useEffect(() => {
+    apiFetch<CatalogApplicationSummary[]>('/catalog/applications').then(setApps);
+  }, []);
+
+  const visible = (apps ?? []).filter((a) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q) || a.category.toLowerCase().includes(q);
+  });
+
+  return (
+    <div>
+      <ModuleHeader title="Biblioteca" description="Catálogo do Velix — veja os detalhes e implante com um assistente guiado (rede, volumes e, se quiser, domínio com HTTPS)." />
+
+      <Toolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar aplicações..."
+        resultCount={apps ? `${visible.length} aplicaç${visible.length === 1 ? 'ão' : 'ões'}` : undefined}
+      />
+
+      {apps === null ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-[104px]" />
+          <Skeleton className="h-[104px]" />
+          <Skeleton className="h-[104px]" />
+        </div>
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<IconSearch className="h-5 w-5" />}
+          title={search ? 'Nenhuma aplicação corresponde à busca' : 'Catálogo vazio'}
+          action={search ? <button onClick={() => setSearch('')} className="btn-secondary px-3 py-1.5 text-xs">Limpar busca</button> : undefined}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((app) => (
+            <CompactAppCard
+              key={app.slug}
+              app={app}
+              serverId={server.id}
+              onInstall={wizard.open}
+              installLoading={wizard.loadingSlug === app.slug}
+            />
+          ))}
+        </div>
+      )}
+
+      {wizard.target && <DeployWizard manifest={wizard.target} preselectedServerId={server.id} onClose={wizard.close} />}
+    </div>
+  );
+}
+
+interface ApplicationDomain {
+  id: string;
+  hostname: string;
+  serviceName: string | null;
+  targetPort: number;
+  createDnsRecord: boolean;
+  status: 'PENDING' | 'ACTIVE' | 'ERROR';
+  lastError: string | null;
+}
+
+interface ApplicationRow {
+  id: string;
+  name: string;
+  slug: string;
+  manifestSlug: string;
+  manifestVersion: string;
+  status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
+  containerNames: string[];
+  lastError: string | null;
+  deployedAt: string;
+  domains: ApplicationDomain[];
+}
+
+interface EndpointPort {
+  port: number;
+  protocol: string;
+  recommended: boolean;
+  source: 'template' | 'container';
+}
+
+interface EndpointServiceInfo {
+  serviceName: string;
+  containerName: string;
+  image: string;
+  running: boolean;
+  ports: EndpointPort[];
+}
+
+interface DnsCheckResult {
+  state: 'NOT_CONFIGURED' | 'CORRECT' | 'INCORRECT';
+  records: string[];
+  expectedIp: string | null;
+}
+
+interface CertificateInfo {
+  state: 'ACTIVE' | 'EXPIRING' | 'NOT_FOUND' | 'ERROR';
+  issuer?: string;
+  validTo?: string;
+  daysRemaining?: number;
+  error?: string;
+}
+
+const APP_STATUS_TONE: Record<ApplicationRow['status'], StatusTone> = {
+  DEPLOYING: 'info',
+  RUNNING: 'success',
+  STOPPED: 'neutral',
+  ERROR: 'danger',
+  REMOVING: 'warning',
+};
+
+const APP_STATUS_LABEL: Record<ApplicationRow['status'], string> = {
+  DEPLOYING: 'Implantando',
+  RUNNING: 'Ativo',
+  STOPPED: 'Parado',
+  ERROR: 'Erro',
+  REMOVING: 'Removendo',
+};
+
+function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibrary?: () => void }) {
+  const [apps, setApps] = useState<ApplicationRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<ApplicationRow | null>(null);
+  const [domainsFor, setDomainsFor] = useState<ApplicationRow | null>(null);
+  const [credentialsFor, setCredentialsFor] = useState<ApplicationRow | null>(null);
+  const [servicesFor, setServicesFor] = useState<ApplicationRow | null>(null);
+
+  function load() {
+    apiFetch<ApplicationRow[]>(`/servers/${server.id}/applications`)
+      .then(setApps)
+      .catch((e) => setError(e.message));
   }
 
-  // Roda sempre, mesmo que a flag salva diga "não instalado" — é justamente
-  // esse caso que precisa da reconferência (ver bug corrigido no backend).
-  useEffect(() => {
-    if (server.dockerInstalled) loadStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server.id]);
-  useAutoRefresh(() => server.dockerInstalled && loadStatus(), 10_000);
+  useEffect(load, [server.id]);
+  useAutoRefresh(load, 15_000);
 
-  async function handleToggle(c: DockerContainer) {
-    const running = c.status.toLowerCase().includes('up');
-    setContainerLoading(c.id);
+  async function handleAction(app: ApplicationRow, action: 'start' | 'stop' | 'restart') {
+    setBusy(app.id);
     setError(null);
     try {
-      await apiFetch(`/servers/${server.id}/docker/containers/${c.id}/${running ? 'stop' : 'start'}`, { method: 'POST' });
-      loadStatus();
+      await apiFetch(`/applications/${app.id}/${action}`, { method: 'POST' });
+      load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Falha ao ${running ? 'parar' : 'iniciar'} container`);
+      setError(err instanceof Error ? err.message : 'Falha ao executar ação');
     } finally {
-      setContainerLoading(null);
+      setBusy(null);
     }
   }
 
   async function handleRemoveConfirmed() {
     if (!confirmRemove) return;
-    setContainerLoading(confirmRemove.id);
+    setBusy(confirmRemove.id);
     try {
-      await apiFetch(`/servers/${server.id}/docker/containers/${confirmRemove.id}`, { method: 'DELETE' });
+      await apiFetch(`/applications/${confirmRemove.id}`, { method: 'DELETE' });
       setConfirmRemove(null);
-      loadStatus();
+      load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover container');
+      setError(err instanceof Error ? err.message : 'Falha ao remover aplicação');
     } finally {
-      setContainerLoading(null);
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div>
+      <ModuleHeader title="Aplicações" description="Aplicações implantadas pelo Velix neste servidor" />
+
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+
+      {apps === null ? (
+        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      ) : apps.length === 0 ? (
+        <EmptyState
+          icon={<IconLayoutGrid className="h-5 w-5" />}
+          title="Nenhuma aplicação implantada ainda"
+          description="Implante uma aplicação a partir da Biblioteca."
+          action={
+            onGoToLibrary ? (
+              <button onClick={onGoToLibrary} className="btn-primary px-3.5 py-2 text-sm">
+                Ir para Biblioteca
+              </button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+          {apps.map((app) => {
+            const busyNow = busy === app.id;
+            const running = app.status === 'RUNNING';
+            const primaryDomain = app.domains[0];
+            const actionItems: ActionMenuItem[] = [
+              { label: 'Ver serviços', icon: <IconLayers className="h-4 w-4" />, onClick: () => setServicesFor(app) },
+              { label: 'Gerenciar domínios', icon: <IconGlobe className="h-4 w-4" />, onClick: () => setDomainsFor(app) },
+              { label: 'Ver credenciais', icon: <IconKey className="h-4 w-4" />, onClick: () => setCredentialsFor(app) },
+              ...(running
+                ? [
+                    { label: 'Reiniciar', icon: <IconRefresh className="h-4 w-4" />, onClick: () => handleAction(app, 'restart'), disabled: busyNow },
+                    { label: 'Parar', icon: <IconPower className="h-4 w-4" />, onClick: () => handleAction(app, 'stop'), disabled: busyNow },
+                  ]
+                : [{ label: 'Iniciar', icon: <IconPower className="h-4 w-4" />, onClick: () => handleAction(app, 'start'), disabled: busyNow }]),
+              { label: 'Remover aplicação', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(app), danger: true, disabled: busyNow },
+            ];
+            return (
+              <div key={app.id} className="row-hover flex items-center gap-3 px-4 py-3">
+                <AppIcon icon={`/app-icons/${app.manifestSlug}.svg`} name={app.name} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{app.name}</p>
+                    <StatusBadge tone={APP_STATUS_TONE[app.status]}>{APP_STATUS_LABEL[app.status]}</StatusBadge>
+                  </div>
+                  <p className="truncate text-xs text-slate-400">
+                    {app.manifestSlug} v{app.manifestVersion} · {app.containerNames.length} serviço{app.containerNames.length === 1 ? '' : 's'}
+                    {app.lastError ? ` · ${app.lastError}` : ''}
+                  </p>
+                </div>
+                <div className="hidden shrink-0 sm:block">
+                  {primaryDomain ? (
+                    <button onClick={() => setDomainsFor(app)} className="flex items-center gap-1.5 text-xs">
+                      <StatusBadge tone={DOMAIN_TONE[primaryDomain.status]}>{primaryDomain.hostname}</StatusBadge>
+                      {app.domains.length > 1 && <span className="text-slate-400">+{app.domains.length - 1}</span>}
+                    </button>
+                  ) : (
+                    <button onClick={() => setDomainsFor(app)} className="btn-ghost px-2.5 py-1.5 text-xs">
+                      Adicionar domínio
+                    </button>
+                  )}
+                </div>
+                {primaryDomain && primaryDomain.status === 'ACTIVE' && (
+                  <a
+                    href={`https://${primaryDomain.hostname}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-ghost hidden shrink-0 px-2.5 py-1.5 text-xs md:inline-flex"
+                  >
+                    Abrir
+                  </a>
+                )}
+                <ActionMenu items={actionItems} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remover aplicação"
+          message={`Remover "${confirmRemove.name}"? Os containers e volumes desta aplicação são apagados. Essa ação não pode ser desfeita.`}
+          confirmLabel="Remover"
+          danger
+          loading={busy === confirmRemove.id}
+          onConfirm={handleRemoveConfirmed}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+
+      {domainsFor && (
+        <DomainManagerModal
+          app={domainsFor}
+          onClose={() => setDomainsFor(null)}
+          onChange={load}
+        />
+      )}
+
+      {credentialsFor && <AppCredentialsModal app={credentialsFor} onClose={() => setCredentialsFor(null)} />}
+
+      {servicesFor && (
+        <ProjectServicesModal
+          app={servicesFor}
+          serverId={server.id}
+          onClose={() => {
+            setServicesFor(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
+  DEPLOYING: 'info',
+  RUNNING: 'success',
+  STOPPED: 'neutral',
+  ERROR: 'danger',
+};
+const SERVICE_STATUS_LABEL: Record<ProjectService['status'], string> = {
+  DEPLOYING: 'Implantando',
+  RUNNING: 'Ativo',
+  STOPPED: 'Parado',
+  ERROR: 'Erro',
+};
+
+/** Painel do projeto — cada serviço (container) do projeto com ciclo de vida
+ * próprio, e o fluxo real de "Adicionar serviço" pra componentes opcionais do
+ * template (ex.: OnlyOffice num Nextcloud já implantado). */
+function ProjectServicesModal({ app, serverId, onClose }: { app: ApplicationRow; serverId: string; onClose: () => void }) {
+  const [services, setServices] = useState<ProjectService[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [picker, setPicker] = useState<CatalogApplicationDetail['services'] | null>(null);
+  const [addingService, setAddingService] = useState<string | null>(null);
+  const [addStatus, setAddStatus] = useState<OpsLogStatus>('connecting');
+
+  function load() {
+    apiFetch<ProjectService[]>(`/applications/${app.id}/services`)
+      .then(setServices)
+      .catch((e) => setError(e.message));
+  }
+  useEffect(load, [app.id]);
+
+  async function handleAction(name: string, action: 'start' | 'stop' | 'restart') {
+    setBusy(name);
+    setError(null);
+    try {
+      await apiFetch(`/applications/${app.id}/services/${name}/${action}`, { method: 'POST' });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao executar ação');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openPicker() {
+    setError(null);
+    try {
+      const detail = await apiFetch<CatalogApplicationDetail>(`/catalog/applications/${app.manifestSlug}`);
+      const alreadyAdded = new Set((services ?? []).map((s) => s.name));
+      setPicker(detail.services.filter((s) => s.optional && !alreadyAdded.has(s.name)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar componentes disponíveis');
+    }
+  }
+
+  if (addingService) {
+    const canClose = addStatus === 'done-ok' || addStatus === 'done-error';
+    return (
+      <Modal title={`Adicionando ${addingService}`} onClose={canClose ? () => { setAddingService(null); setPicker(null); load(); } : undefined} closeDisabled={!canClose}>
+        <div className="h-[45vh]">
+          <TerminalWindow
+            title="Adicionar serviço"
+            statusSlot={<StatusBadge tone={addStatus === 'done-ok' ? 'success' : addStatus === 'done-error' ? 'danger' : 'warning'}>{addStatus}</StatusBadge>}
+            bodyClassName="flex h-full p-3"
+          >
+            <OpsLogPanel
+              serverId={serverId}
+              op="service-add"
+              params={{ applicationId: app.id, serviceName: addingService }}
+              onStatusChange={setAddStatus}
+              onDone={() => undefined}
+            />
+          </TerminalWindow>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (picker) {
+    return (
+      <Modal title="Adicionar serviço" onClose={() => setPicker(null)}>
+        {picker.length === 0 ? (
+          <p className="text-sm text-slate-400">Todos os componentes opcionais deste template já foram adicionados.</p>
+        ) : (
+          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+            {picker.map((s) => (
+              <div key={s.name} className="flex items-center justify-between gap-3 p-3.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{s.name}</p>
+                  <p className="truncate text-xs text-slate-400">{s.image}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAddingService(s.name);
+                    setAddStatus('connecting');
+                  }}
+                  className="btn-primary shrink-0 px-3 py-1.5 text-xs"
+                >
+                  Adicionar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title={`Serviços — ${app.name}`} onClose={onClose} maxWidth="max-w-xl">
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs text-slate-400">{services?.length ?? 0} serviço{(services?.length ?? 0) === 1 ? '' : 's'} neste projeto</p>
+        <button onClick={openPicker} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+          <IconPlus className="h-3.5 w-3.5" />
+          Adicionar serviço
+        </button>
+      </div>
+
+      {services === null ? (
+        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      ) : (
+        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+          {services.map((s) => {
+            const busyNow = busy === s.name;
+            const running = s.status === 'RUNNING';
+            return (
+              <div key={s.id} className="flex items-center gap-3 p-3.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{s.name}</p>
+                    <span className={`badge text-[10px] ${s.required ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-500/10 text-slate-500'}`}>
+                      {s.required ? 'obrigatório' : 'opcional'}
+                    </span>
+                    <StatusBadge tone={SERVICE_STATUS_TONE[s.status]}>{SERVICE_STATUS_LABEL[s.status]}</StatusBadge>
+                  </div>
+                  <p className="truncate text-xs text-slate-400">{s.image}</p>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  {running ? (
+                    <>
+                      <button onClick={() => handleAction(s.name, 'restart')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
+                        Reiniciar
+                      </button>
+                      <button onClick={() => handleAction(s.name, 'stop')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
+                        Parar
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => handleAction(s.name, 'start')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
+                      Iniciar
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+const DNS_STATE_LABEL: Record<DnsCheckResult['state'], string> = {
+  NOT_CONFIGURED: 'DNS não configurado',
+  CORRECT: 'DNS correto',
+  INCORRECT: 'DNS incorreto',
+};
+const DNS_STATE_TONE: Record<DnsCheckResult['state'], StatusTone> = {
+  NOT_CONFIGURED: 'neutral',
+  CORRECT: 'success',
+  INCORRECT: 'danger',
+};
+const CERT_STATE_LABEL: Record<CertificateInfo['state'], string> = {
+  ACTIVE: 'Certificado ativo',
+  EXPIRING: 'Certificado expirando',
+  NOT_FOUND: 'Certificado ainda não emitido',
+  ERROR: 'Falha ao ler certificado',
+};
+const CERT_STATE_TONE: Record<CertificateInfo['state'], StatusTone> = {
+  ACTIVE: 'success',
+  EXPIRING: 'warning',
+  NOT_FOUND: 'neutral',
+  ERROR: 'danger',
+};
+
+/** Gerencia os domínios de uma aplicação: listar, testar DNS/SSL de verdade,
+ * adicionar (com seletor de serviço + porta interna detectados de verdade),
+ * editar e remover — sem nunca tocar no container da aplicação. */
+function DomainManagerModal({ app, onClose, onChange }: { app: ApplicationRow; onClose: () => void; onChange: () => void }) {
+  const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
+  const [domains, setDomains] = useState<ApplicationDomain[]>(app.domains);
+  const [form, setForm] = useState<'new' | ApplicationDomain | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<ApplicationDomain | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Record<string, { dns?: DnsCheckResult; cert?: CertificateInfo; loading?: boolean }>>({});
+
+  useEffect(() => {
+    apiFetch<EndpointServiceInfo[]>(`/applications/${app.id}/endpoints`)
+      .then(setEndpoints)
+      .catch((e) => setError(e.message));
+  }, [app.id]);
+
+  function reload() {
+    apiFetch<ApplicationRow>(`/applications/${app.id}`).then((a) => setDomains(a.domains));
+    onChange();
+  }
+
+  async function handleTest(domain: ApplicationDomain) {
+    setChecks((c) => ({ ...c, [domain.id]: { ...c[domain.id], loading: true } }));
+    try {
+      const [dns, cert] = await Promise.all([
+        apiFetch<DnsCheckResult>(`/domains/${domain.id}/dns`),
+        apiFetch<CertificateInfo>(`/domains/${domain.id}/certificate`),
+      ]);
+      setChecks((c) => ({ ...c, [domain.id]: { dns, cert, loading: false } }));
+    } catch {
+      setChecks((c) => ({ ...c, [domain.id]: { loading: false } }));
+    }
+  }
+
+  async function handleRemoveConfirmed() {
+    if (!confirmRemove) return;
+    setBusy(confirmRemove.id);
+    try {
+      await apiFetch(`/domains/${confirmRemove.id}`, { method: 'DELETE' });
+      setConfirmRemove(null);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover domínio');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Modal title={`Domínios — ${app.name}`} onClose={onClose} maxWidth="max-w-xl">
+      {error && (
+        <div className="mb-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs text-slate-400">{domains.length} domínio{domains.length === 1 ? '' : 's'} associado{domains.length === 1 ? '' : 's'}</p>
+        <button onClick={() => setForm('new')} disabled={!endpoints} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+          <IconPlus className="h-3.5 w-3.5" />
+          Adicionar domínio
+        </button>
+      </div>
+
+      {domains.length === 0 ? (
+        <EmptyState icon={<IconGlobe className="h-5 w-5" />} title="Nenhum domínio associado" />
+      ) : (
+        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+          {domains.map((d) => {
+            const check = checks[d.id];
+            return (
+              <div key={d.id} className="p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
+                  <StatusBadge tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</StatusBadge>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-slate-400">
+                  → {d.serviceName ?? '—'}:{d.targetPort}
+                  {d.lastError ? ` · ${d.lastError}` : ''}
+                </p>
+
+                {check?.dns && check?.cert && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <StatusBadge tone={DNS_STATE_TONE[check.dns.state]}>{DNS_STATE_LABEL[check.dns.state]}</StatusBadge>
+                    <StatusBadge tone={CERT_STATE_TONE[check.cert.state]}>
+                      {CERT_STATE_LABEL[check.cert.state]}
+                      {check.cert.daysRemaining != null ? ` (${check.cert.daysRemaining}d)` : ''}
+                    </StatusBadge>
+                  </div>
+                )}
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button onClick={() => handleTest(d)} disabled={check?.loading} className="btn-secondary px-2.5 py-1 text-xs">
+                    {check?.loading ? 'Testando...' : 'Testar DNS e SSL'}
+                  </button>
+                  <button onClick={() => setForm(d)} className="btn-secondary px-2.5 py-1 text-xs">
+                    Editar
+                  </button>
+                  <a href={`https://${d.hostname}`} target="_blank" rel="noreferrer" className="btn-ghost px-2.5 py-1 text-xs">
+                    Abrir
+                  </a>
+                  <button
+                    onClick={() => setConfirmRemove(d)}
+                    disabled={busy === d.id}
+                    className="rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {form && endpoints && (
+        <DomainForm
+          app={app}
+          endpoints={endpoints}
+          editing={form === 'new' ? null : form}
+          onClose={() => setForm(null)}
+          onSaved={() => {
+            setForm(null);
+            reload();
+          }}
+        />
+      )}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remover domínio"
+          message={`Remover "${confirmRemove.hostname}"? A rota é apagada do Traefik. A aplicação continua rodando normalmente.`}
+          confirmLabel="Remover"
+          danger
+          loading={busy === confirmRemove.id}
+          onConfirm={handleRemoveConfirmed}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function DomainForm({
+  app,
+  endpoints,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  app: ApplicationRow;
+  endpoints: EndpointServiceInfo[];
+  editing: ApplicationDomain | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [serviceName, setServiceName] = useState(editing?.serviceName ?? endpoints[0]?.serviceName ?? '');
+  const selectedService = endpoints.find((e) => e.serviceName === serviceName);
+  const [port, setPort] = useState<number>(editing?.targetPort ?? selectedService?.ports[0]?.port ?? 0);
+  const [hostname, setHostname] = useState(editing?.hostname ?? '');
+  const [createDnsRecord, setCreateDnsRecord] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleServiceChange(name: string) {
+    setServiceName(name);
+    const svc = endpoints.find((e) => e.serviceName === name);
+    setPort(svc?.ports[0]?.port ?? 0);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      if (editing) {
+        await apiFetch(`/applications/${app.id}/domains/${editing.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ hostname: editing.hostname, serviceName, port, createDnsRecord }),
+        });
+      } else {
+        await apiFetch(`/applications/${app.id}/domains`, {
+          method: 'POST',
+          body: JSON.stringify({ hostname, serviceName, port, createDnsRecord }),
+        });
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar domínio');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={editing ? 'Editar domínio' : 'Adicionar domínio'} onClose={onClose} closeDisabled={saving}>
+      <form onSubmit={handleSubmit}>
+        {editing ? (
+          <p className="mb-3 text-sm text-slate-500">
+            Domínio: <span className="font-medium text-slate-700 dark:text-slate-200">{editing.hostname}</span>
+          </p>
+        ) : (
+          <label className="mb-3 block text-sm">
+            <span className="mb-1 block font-medium">Domínio</span>
+            <input required placeholder="app.seudominio.com" value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" />
+          </label>
+        )}
+
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block font-medium">Serviço</span>
+          <select value={serviceName} onChange={(e) => handleServiceChange(e.target.value)} className="input">
+            {endpoints.map((svc) => (
+              <option key={svc.serviceName} value={svc.serviceName}>
+                {svc.serviceName} — {svc.image}
+                {!svc.running ? ' (parado)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block font-medium">Porta interna</span>
+          {selectedService && selectedService.ports.length > 0 ? (
+            <select value={port} onChange={(e) => setPort(Number(e.target.value))} className="input">
+              {selectedService.ports.map((p) => (
+                <option key={p.port} value={p.port}>
+                  {p.port}/{p.protocol}
+                  {p.recommended ? ' — recomendada' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              required
+              type="number"
+              min={1}
+              max={65535}
+              placeholder="Nenhuma porta detectada — informe manualmente"
+              value={port || ''}
+              onChange={(e) => setPort(Number(e.target.value))}
+              className="input"
+            />
+          )}
+        </label>
+
+        {!editing && (
+          <label className="mb-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
+            Criar registro DNS na Cloudflare automaticamente
+          </label>
+        )}
+
+        {error && (
+          <div className="mb-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800">
+            Cancelar
+          </button>
+          <button type="submit" disabled={saving || !port} className="btn-primary px-4 py-2 text-sm">
+            {saving ? 'Salvando...' : editing ? 'Salvar alterações' : 'Adicionar domínio'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AppCredentialsModal({ app, onClose }: { app: ApplicationRow; onClose: () => void }) {
+  const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<Record<string, string>>(`/applications/${app.id}/credentials`)
+      .then(setCredentials)
+      .catch((e) => setError(e.message));
+  }, [app.id]);
+
+  function copy(key: string, value: string) {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  }
+
+  const entries = credentials ? Object.entries(credentials) : [];
+
+  return (
+    <Modal title={`Credenciais — ${app.name}`} onClose={onClose}>
+      {error && <Alert variant="error">{error}</Alert>}
+      {!credentials && !error && <p className="text-sm text-slate-400">Carregando...</p>}
+      {credentials && entries.length === 0 && <p className="text-sm text-slate-400">Esta aplicação não gerou segredos.</p>}
+      {entries.length > 0 && (
+        <div>
+          <div className="mb-3 flex justify-end">
+            <button onClick={() => setRevealed((v) => !v)} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+              {revealed ? 'Ocultar valores' : 'Mostrar valores'}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {entries.map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="text-xs text-slate-500">{key}</p>
+                  <p className="truncate font-mono text-sm">{revealed ? value : '••••••••••••'}</p>
+                </div>
+                <button onClick={() => copy(key, value)} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                  {copiedKey === key ? 'Copiado!' : 'Copiar'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+const ACME_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+const ACME_INVALID_TLDS = new Set(['local', 'test', 'localhost', 'internal', 'lan', 'example']);
+
+function isValidAcmeEmailClient(email: string): boolean {
+  const trimmed = email.trim();
+  if (!ACME_EMAIL_PATTERN.test(trimmed)) return false;
+  const tld = trimmed.split('.').pop()?.toLowerCase() ?? '';
+  return !ACME_INVALID_TLDS.has(tld);
+}
+
+/** Coleta o e-mail de contato do Let's Encrypt antes de instalar — sem isso o
+ * Traefik usava um valor padrão inválido e TODA emissão de certificado falhava
+ * silenciosamente depois (bug real, encontrado testando esse fluxo). */
+function InstallTraefikModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (acmeEmail: string) => void }) {
+  const [email, setEmail] = useState('');
+  const valid = isValidAcmeEmailClient(email);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (valid) onConfirm(email.trim());
+  }
+
+  return (
+    <Modal title="Instalar Traefik" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <label className="mb-1 block text-sm">
+          <span className="mb-1 block font-medium">E-mail de contato (Let&apos;s Encrypt)</span>
+          <input
+            required
+            type="email"
+            placeholder="voce@seudominio.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input"
+          />
+        </label>
+        <p className="mb-3 text-xs text-slate-400">
+          Usado pelo Let&apos;s Encrypt só pra avisos de expiração de certificado — precisa de um domínio público de verdade (não aceita ex.: admin@velix.local).
+        </p>
+        {email && !valid && (
+          <div className="mb-3">
+            <Alert variant="error">E-mail inválido — use um domínio público real.</Alert>
+          </div>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            Cancelar
+          </button>
+          <button type="submit" disabled={!valid} className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
+            Continuar
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }) {
+  const [status, setStatus] = useState<TraefikStatusResp | null>(null);
+  const [domains, setDomains] = useState<DomainRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showInstallForm, setShowInstallForm] = useState(false);
+  const [showInstall, setShowInstall] = useState<string | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [showUninstallLog, setShowUninstallLog] = useState(false);
+  const [showAddDomain, setShowAddDomain] = useState(false);
+  const [domainBusy, setDomainBusy] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<DomainRow | null>(null);
+  const [search, setSearch] = useState('');
+
+  function loadStatus() {
+    apiFetch<TraefikStatusResp>(`/servers/${server.id}/traefik/status`)
+      .then(setStatus)
+      .catch((e) => setError(e.message));
+  }
+  function loadDomains() {
+    apiFetch<DomainRow[]>(`/servers/${server.id}/domains`)
+      .then(setDomains)
+      .catch(() => setDomains([]));
+  }
+
+  useEffect(() => {
+    if (server.dockerInstalled) {
+      loadStatus();
+      loadDomains();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.id]);
+  useAutoRefresh(() => server.dockerInstalled && loadStatus(), 15_000);
+
+  async function handleVerify(d: DomainRow) {
+    setDomainBusy(d.id);
+    try {
+      await apiFetch(`/domains/${d.id}/verify`);
+      loadDomains();
+    } finally {
+      setDomainBusy(null);
+    }
+  }
+
+  async function handleRemoveConfirmed() {
+    if (!confirmRemove) return;
+    setDomainBusy(confirmRemove.id);
+    try {
+      await apiFetch(`/domains/${confirmRemove.id}`, { method: 'DELETE' });
+      setConfirmRemove(null);
+      loadDomains();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover domínio');
+    } finally {
+      setDomainBusy(null);
     }
   }
 
   if (!server.dockerInstalled) {
-    return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de instalar o EasyPanel.</p>;
+    return <p className="text-sm text-slate-500">Instale o Docker (aba Docker) antes de configurar o proxy e domínios.</p>;
   }
 
-  if (!checked) return null;
-
-  if (!status?.installed) {
+  // Traefik ainda não instalado → tela de instalação
+  if (status && !status.installed) {
     return (
       <div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setShowLog(true);
-          }}
-          className="max-w-sm space-y-3"
-        >
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">Domínio (opcional)</span>
-            <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input" />
-            <span className="mt-1 block text-xs text-slate-400">
-              Cria o registro DNS apontando pro servidor. Configurar esse domínio dentro do EasyPanel é manual (feito na UI dele).
-            </span>
-          </label>
-          {domain && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
-              Criar registro DNS na Cloudflare automaticamente
-            </label>
-          )}
-          <button type="submit" className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
-            <IconDownload className="h-4 w-4" />
-            Instalar EasyPanel
-          </button>
-        </form>
-
+        <ModuleHeader title="Proxy e domínios" description="Traefik nativo do Velix — proxy reverso, HTTPS e domínios" />
+        {!status.cloudflareConnected ? (
+          <EmptyState
+            icon={<IconGlobe className="h-5 w-5" />}
+            title="Conecte a Cloudflare primeiro"
+            description="O SSL automático (Let's Encrypt via DNS-01) precisa de uma conta Cloudflare conectada. Configure em Configurações."
+            action={
+              <Link href="/settings" className="btn-secondary px-3.5 py-2 text-sm">
+                Abrir Configurações
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<IconShield className="h-5 w-5" />}
+            title="Traefik não instalado"
+            description="Instale o Traefik para publicar aplicações com domínio próprio e HTTPS automático. Ele ocupa as portas 80 e 443 e cria a rede velix-proxy."
+            action={
+              <button onClick={() => setShowInstallForm(true)} className="btn-primary flex items-center gap-2 px-3.5 py-2 text-sm">
+                <IconDownload className="h-4 w-4" />
+                Instalar Traefik
+              </button>
+            }
+          />
+        )}
         {error && (
           <div className="mt-3">
             <Alert variant="error">{error}</Alert>
           </div>
         )}
-
-        {showLog && (
+        {showInstallForm && (
+          <InstallTraefikModal
+            onClose={() => setShowInstallForm(false)}
+            onConfirm={(acmeEmail) => {
+              setShowInstallForm(false);
+              setShowInstall(acmeEmail);
+            }}
+          />
+        )}
+        {showInstall && (
           <InstallLogModal
             serverId={server.id}
-            op="easypanel-install"
-            params={{ domain: domain || undefined, createDnsRecord }}
-            title="Instalando EasyPanel"
-            onClose={() => setShowLog(false)}
+            op="traefik-install"
+            params={{ acmeEmail: showInstall }}
+            title="Instalando Traefik"
+            onClose={() => setShowInstall(null)}
             onDone={() => {
               onChange();
               loadStatus();
@@ -980,95 +2008,145 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
     );
   }
 
+  const visibleDomains = (domains ?? []).filter(
+    (d) => !search.trim() || d.hostname.toLowerCase().includes(search.toLowerCase()),
+  );
+
   return (
-    <div>
-      <Alert variant="info" title="Falta um passo manual">
-        A conta de administrador do EasyPanel é criada na primeira vez que você abre o painel — não tem como o Velix criar isso
-        automaticamente. Abra o link abaixo e defina seu e-mail/senha por lá.
-      </Alert>
+    <div className="flex flex-col gap-5 xl:flex-row">
+      <div className="min-w-0 flex-1">
+        <ModuleHeader
+          title="Proxy e domínios"
+          description="Traefik nativo do Velix — proxy reverso, HTTPS e domínios"
+          meta={status ? `Versão ${status.version ?? '—'} · rede ${status.network} · portas ${status.ports?.http}/${status.ports?.https}` : undefined}
+          actions={
+            <>
+              <button onClick={() => setShowAddDomain(true)} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+                <IconPlus className="h-3.5 w-3.5" />
+                Adicionar domínio
+              </button>
+              <button onClick={loadStatus} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+                <IconRefresh className="h-3.5 w-3.5" />
+                Atualizar
+              </button>
+            </>
+          }
+          menu={[{ label: 'Desinstalar Traefik', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmUninstall(true), danger: true }]}
+        />
 
-      <div className="my-4 flex items-center justify-between">
-        <a href={status.url ?? '#'} target="_blank" rel="noreferrer" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-          Abrir EasyPanel ({status.url})
-        </a>
-        <div className="flex items-center gap-2">
-          <button onClick={loadStatus} className="btn-secondary px-3 py-1.5 text-xs">
-            ↻ Atualizar
-          </button>
-          <button onClick={() => setConfirmUninstall(true)} className="btn-danger px-3 py-1.5 text-xs">
-            Desinstalar EasyPanel
-          </button>
-        </div>
+        {error && (
+          <div className="mb-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
+
+        <Toolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar domínio..."
+          resultCount={`${visibleDomains.length} domínio${visibleDomains.length === 1 ? '' : 's'}`}
+        />
+
+        {domains === null ? (
+          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
+        ) : visibleDomains.length === 0 ? (
+          <EmptyState
+            icon={<IconGlobe className="h-5 w-5" />}
+            title={search ? 'Nenhum domínio corresponde à busca' : 'Nenhum domínio configurado'}
+            description={search ? undefined : 'Adicione um domínio apontando para uma porta publicada neste servidor — o Velix cria a rota no Traefik e emite o certificado.'}
+            action={
+              search ? undefined : (
+                <button onClick={() => setShowAddDomain(true)} className="btn-primary flex items-center gap-2 px-3.5 py-2 text-sm">
+                  <IconPlus className="h-4 w-4" />
+                  Adicionar domínio
+                </button>
+              )
+            }
+          />
+        ) : (
+          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+            {visibleDomains.map((d) => (
+              <div key={d.id} className="row-hover flex items-center gap-3 px-4 py-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <IconGlobe className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
+                    <StatusBadge tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</StatusBadge>
+                  </div>
+                  <p className="truncate text-xs text-slate-400">
+                    → porta {d.targetPort}
+                    {d.createDnsRecord ? ' · DNS Cloudflare' : ''}
+                    {d.lastError ? ` · ${d.lastError}` : ''}
+                  </p>
+                </div>
+                <a
+                  href={`https://${d.hostname}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost hidden shrink-0 px-2.5 py-1.5 text-xs sm:inline-flex"
+                >
+                  Abrir
+                </a>
+                <ActionMenu
+                  items={[
+                    { label: 'Verificar agora', icon: <IconRefresh className="h-4 w-4" />, onClick: () => handleVerify(d), disabled: domainBusy === d.id },
+                    { label: 'Remover domínio', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(d), danger: true, disabled: domainBusy === d.id },
+                  ]}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="mb-3">
-          <Alert variant="error">{error}</Alert>
-        </div>
+      <OperationalPanel>
+        <OperationalPanelSection title="Estado do proxy">
+          <div className="space-y-2.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Traefik</span>
+              <StatusBadge tone={status?.running ? 'success' : 'neutral'}>{status?.running ? 'Rodando' : 'Parado'}</StatusBadge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Cloudflare</span>
+              <StatusBadge tone={status?.cloudflareConnected ? 'success' : 'warning'}>{status?.cloudflareConnected ? 'Conectado' : 'Ausente'}</StatusBadge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">IP público</span>
+              <span className="font-mono text-xs">{status?.publicIp ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Domínios</span>
+              <span className="font-medium tabular-nums">{domains?.length ?? 0}</span>
+            </div>
+          </div>
+        </OperationalPanelSection>
+      </OperationalPanel>
+
+      {showAddDomain && (
+        <AddDomainModal
+          serverId={server.id}
+          cloudflareConnected={!!status?.cloudflareConnected}
+          onClose={() => setShowAddDomain(false)}
+          onCreated={() => {
+            setShowAddDomain(false);
+            loadDomains();
+            loadStatus();
+          }}
+        />
       )}
-
-      <EasyPanelDomainLock serverId={server.id} defaultDomain={extractHostname(status.url ?? null)} />
-
-      <div className="card mt-4 overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 dark:border-slate-800">
-            <tr>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Container</th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem</th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {status?.containers?.map((c) => {
-              const running = c.status.toLowerCase().includes('up');
-              const busy = containerLoading === c.id;
-              return (
-                <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3">{c.names}</td>
-                  <td className="px-4 py-3 text-slate-500">{c.image}</td>
-                  <td className="px-4 py-3">{c.status}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        onClick={() => handleToggle(c)}
-                        disabled={busy}
-                        title={running ? 'Parar' : 'Iniciar'}
-                        className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                      >
-                        <IconPower className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setConfirmRemove(c)}
-                        disabled={busy}
-                        title="Remover"
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {(!status?.containers || status.containers.length === 0) && (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                  Nenhum container encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
       {confirmRemove && (
         <ConfirmModal
-          title="Remover container"
-          message={`Remover o container "${confirmRemove.names}"? Essa ação não pode ser desfeita.`}
+          title="Remover domínio"
+          message={`Remover "${confirmRemove.hostname}"? A rota é apagada do Traefik${confirmRemove.cloudflareRecordId ? ' e o registro DNS criado pelo Velix é removido da Cloudflare' : ''}.`}
           confirmLabel="Remover"
           danger
-          loading={containerLoading === confirmRemove.id}
+          loading={domainBusy === confirmRemove.id}
           onConfirm={handleRemoveConfirmed}
           onCancel={() => setConfirmRemove(null)}
         />
@@ -1076,8 +2154,8 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
 
       {confirmUninstall && (
         <ConfirmModal
-          title="Desinstalar EasyPanel"
-          message="Isso remove o stack do EasyPanel e sai do Docker Swarm. Os containers e volumes criados por ele são perdidos. Essa ação não pode ser desfeita."
+          title="Desinstalar Traefik"
+          message="Isso remove o Traefik e a configuração em /opt/velix/traefik. Domínios param de responder até reinstalar. Essa ação não pode ser desfeita."
           confirmLabel="Desinstalar"
           danger
           onConfirm={() => {
@@ -1091,8 +2169,8 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
       {showUninstallLog && (
         <InstallLogModal
           serverId={server.id}
-          op="easypanel-uninstall"
-          title="Desinstalando EasyPanel"
+          op="traefik-uninstall"
+          title="Desinstalando Traefik"
           onClose={() => setShowUninstallLog(false)}
           onDone={() => {
             onChange();
@@ -1104,81 +2182,88 @@ function EasyPanelTab({ server, onChange }: { server: Server; onChange: () => vo
   );
 }
 
-function extractHostname(url: string | null): string {
-  if (!url) return '';
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return '';
-  }
-}
-
-function EasyPanelDomainLock({ serverId, defaultDomain }: { serverId: string; defaultDomain: string }) {
-  const [domain, setDomain] = useState(defaultDomain);
-  const [checking, setChecking] = useState(false);
-  const [reachable, setReachable] = useState<boolean | null>(null);
-  const [locking, setLocking] = useState(false);
-  const [lockMessage, setLockMessage] = useState<string | null>(null);
+function AddDomainModal({
+  serverId,
+  cloudflareConnected,
+  onClose,
+  onCreated,
+}: {
+  serverId: string;
+  cloudflareConnected: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState({ hostname: '', targetPort: 8080, createDnsRecord: cloudflareConnected });
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleVerify() {
-    setChecking(true);
-    setError(null);
-    setReachable(null);
-    try {
-      const res = await apiFetch<{ reachable: boolean }>(`/servers/${serverId}/easypanel/verify-domain?domain=${encodeURIComponent(domain)}`);
-      setReachable(res.reachable);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao verificar domínio');
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  async function handleLock() {
-    setLocking(true);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
     setError(null);
     try {
-      const res = await apiFetch<{ ok: boolean; message: string }>(`/servers/${serverId}/easypanel/lock-port`, { method: 'POST' });
-      setLockMessage(res.message);
+      await apiFetch(`/servers/${serverId}/domains`, { method: 'POST', body: JSON.stringify(form) });
+      onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao configurar firewall');
+      setError(err instanceof Error ? err.message : 'Falha ao adicionar domínio');
     } finally {
-      setLocking(false);
+      setSaving(false);
     }
   }
 
   return (
-    <div className="card p-4">
-      <h2 className="section-title mb-1">Domínio personalizado</h2>
-      <p className="mb-3 text-sm text-slate-500">
-        Depois de configurar o domínio dentro do EasyPanel (com HTTPS), confirme aqui — e então dá pra fechar o acesso direto pela
-        porta 3000, deixando só o domínio.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="painel.seudominio.com" className="input max-w-xs" />
-        <button onClick={handleVerify} disabled={checking || !domain} className="btn-secondary px-3 py-2 text-sm">
-          {checking ? 'Verificando...' : 'Verificar domínio'}
-        </button>
-        {reachable && (
-          <button onClick={handleLock} disabled={locking} className="btn-danger px-3 py-2 text-sm">
-            {locking ? 'Aplicando...' : 'Fechar porta 3000'}
-          </button>
+    <Modal title="Adicionar domínio" onClose={onClose} closeDisabled={saving}>
+      <form onSubmit={handleSubmit}>
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block font-medium">Domínio</span>
+          <input
+            required
+            placeholder="app.seudominio.com"
+            value={form.hostname}
+            onChange={(e) => setForm({ ...form, hostname: e.target.value })}
+            className="input"
+          />
+        </label>
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block font-medium">Porta de destino (publicada no servidor)</span>
+          <input
+            required
+            type="number"
+            min={1}
+            max={65535}
+            value={form.targetPort}
+            onChange={(e) => setForm({ ...form, targetPort: Number(e.target.value) })}
+            className="input"
+          />
+          <span className="mt-1 block text-xs text-slate-400">
+            O Traefik encaminha o domínio para essa porta no host (ex.: um container com -p 8080:8080).
+          </span>
+        </label>
+        <label className={`flex items-center gap-2 text-sm ${cloudflareConnected ? '' : 'opacity-50'}`}>
+          <input
+            type="checkbox"
+            disabled={!cloudflareConnected}
+            checked={form.createDnsRecord}
+            onChange={(e) => setForm({ ...form, createDnsRecord: e.target.checked })}
+          />
+          Criar registro DNS na Cloudflare automaticamente
+        </label>
+        {!cloudflareConnected && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Cloudflare não conectado — crie o registro DNS manualmente.</p>}
+        {error && (
+          <div className="mt-3">
+            <Alert variant="error">{error}</Alert>
+          </div>
         )}
-      </div>
-      {reachable === true && <p className="mt-2 text-sm text-green-600 dark:text-green-400">Domínio respondendo — pode fechar a porta 3000.</p>}
-      {reachable === false && <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">Domínio ainda não está respondendo em HTTPS.</p>}
-      {lockMessage && (
-        <div className="mt-2">
-          <Alert variant="success">{lockMessage}</Alert>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800">
+            Cancelar
+          </button>
+          <button type="submit" disabled={saving} className="btn-primary px-4 py-2 text-sm">
+            {saving ? 'Adicionando...' : 'Adicionar domínio'}
+          </button>
         </div>
-      )}
-      {error && (
-        <div className="mt-2">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      )}
-    </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -1252,38 +2337,22 @@ function TerminalTab({ serverId }: { serverId: string }) {
   };
 
   return (
-    <div>
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#111318]">
-        <div className="flex items-center gap-3 border-b border-white/5 bg-[#16181f] px-4 py-2.5">
-          <div className="flex shrink-0 gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-          </div>
-          <span className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`} />
-            {status === 'connecting' && 'Conectando...'}
-            {status === 'connected' && 'Conectado'}
-            {status === 'closed' && 'Desconectado'}
-            {status === 'error' && 'Falha na conexão do terminal'}
-          </span>
-        </div>
-        <div ref={containerRef} className="h-[70vh] overflow-hidden bg-[#0a0a0f] p-3" />
-      </div>
-    </div>
+    <TerminalWindow
+      title="Terminal SSH"
+      statusSlot={
+        <span className="flex items-center gap-1.5 text-xs text-slate-400">
+          <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`} />
+          {status === 'connecting' && 'Conectando...'}
+          {status === 'connected' && 'Conectado'}
+          {status === 'closed' && 'Desconectado'}
+          {status === 'error' && 'Falha na conexão do terminal'}
+        </span>
+      }
+      bodyClassName="p-3"
+    >
+      <div ref={containerRef} className="h-[70vh] overflow-hidden" />
+    </TerminalWindow>
   );
-}
-
-interface DatabaseInstanceSummary {
-  id: string;
-  name: string;
-  engine: string;
-  containerName: string;
-  port: number;
-  role: 'STANDALONE' | 'PRIMARY' | 'REPLICA';
-  status: string;
-  databaseName: string;
-  version: string | null;
 }
 
 interface MirrorInfo {
@@ -1458,50 +2527,64 @@ function DatabasesTab({ server }: { server: Server }) {
         </div>
       )}
 
-      <div className="space-y-2">
-        {instances.map((inst) => {
-          const running = inst.status === 'ONLINE';
-          const busy = instanceLoading === inst.id;
-          return (
-            <div
-              key={inst.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-            >
-              <Link href={`/databases/${inst.id}`} className="flex flex-1 items-center justify-between">
-                <span className="font-medium">{inst.name}</span>
-                <span className="mr-4 text-xs text-slate-400">
-                  {inst.engine} · porta {inst.port} · {inst.role} · {inst.status}
-                </span>
+      {instances.length === 0 ? (
+        <div className="card p-8 text-center text-sm text-slate-400">Nenhum banco instalado neste servidor.</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {instances.map((inst) => {
+            const running = inst.status === 'ONLINE';
+            const busy = instanceLoading === inst.id;
+            return (
+              <Link key={inst.id} href={`/databases/${inst.id}`} className="card card-hover p-5">
+                <div className="mb-4 flex items-start gap-3">
+                  <span className={`icon-chip shrink-0 text-base font-semibold ${avatarColor(inst.name)}`}>
+                    {inst.name.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{inst.name}</p>
+                    <p className="truncate text-xs text-slate-400">
+                      {inst.engine} · porta {inst.port}
+                    </p>
+                  </div>
+                  <span
+                    className={`badge shrink-0 ${running ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-500/10 text-slate-500'}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${running ? 'bg-green-500' : 'bg-slate-400'}`} />
+                    {running ? 'Ativo' : 'Parado'}
+                  </span>
+                </div>
+                <p className="mb-4 truncate rounded-lg bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                  {inst.role}
+                </p>
+                <div className="flex items-center justify-end gap-1 border-t border-slate-100 pt-3 dark:border-slate-700">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleToggle(inst);
+                    }}
+                    disabled={busy}
+                    title={running ? 'Parar' : 'Iniciar'}
+                    className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  >
+                    <IconPower className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setConfirmRemove(inst);
+                    }}
+                    disabled={busy}
+                    title="Excluir"
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  >
+                    <IconTrash className="h-4 w-4" />
+                  </button>
+                </div>
               </Link>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleToggle(inst);
-                  }}
-                  disabled={busy}
-                  title={running ? 'Parar' : 'Iniciar'}
-                  className={`rounded-lg p-1.5 disabled:opacity-40 ${running ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                >
-                  <IconPower className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setConfirmRemove(inst);
-                  }}
-                  disabled={busy}
-                  title="Excluir"
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                >
-                  <IconTrash className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        {instances.length === 0 && <p className="text-sm text-slate-400">Nenhum banco instalado neste servidor.</p>}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {showForm && (
         <InstallMysqlModal
@@ -1622,7 +2705,7 @@ function AddExistingReplicaModal({
         </div>
       ) : (
         <form onSubmit={handleSubmit}>
-          <label className="mb-2 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm font-medium dark:border-slate-800">
+          <label className="mb-2 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm font-medium dark:border-slate-700">
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
             Selecionar todos
           </label>
@@ -1645,92 +2728,6 @@ function AddExistingReplicaModal({
             </button>
             <button type="submit" disabled={saving || selectedIds.size === 0} className="btn-primary px-4 py-2 text-sm">
               {saving ? 'Enviando...' : `Replicar selecionados (${selectedIds.size})`}
-            </button>
-          </div>
-        </form>
-      )}
-    </Modal>
-  );
-}
-
-function QuickReplicateModal({
-  instance,
-  currentServerId,
-  onClose,
-  onCreated,
-}: {
-  instance: DatabaseInstanceSummary;
-  currentServerId: string;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [servers, setServers] = useState<{ id: string; name: string; dockerInstalled: boolean }[]>([]);
-  const [targetServerId, setTargetServerId] = useState('');
-  const [name, setName] = useState(`${instance.name}-replica`);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    apiFetch<{ id: string; name: string; dockerInstalled: boolean }[]>('/servers').then((all) =>
-      setServers(all.filter((s) => s.id !== currentServerId)),
-    );
-  }, [currentServerId]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await apiFetch<{ warnings: string[] }>(`/databases/${instance.id}/replicate`, {
-        method: 'POST',
-        body: JSON.stringify({ targetServerId, name }),
-      });
-      setWarnings(res.warnings);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao criar réplica');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title={warnings ? 'Réplica criada' : `Replicar "${instance.name}"`} onClose={warnings ? onCreated : onClose} closeDisabled={saving}>
-      {warnings ? (
-        <div>
-          {warnings.map((w) => (
-            <p key={w} className="mb-2 text-sm text-amber-600 dark:text-amber-400">
-              ⚠️ {w}
-            </p>
-          ))}
-          <button onClick={onCreated} className="mt-2 w-full btn-primary px-4 py-2 text-sm">
-            Fechar
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          <label className="mb-3 block text-sm">
-            <span className="mb-1 block font-medium">Servidor de destino</span>
-            <select required value={targetServerId} onChange={(e) => setTargetServerId(e.target.value)} className="input">
-              <option value="">Selecione...</option>
-              {servers.map((s) => (
-                <option key={s.id} value={s.id} disabled={!s.dockerInstalled}>
-                  {s.name} {!s.dockerInstalled ? '(sem Docker)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mb-3 block text-sm">
-            <span className="mb-1 block font-medium">Nome da réplica</span>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="input" />
-          </label>
-          {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving} className="btn-primary px-4 py-2 text-sm">
-              {saving ? 'Criando...' : 'Criar réplica'}
             </button>
           </div>
         </form>

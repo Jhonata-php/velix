@@ -5,9 +5,11 @@ const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
-      // Sobrescreve a paleta "slate" padrão do Tailwind (que puxa pro azul)
-      // por um cinza neutro — como o app inteiro já usa classes slate-*,
-      // isso muda a aparência em todo canto sem editar cada arquivo.
+      // Sobrescreve as paletas "slate" e "indigo" padrão do Tailwind — como o
+      // app inteiro já usa classes slate-*/indigo-*, isso aplica a identidade
+      // visual (neutros quase-pretos + violeta Velix) em todo canto sem editar
+      // cada arquivo. slate-700 é o token de borda (distinto de 800/900, que
+      // são superfícies), slate-950 é o fundo geral do app.
       colors: {
         slate: {
           50: '#f7f7f7',
@@ -17,10 +19,22 @@ const config: Config = {
           400: '#9c9c9c',
           500: '#767676',
           600: '#5a5a5a',
-          700: '#454547',
-          800: '#3a3a3c',
-          900: '#2a2a2c',
-          950: '#1e1e1f',
+          700: '#2a2a2e',
+          800: '#1c1c1f',
+          900: '#111113',
+          950: '#09090b',
+        },
+        indigo: {
+          50: '#f2f0ff',
+          100: '#e4e0ff',
+          200: '#c9c2ff',
+          300: '#a99cff',
+          400: '#8f7cff',
+          500: '#7c6cff',
+          600: '#6d5dfc',
+          700: '#5b4dd6',
+          800: '#4a3fb0',
+          900: '#3d3494',
         },
       },
     },
