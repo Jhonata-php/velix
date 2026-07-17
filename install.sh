@@ -2,35 +2,43 @@
 
 # ============================================================
 # Velix Installer
-# Ubuntu 20.04 / 22.04 / 24.04
 #
-# Instalação:
+# Execução recomendada para repositório privado:
 #
-# curl -fsSL \
-#   https://raw.githubusercontent.com/Jhonata-php/velix/main/install.sh \
-#   | sudo bash
+#   git clone https://github.com/Jhonata-php/velix.git
+#   cd velix
+#   chmod +x install.sh
+#   sudo ./install.sh
 #
-# Instalação usando repositório local:
+# Logs completos:
 #
-# sudo REPO_DIR="$(pwd)" ./install.sh
+#   tail -f /var/log/velix-install.log
 # ============================================================
 
 set -Eeuo pipefail
 
 # ============================================================
-# CONFIGURAÇÕES
+# CONFIGURAÇÕES GERAIS
 # ============================================================
 
-REPO_URL="${REPO_URL:-https://github.com/Jhonata-php/velix.git}"
+VELIX_VERSION="1.0.0"
+
 INSTALL_DIR="${INSTALL_DIR:-/opt/velix}"
-REPO_DIR="${REPO_DIR:-}"
+REPO_URL="${REPO_URL:-https://github.com/Jhonata-php/velix.git}"
 
-DEFAULT_ADMIN_EMAIL="${VELIX_ADMIN_EMAIL:-admin@velix.local}"
-DEFAULT_PANEL_PORT="${VELIX_HTTP_PORT:-3000}"
+SCRIPT_DIR="$(
+    cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+    pwd
+)"
 
-ENV_FILE="${INSTALL_DIR}/.env"
-OVERRIDE_FILE="${INSTALL_DIR}/docker-compose.override.yml"
+LOG_FILE="/var/log/velix-install.log"
 SYSTEMD_FILE="/etc/systemd/system/velix.service"
+
+ENV_FILE=""
+OVERRIDE_FILE=""
+
+DEFAULT_PANEL_PORT="3000"
+DEFAULT_ADMIN_EMAIL="admin@velix.local"
 
 SERVER_IP=""
 ADMIN_EMAIL=""
@@ -43,6 +51,8 @@ ACME_EMAIL=""
 PANEL_PORT="$DEFAULT_PANEL_PORT"
 WEB_ORIGIN=""
 
+SPINNER_PID=""
+
 # ============================================================
 # CORES
 # ============================================================
@@ -54,11 +64,39 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 GRAY='\033[0;90m'
+WHITE='\033[0;97m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ============================================================
+# LOG
+# ============================================================
+
+prepare_log() {
+    mkdir -p "$(dirname "$LOG_FILE")"
+    touch "$LOG_FILE"
+    chmod 600 "$LOG_FILE"
+
+    {
+        echo
+        echo "============================================================"
+        echo "Velix Installer ${VELIX_VERSION}"
+        echo "Iniciado em: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Sistema: $(uname -a)"
+        echo "============================================================"
+    } >>"$LOG_FILE"
+}
+
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG_FILE"
+}
+
+# ============================================================
+# MENSAGENS
+# ============================================================
+
 info() {
-    echo -e "${BLUE}==>${NC} $*"
+    echo -e "${BLUE}●${NC} $*"
 }
 
 success() {
@@ -81,49 +119,158 @@ fatal() {
 section() {
     echo
     echo -e "${PURPLE}────────────────────────────────────────────────────────────${NC}"
-    echo -e "${BOLD}$*${NC}"
+    echo -e "${BOLD}${WHITE}$*${NC}"
     echo -e "${PURPLE}────────────────────────────────────────────────────────────${NC}"
     echo
+}
+
+# ============================================================
+# SPINNER E EXECUÇÃO SILENCIOSA
+# ============================================================
+
+start_spinner() {
+    local message="$1"
+
+    printf "  %-49s" "$message"
+
+    (
+        local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+        local index=0
+
+        while true; do
+            printf "\b${PURPLE}%s${NC}" "${frames[$index]}"
+            index=$(( (index + 1) % ${#frames[@]} ))
+            sleep 0.1
+        done
+    ) &
+
+    SPINNER_PID=$!
+}
+
+stop_spinner() {
+    local status="$1"
+
+    if [ -n "${SPINNER_PID:-}" ]; then
+        kill "$SPINNER_PID" >/dev/null 2>&1 || true
+        wait "$SPINNER_PID" >/dev/null 2>&1 || true
+        SPINNER_PID=""
+    fi
+
+    printf "\b"
+
+    if [ "$status" -eq 0 ]; then
+        echo -e "${GREEN}✔${NC}"
+    else
+        echo -e "${RED}✖${NC}"
+    fi
+}
+
+run_step() {
+    local message="$1"
+    shift
+
+    local status=0
+
+    log_message "INÍCIO: ${message}"
+    log_message "COMANDO: $*"
+
+    start_spinner "$message"
+
+    set +e
+    "$@" >>"$LOG_FILE" 2>&1
+    status=$?
+    set -e
+
+    stop_spinner "$status"
+
+    if [ "$status" -ne 0 ]; then
+        error "Falha na etapa: ${message}"
+        echo
+        echo -e "${GRAY}Últimas linhas do log:${NC}"
+        echo
+        tail -n 30 "$LOG_FILE" || true
+        echo
+        error "Log completo: ${LOG_FILE}"
+        return "$status"
+    fi
+
+    log_message "SUCESSO: ${message}"
+}
+
+run_shell_step() {
+    local message="$1"
+    local command="$2"
+
+    local status=0
+
+    log_message "INÍCIO: ${message}"
+    log_message "COMANDO SHELL: ${command}"
+
+    start_spinner "$message"
+
+    set +e
+    bash -o pipefail -c "$command" >>"$LOG_FILE" 2>&1
+    status=$?
+    set -e
+
+    stop_spinner "$status"
+
+    if [ "$status" -ne 0 ]; then
+        error "Falha na etapa: ${message}"
+        echo
+        echo -e "${GRAY}Últimas linhas do log:${NC}"
+        echo
+        tail -n 30 "$LOG_FILE" || true
+        echo
+        error "Log completo: ${LOG_FILE}"
+        return "$status"
+    fi
+
+    log_message "SUCESSO: ${message}"
 }
 
 # ============================================================
 # TRATAMENTO DE ERROS
 # ============================================================
 
+cleanup_spinner() {
+    if [ -n "${SPINNER_PID:-}" ]; then
+        kill "$SPINNER_PID" >/dev/null 2>&1 || true
+        wait "$SPINNER_PID" >/dev/null 2>&1 || true
+        SPINNER_PID=""
+    fi
+}
+
 on_error() {
     local exit_code=$?
     local line_number="${1:-desconhecida}"
 
+    cleanup_spinner
+
     echo
-    error "A instalação falhou."
+    error "A instalação do Velix não foi concluída."
     error "Linha aproximada: ${line_number}"
     error "Código de saída: ${exit_code}"
+    echo
+    echo "Consulte o log completo:"
+    echo
+    echo "  tail -n 100 ${LOG_FILE}"
+    echo
 
     if command -v docker >/dev/null 2>&1; then
-        echo
-        warning "Estado atual dos containers:"
-
         docker ps -a \
             --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' \
             2>/dev/null || true
-    fi
-
-    if [ -d "$INSTALL_DIR" ]; then
-        echo
-        warning "Consulte os logs executando:"
-        echo
-        echo "  cd ${INSTALL_DIR}"
-        echo "  docker compose logs --tail=300"
     fi
 
     exit "$exit_code"
 }
 
 trap 'on_error $LINENO' ERR
+trap cleanup_spinner EXIT INT TERM
 
 # ============================================================
-# INTERAÇÃO PELO TERMINAL
-# Funciona mesmo usando curl | sudo bash
+# PERGUNTAS
 # ============================================================
 
 ask() {
@@ -158,7 +305,8 @@ ask_secret() {
         return
     fi
 
-    read -r -s -p "$(echo -e "${CYAN}?${NC} ${prompt}: ")" \
+    read -r -s \
+        -p "$(echo -e "${CYAN}?${NC} ${prompt}: ")" \
         answer </dev/tty
 
     echo >/dev/tty
@@ -176,12 +324,14 @@ ask_yes_no() {
     fi
 
     if [ "$default_value" = "s" ]; then
-        read -r -p "$(echo -e "${CYAN}?${NC} ${prompt} [S/n]: ")" \
+        read -r \
+            -p "$(echo -e "${CYAN}?${NC} ${prompt} [S/n]: ")" \
             answer </dev/tty
 
         answer="${answer:-s}"
     else
-        read -r -p "$(echo -e "${CYAN}?${NC} ${prompt} [s/N]: ")" \
+        read -r \
+            -p "$(echo -e "${CYAN}?${NC} ${prompt} [s/N]: ")" \
             answer </dev/tty
 
         answer="${answer:-n}"
@@ -213,12 +363,13 @@ show_banner() {
 ╚██╗ ██╔╝██╔══╝  ██║     ██║ ██╔██╗
  ╚████╔╝ ███████╗███████╗██║██╔╝ ██╗
   ╚═══╝  ╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
-
- Plataforma de infraestrutura, aplicações e automação
 EOF
 
     echo -e "${NC}"
-    echo -e "${GRAY}Instalador oficial do Velix${NC}"
+    echo -e "${PURPLE}${BOLD}Plataforma de infraestrutura, aplicações e automação${NC}"
+    echo
+    echo -e "${GRAY}Instalador oficial do Velix ${VELIX_VERSION}${NC}"
+    echo
 }
 
 # ============================================================
@@ -227,11 +378,11 @@ EOF
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        fatal "Execute este instalador como root ou utilizando sudo."
+        fatal "Execute o instalador como root ou utilizando sudo."
     fi
 }
 
-validate_os() {
+detect_system() {
     if [ ! -f /etc/os-release ]; then
         fatal "Não foi possível identificar o sistema operacional."
     fi
@@ -245,7 +396,7 @@ validate_os() {
             ;;
         *)
             warning "Sistema detectado: ${PRETTY_NAME:-desconhecido}"
-            warning "Este instalador foi desenvolvido para Ubuntu e Debian."
+            warning "O instalador foi desenvolvido para Ubuntu e Debian."
             ;;
     esac
 }
@@ -254,7 +405,7 @@ validate_email() {
     local email="$1"
 
     if [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
-        fatal "E-mail inválido: ${email}"
+        return 1
     fi
 }
 
@@ -262,7 +413,7 @@ validate_domain() {
     local domain="$1"
 
     if [[ ! "$domain" =~ ^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$ ]]; then
-        fatal "Domínio inválido: ${domain}"
+        return 1
     fi
 }
 
@@ -270,19 +421,46 @@ validate_port() {
     local port="$1"
 
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
-        fatal "A porta deve ser um número."
+        return 1
     fi
 
     if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-        fatal "Porta inválida: ${port}"
+        return 1
     fi
 }
 
 validate_password() {
     local password="$1"
 
-    if [ "${#password}" -lt 8 ]; then
-        fatal "A senha precisa ter pelo menos 8 caracteres."
+    [ "${#password}" -ge 8 ]
+}
+
+# ============================================================
+# REQUISITOS DE HARDWARE
+# ============================================================
+
+check_hardware() {
+    section "Verificando servidor"
+
+    local memory_mb
+    local cpu_count
+    local disk_available_mb
+
+    memory_mb="$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)"
+    cpu_count="$(nproc)"
+    disk_available_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
+
+    echo "  CPU:             ${cpu_count} núcleo(s)"
+    echo "  Memória:         ${memory_mb} MB"
+    echo "  Disco livre:     ${disk_available_mb} MB"
+    echo
+
+    if [ "$memory_mb" -lt 1800 ]; then
+        warning "Recomendado pelo menos 2 GB de memória RAM."
+    fi
+
+    if [ "$disk_available_mb" -lt 5000 ]; then
+        warning "Recomendado pelo menos 5 GB de espaço livre."
     fi
 }
 
@@ -291,133 +469,191 @@ validate_password() {
 # ============================================================
 
 install_dependencies() {
-    section "Instalando dependências"
+    section "Preparando o servidor"
 
     export DEBIAN_FRONTEND=noninteractive
 
-    apt-get update -y
+    run_step \
+        "Atualizando lista de pacotes" \
+        apt-get update -y
 
-    apt-get install -y \
-        ca-certificates \
-        curl \
-        dnsutils \
-        git \
-        gnupg \
-        jq \
-        lsb-release \
-        openssl \
-        rsync \
-        ufw
-
-    success "Dependências instaladas"
+    run_step \
+        "Instalando dependências" \
+        apt-get install -y \
+            ca-certificates \
+            curl \
+            dnsutils \
+            git \
+            gnupg \
+            jq \
+            lsb-release \
+            openssl \
+            rsync \
+            ufw
 }
 
 # ============================================================
-# IP PÚBLICO
+# IP DO SERVIDOR
 # ============================================================
 
 detect_public_ip() {
-    section "Detectando IP público"
+    section "Detectando rede"
+
+    start_spinner "Detectando endereço IP público"
+
+    set +e
 
     SERVER_IP="$(
-        curl -4 -fsSL --connect-timeout 8 https://api.ipify.org 2>/dev/null ||
-        curl -4 -fsSL --connect-timeout 8 https://ifconfig.me 2>/dev/null ||
-        hostname -I 2>/dev/null | awk '{print $1}' ||
-        true
+        curl -4 -fsSL \
+            --connect-timeout 8 \
+            https://api.ipify.org 2>>"$LOG_FILE"
     )"
 
     if [ -z "$SERVER_IP" ]; then
-        SERVER_IP="127.0.0.1"
-        warning "Não foi possível detectar o IP público automaticamente."
+        SERVER_IP="$(
+            curl -4 -fsSL \
+                --connect-timeout 8 \
+                https://ifconfig.me 2>>"$LOG_FILE"
+        )"
+    fi
+
+    if [ -z "$SERVER_IP" ]; then
+        SERVER_IP="$(
+            hostname -I 2>/dev/null |
+            awk '{print $1}'
+        )"
+    fi
+
+    set -e
+
+    if [ -n "$SERVER_IP" ]; then
+        stop_spinner 0
+        success "Endereço detectado: ${SERVER_IP}"
     else
-        success "IP detectado: ${SERVER_IP}"
+        stop_spinner 1
+        SERVER_IP="127.0.0.1"
+        warning "Não foi possível detectar o IP automaticamente."
     fi
 }
 
 # ============================================================
-# COLETA DE CONFIGURAÇÕES
+# CONFIGURAÇÃO INTERATIVA
 # ============================================================
 
 collect_configuration() {
     section "Configuração inicial"
 
-    INSTALL_DIR="$(ask "Diretório de instalação" "$INSTALL_DIR")"
+    INSTALL_DIR="$(ask \
+        "Diretório de instalação" \
+        "$INSTALL_DIR")"
 
-    ADMIN_EMAIL="$(ask \
-        "E-mail inicial do administrador" \
-        "$DEFAULT_ADMIN_EMAIL")"
+    ENV_FILE="${INSTALL_DIR}/.env"
+    OVERRIDE_FILE="${INSTALL_DIR}/docker-compose.override.yml"
 
-    validate_email "$ADMIN_EMAIL"
+    while true; do
+        ADMIN_EMAIL="$(ask \
+            "E-mail do administrador" \
+            "$DEFAULT_ADMIN_EMAIL")"
 
-    ADMIN_PASSWORD="$(ask_secret \
-        "Senha do administrador, deixe vazio para gerar automaticamente")"
+        if validate_email "$ADMIN_EMAIL"; then
+            break
+        fi
 
-    if [ -z "$ADMIN_PASSWORD" ]; then
-        ADMIN_PASSWORD="$(
-            openssl rand -base64 32 |
-            tr -d '/+=' |
-            cut -c1-18
-        )"
+        warning "Informe um endereço de e-mail válido."
+    done
 
-        GENERATED_ADMIN_PASSWORD="true"
-    else
-        validate_password "$ADMIN_PASSWORD"
-    fi
+    while true; do
+        ADMIN_PASSWORD="$(ask_secret \
+            "Senha do administrador, deixe vazio para gerar")"
+
+        if [ -z "$ADMIN_PASSWORD" ]; then
+            ADMIN_PASSWORD="$(
+                openssl rand -base64 48 |
+                tr -d '/+=' |
+                cut -c1-20
+            )"
+
+            GENERATED_ADMIN_PASSWORD="true"
+            break
+        fi
+
+        if validate_password "$ADMIN_PASSWORD"; then
+            break
+        fi
+
+        warning "A senha precisa ter pelo menos 8 caracteres."
+    done
 
     if ask_yes_no \
-        "Deseja acessar o Velix através de um domínio com SSL?" \
+        "Deseja configurar um domínio com SSL automático?" \
         "s"; then
 
         USE_DOMAIN="true"
 
         while true; do
             VELIX_DOMAIN="$(ask \
-                "Domínio do painel, sem http:// ou https://" \
+                "Domínio do painel, sem http ou https" \
                 "")"
 
-            if [[ "$VELIX_DOMAIN" =~ ^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$ ]]; then
+            VELIX_DOMAIN="$(
+                echo "$VELIX_DOMAIN" |
+                tr '[:upper:]' '[:lower:]' |
+                sed -E 's#^https?://##; s#/$##'
+            )"
+
+            if validate_domain "$VELIX_DOMAIN"; then
                 break
             fi
 
-            warning "Domínio inválido. Exemplo: velix.seudominio.com.br"
+            warning "Domínio inválido. Exemplo: velix.needbr.com"
         done
 
-        ACME_EMAIL="$(ask \
-            "E-mail para emissão do certificado SSL" \
-            "$ADMIN_EMAIL")"
+        while true; do
+            ACME_EMAIL="$(ask \
+                "E-mail para o certificado SSL" \
+                "$ADMIN_EMAIL")"
 
-        validate_email "$ACME_EMAIL"
+            if validate_email "$ACME_EMAIL"; then
+                break
+            fi
+
+            warning "Informe um endereço de e-mail válido."
+        done
 
         WEB_ORIGIN="https://${VELIX_DOMAIN}"
         PANEL_PORT="3000"
     else
         USE_DOMAIN="false"
 
-        PANEL_PORT="$(ask \
-            "Porta de acesso ao painel" \
-            "$DEFAULT_PANEL_PORT")"
+        while true; do
+            PANEL_PORT="$(ask \
+                "Porta de acesso ao painel" \
+                "$DEFAULT_PANEL_PORT")"
 
-        validate_port "$PANEL_PORT"
+            if validate_port "$PANEL_PORT"; then
+                break
+            fi
 
+            warning "Informe uma porta entre 1 e 65535."
+        done
+
+        WEB_ORIGIN="http://${SERVER_IP}:${PANEL_PORT}"
         VELIX_DOMAIN=""
         ACME_EMAIL=""
-        WEB_ORIGIN="http://${SERVER_IP}:${PANEL_PORT}"
     fi
 
-    section "Resumo da instalação"
+    section "Resumo"
 
-    echo "Diretório:       ${INSTALL_DIR}"
-    echo "IP do servidor:  ${SERVER_IP}"
-    echo "Administrador:   ${ADMIN_EMAIL}"
+    echo "  Diretório:       ${INSTALL_DIR}"
+    echo "  Servidor:        ${SERVER_IP}"
+    echo "  Administrador:   ${ADMIN_EMAIL}"
+    echo "  URL:             ${WEB_ORIGIN}"
 
     if [ "$USE_DOMAIN" = "true" ]; then
-        echo "Domínio:         ${VELIX_DOMAIN}"
-        echo "URL:             ${WEB_ORIGIN}"
-        echo "SSL:             Let's Encrypt"
+        echo "  Proxy:           Traefik"
+        echo "  SSL:             Let's Encrypt"
     else
-        echo "Domínio:         não configurado"
-        echo "Porta:           ${PANEL_PORT}"
-        echo "URL:             ${WEB_ORIGIN}"
+        echo "  Porta:           ${PANEL_PORT}"
     fi
 
     echo
@@ -432,103 +668,148 @@ collect_configuration() {
 # ============================================================
 
 install_docker() {
-    section "Instalando Docker"
+    section "Configurando Docker"
 
-    if ! command -v docker >/dev/null 2>&1; then
-        info "Docker não encontrado. Iniciando instalação."
+    if command -v docker >/dev/null 2>&1 &&
+       docker compose version >/dev/null 2>&1; then
 
+        success "Docker já está instalado"
+        success "$(docker compose version)"
+        return
+    fi
+
+    run_step \
+        "Preparando repositório do Docker" \
         install -m 0755 -d /etc/apt/keyrings
 
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-            -o /etc/apt/keyrings/docker.asc
+    local os_id
+    local codename
 
-        chmod a+r /etc/apt/keyrings/docker.asc
+    # shellcheck disable=SC1091
+    source /etc/os-release
 
-        # shellcheck disable=SC1091
-        source /etc/os-release
+    os_id="${ID}"
+
+    if [ "$os_id" = "debian" ]; then
+        run_shell_step \
+            "Importando chave do Docker" \
+            "curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc"
+
+        codename="${VERSION_CODENAME}"
 
         echo \
-            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${codename} stable" \
             > /etc/apt/sources.list.d/docker.list
+    else
+        run_shell_step \
+            "Importando chave do Docker" \
+            "curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc"
 
+        codename="${VERSION_CODENAME}"
+
+        echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable" \
+            > /etc/apt/sources.list.d/docker.list
+    fi
+
+    chmod a+r /etc/apt/keyrings/docker.asc
+
+    run_step \
+        "Atualizando repositórios do Docker" \
         apt-get update -y
 
+    run_step \
+        "Instalando Docker Engine" \
         apt-get install -y \
             docker-ce \
             docker-ce-cli \
             containerd.io \
             docker-buildx-plugin \
             docker-compose-plugin
-    fi
 
-    systemctl enable --now docker
+    run_step \
+        "Ativando serviço Docker" \
+        systemctl enable --now docker
 
-    if ! docker compose version >/dev/null 2>&1; then
-        fatal "O plugin Docker Compose não foi encontrado."
-    fi
+    docker compose version >/dev/null 2>&1 ||
+        fatal "Docker Compose não foi instalado corretamente."
 
     success "$(docker --version)"
     success "$(docker compose version)"
 }
 
 # ============================================================
-# CÓDIGO DO VELIX
+# ARQUIVOS DO VELIX
 # ============================================================
 
-download_source() {
-    section "Obtendo o Velix"
+is_velix_source_directory() {
+    local directory="$1"
 
-    if [ -n "$REPO_DIR" ]; then
-        if [ ! -d "$REPO_DIR" ]; then
-            fatal "REPO_DIR não encontrado: ${REPO_DIR}"
-        fi
+    [ -f "${directory}/docker-compose.yml" ] &&
+    [ -d "${directory}/apps/api" ] &&
+    [ -d "${directory}/apps/web" ]
+}
 
-        mkdir -p "$INSTALL_DIR"
+copy_local_source() {
+    mkdir -p "$INSTALL_DIR"
 
+    run_step \
+        "Copiando arquivos do Velix" \
         rsync -a \
-            --exclude='.git' \
+            --delete \
+            --exclude='.git/' \
             --exclude='.env' \
             --exclude='docker-compose.override.yml' \
-            "${REPO_DIR}/" \
+            --exclude='node_modules/' \
+            --exclude='.next/' \
+            --exclude='dist/' \
+            "${SCRIPT_DIR}/" \
             "${INSTALL_DIR}/"
+}
 
-        success "Código copiado de ${REPO_DIR}"
-
-    elif [ -d "${INSTALL_DIR}/.git" ]; then
-        info "Instalação existente encontrada. Atualizando."
-
-        git -C "$INSTALL_DIR" fetch --all --prune
+update_existing_repository() {
+    run_step \
+        "Atualizando repositório existente" \
         git -C "$INSTALL_DIR" pull --ff-only
+}
 
-        success "Velix atualizado"
+clone_repository() {
+    run_step \
+        "Baixando repositório do Velix" \
+        git clone "$REPO_URL" "$INSTALL_DIR"
+}
 
+prepare_source() {
+    section "Preparando arquivos do Velix"
+
+    if [ "$SCRIPT_DIR" = "$INSTALL_DIR" ]; then
+        success "Instalador executado no diretório final"
+    elif is_velix_source_directory "$SCRIPT_DIR"; then
+        copy_local_source
+    elif [ -d "${INSTALL_DIR}/.git" ]; then
+        update_existing_repository
+    elif is_velix_source_directory "$INSTALL_DIR"; then
+        success "Instalação existente encontrada em ${INSTALL_DIR}"
     elif [ -e "$INSTALL_DIR" ] &&
          [ "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)" -gt 0 ]; then
 
-        fatal "O diretório ${INSTALL_DIR} já existe e não é um repositório Git."
-
+        fatal "O diretório ${INSTALL_DIR} não está vazio."
     else
-        git clone "$REPO_URL" "$INSTALL_DIR"
-        success "Repositório clonado"
+        clone_repository
     fi
 
-    cd "$INSTALL_DIR"
-
-    if [ ! -f docker-compose.yml ]; then
-        fatal "docker-compose.yml não encontrado em ${INSTALL_DIR}."
+    if ! is_velix_source_directory "$INSTALL_DIR"; then
+        fatal "Os arquivos necessários do Velix não foram encontrados."
     fi
 
-    if [ ! -f apps/api/Dockerfile ]; then
-        fatal "Dockerfile da API não encontrado em apps/api/Dockerfile."
-    fi
+    ENV_FILE="${INSTALL_DIR}/.env"
+    OVERRIDE_FILE="${INSTALL_DIR}/docker-compose.override.yml"
 
-    if [ ! -f apps/web/Dockerfile ]; then
-        fatal "Dockerfile do frontend não encontrado em apps/web/Dockerfile."
-    fi
+    success "Arquivos preparados em ${INSTALL_DIR}"
 }
 
 # ============================================================
-# MANIPULAÇÃO DO .ENV
+# .ENV
 # ============================================================
 
 get_env_value() {
@@ -554,7 +835,7 @@ upsert_env() {
 }
 
 generate_environment() {
-    section "Gerando configurações seguras"
+    section "Gerando configurações"
 
     local postgres_password=""
     local jwt_secret=""
@@ -567,77 +848,94 @@ generate_environment() {
 
         cp "$ENV_FILE" "$backup_file"
 
-        postgres_password="$(get_env_value POSTGRES_PASSWORD "$ENV_FILE")"
-        jwt_secret="$(get_env_value JWT_SECRET "$ENV_FILE")"
-        credential_secret="$(get_env_value VELIX_CREDENTIAL_SECRET "$ENV_FILE")"
+        postgres_password="$(
+            get_env_value POSTGRES_PASSWORD "$ENV_FILE"
+        )"
 
-        warning "Arquivo .env existente detectado."
+        jwt_secret="$(
+            get_env_value JWT_SECRET "$ENV_FILE"
+        )"
+
+        credential_secret="$(
+            get_env_value VELIX_CREDENTIAL_SECRET "$ENV_FILE"
+        )"
+
+        warning "Configuração anterior encontrada"
         success "Backup criado em ${backup_file}"
     else
         touch "$ENV_FILE"
     fi
 
-    postgres_password="${postgres_password:-$(openssl rand -hex 32)}"
-    jwt_secret="${jwt_secret:-$(openssl rand -hex 48)}"
-    credential_secret="${credential_secret:-$(openssl rand -hex 48)}"
+    postgres_password="${
+        postgres_password:-$(openssl rand -hex 32)
+    }"
+
+    jwt_secret="${
+        jwt_secret:-$(openssl rand -hex 48)
+    }"
+
+    credential_secret="${
+        credential_secret:-$(openssl rand -hex 48)
+    }"
 
     upsert_env \
-        "POSTGRES_PASSWORD" \
+        POSTGRES_PASSWORD \
         "$postgres_password" \
         "$ENV_FILE"
 
     upsert_env \
-        "JWT_SECRET" \
+        JWT_SECRET \
         "$jwt_secret" \
         "$ENV_FILE"
 
     upsert_env \
-        "VELIX_CREDENTIAL_SECRET" \
+        VELIX_CREDENTIAL_SECRET \
         "$credential_secret" \
         "$ENV_FILE"
 
     upsert_env \
-        "WEB_ORIGIN" \
+        WEB_ORIGIN \
         "$WEB_ORIGIN" \
         "$ENV_FILE"
 
     upsert_env \
-        "VELIX_ADMIN_EMAIL" \
+        NEXT_PUBLIC_APP_URL \
+        "$WEB_ORIGIN" \
+        "$ENV_FILE"
+
+    upsert_env \
+        VELIX_ADMIN_EMAIL \
         "$ADMIN_EMAIL" \
         "$ENV_FILE"
 
     upsert_env \
-        "VELIX_ADMIN_PASSWORD" \
+        VELIX_ADMIN_PASSWORD \
         "$ADMIN_PASSWORD" \
         "$ENV_FILE"
 
     upsert_env \
-        "VELIX_DOMAIN" \
+        VELIX_DOMAIN \
         "$VELIX_DOMAIN" \
         "$ENV_FILE"
 
     upsert_env \
-        "VELIX_HTTP_PORT" \
+        VELIX_HTTP_PORT \
         "$PANEL_PORT" \
         "$ENV_FILE"
 
     upsert_env \
-        "TRAEFIK_ACME_EMAIL" \
+        TRAEFIK_ACME_EMAIL \
         "$ACME_EMAIL" \
         "$ENV_FILE"
 
-    upsert_env \
-        "NEXT_PUBLIC_APP_URL" \
-        "$WEB_ORIGIN" \
-        "$ENV_FILE"
-
     chmod 600 "$ENV_FILE"
+    chown root:root "$ENV_FILE"
 
-    success "Arquivo ${ENV_FILE} configurado"
+    success "Variáveis e segredos gerados"
 }
 
 # ============================================================
-# OVERRIDE DOCKER COMPOSE
+# DOCKER COMPOSE OVERRIDE
 # ============================================================
 
 generate_compose_override() {
@@ -713,7 +1011,6 @@ volumes:
 YAML
 
         success "Traefik e HTTPS configurados"
-
     else
         cat >"$OVERRIDE_FILE" <<'YAML'
 services:
@@ -726,6 +1023,7 @@ YAML
     fi
 
     chmod 600 "$OVERRIDE_FILE"
+    chown root:root "$OVERRIDE_FILE"
 }
 
 # ============================================================
@@ -737,48 +1035,83 @@ check_dns() {
         return
     fi
 
-    section "Verificando DNS"
+    section "Verificando domínio"
 
-    local resolved_ip=""
+    local resolved_ips=""
+    local dns_ok="false"
 
-    resolved_ip="$(
+    resolved_ips="$(
         dig +short A "$VELIX_DOMAIN" 2>/dev/null |
-        tail -n1 ||
+        grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' ||
         true
     )"
 
-    if [ -z "$resolved_ip" ]; then
-        warning "O domínio ${VELIX_DOMAIN} ainda não possui registro A."
+    if echo "$resolved_ips" | grep -qx "$SERVER_IP"; then
+        dns_ok="true"
+    fi
 
-        echo
-        echo "Crie o seguinte registro DNS:"
-        echo
-        echo "  Tipo: A"
-        echo "  Nome: ${VELIX_DOMAIN}"
-        echo "  IP:   ${SERVER_IP}"
-        echo
-
-        warning "O Velix será instalado, mas o SSL ficará pendente."
-        warning "Após corrigir o DNS, o Traefik emitirá o certificado automaticamente."
-
-        if ! ask_yes_no "Deseja continuar mesmo assim?" "s"; then
-            fatal "Instalação cancelada para correção do DNS."
-        fi
-
+    if [ "$dns_ok" = "true" ]; then
+        success "${VELIX_DOMAIN} aponta para ${SERVER_IP}"
         return
     fi
 
-    if [ "$resolved_ip" = "$SERVER_IP" ]; then
-        success "${VELIX_DOMAIN} aponta corretamente para ${SERVER_IP}"
-    else
-        warning "O domínio aponta atualmente para: ${resolved_ip}"
-        warning "O IP detectado deste servidor é: ${SERVER_IP}"
-        warning "O certificado pode não ser emitido até o DNS ser corrigido."
+    warning "O domínio ainda não aponta para o IP detectado."
 
-        if ! ask_yes_no "Deseja continuar mesmo assim?" "s"; then
-            fatal "Instalação cancelada para correção do DNS."
-        fi
+    echo
+    echo "Configure o seguinte registro DNS:"
+    echo
+    echo "  Tipo: A"
+    echo "  Nome: ${VELIX_DOMAIN}"
+    echo "  IP:   ${SERVER_IP}"
+    echo
+
+    if [ -n "$resolved_ips" ]; then
+        echo "IP encontrado atualmente:"
+        echo "$resolved_ips" | sed 's/^/  /'
+        echo
     fi
+
+    warning "O Velix poderá iniciar, mas o certificado ficará pendente."
+
+    if ! ask_yes_no "Deseja continuar mesmo assim?" "s"; then
+        fatal "Instalação cancelada para correção do DNS."
+    fi
+}
+
+# ============================================================
+# PORTAS
+# ============================================================
+
+check_required_ports() {
+    section "Verificando portas"
+
+    local ports=()
+
+    if [ "$USE_DOMAIN" = "true" ]; then
+        ports=(80 443)
+    else
+        ports=("$PANEL_PORT")
+    fi
+
+    local port
+
+    for port in "${ports[@]}"; do
+        if ss -lnt 2>/dev/null |
+           awk '{print $4}' |
+           grep -Eq ":${port}$"; then
+
+            warning "A porta ${port} já está sendo utilizada."
+
+            if ! ask_yes_no \
+                "Deseja continuar mesmo com a porta ${port} ocupada?" \
+                "n"; then
+
+                fatal "Libere a porta ${port} antes de continuar."
+            fi
+        else
+            success "Porta ${port} disponível"
+        fi
+    done
 }
 
 # ============================================================
@@ -789,26 +1122,31 @@ configure_firewall() {
     section "Configurando firewall"
 
     if ! command -v ufw >/dev/null 2>&1; then
-        warning "UFW não encontrado. Nenhuma regra foi alterada."
+        warning "UFW não encontrado"
         return
     fi
 
     if ! ufw status | grep -q "Status: active"; then
-        warning "UFW está inativo. Nenhuma regra foi alterada."
+        warning "UFW está inativo; nenhuma regra foi modificada"
         return
     fi
 
-    ufw allow OpenSSH >/dev/null
+    run_step \
+        "Mantendo acesso SSH liberado" \
+        ufw allow OpenSSH
 
     if [ "$USE_DOMAIN" = "true" ]; then
-        ufw allow 80/tcp >/dev/null
-        ufw allow 443/tcp >/dev/null
+        run_step \
+            "Liberando porta HTTP" \
+            ufw allow 80/tcp
 
-        success "Portas 80 e 443 liberadas"
+        run_step \
+            "Liberando porta HTTPS" \
+            ufw allow 443/tcp
     else
-        ufw allow "${PANEL_PORT}/tcp" >/dev/null
-
-        success "Porta ${PANEL_PORT} liberada"
+        run_step \
+            "Liberando porta ${PANEL_PORT}" \
+            ufw allow "${PANEL_PORT}/tcp"
     fi
 }
 
@@ -836,16 +1174,19 @@ ExecReload=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose stop
 
 TimeoutStartSec=0
-TimeoutStopSec=120
+TimeoutStopSec=180
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable velix.service
+    run_step \
+        "Atualizando serviços do sistema" \
+        systemctl daemon-reload
 
-    success "Serviço velix.service criado"
+    run_step \
+        "Ativando inicialização automática" \
+        systemctl enable velix.service
 }
 
 # ============================================================
@@ -853,36 +1194,101 @@ EOF
 # ============================================================
 
 deploy_velix() {
-    section "Construindo e iniciando o Velix"
+    section "Instalando o Velix"
 
     cd "$INSTALL_DIR"
 
-    info "Validando Docker Compose"
+    run_step \
+        "Validando Docker Compose" \
+        docker compose config
 
-    docker compose config >/dev/null
+    run_step \
+        "Baixando imagens externas" \
+        docker compose pull \
+            --ignore-buildable
 
-    success "Configuração do Docker Compose válida"
+    run_step \
+        "Construindo aplicação" \
+        docker compose build
 
-    info "Construindo imagens"
-    warning "A primeira compilação pode levar alguns minutos."
+    run_step \
+        "Iniciando containers" \
+        docker compose up -d \
+            --remove-orphans
 
-    docker compose build
-
-    info "Iniciando containers"
-
-    docker compose up -d --remove-orphans
-
-    success "Containers iniciados"
+    run_step \
+        "Atualizando serviço Velix" \
+        systemctl restart velix.service
 }
 
 # ============================================================
-# VERIFICAÇÃO
+# VERIFICAÇÃO DOS CONTAINERS
 # ============================================================
 
-wait_for_velix() {
-    section "Aguardando o Velix"
+wait_for_containers() {
+    section "Verificando serviços"
+
+    local attempt
+    local postgres_status=""
+    local api_status=""
+    local web_status=""
+
+    for attempt in $(seq 1 60); do
+        postgres_status="$(
+            docker inspect \
+                -f '{{.State.Status}}' \
+                velix-postgres 2>/dev/null ||
+            true
+        )"
+
+        api_status="$(
+            docker inspect \
+                -f '{{.State.Status}}' \
+                velix-api 2>/dev/null ||
+            true
+        )"
+
+        web_status="$(
+            docker inspect \
+                -f '{{.State.Status}}' \
+                velix-web 2>/dev/null ||
+            true
+        )"
+
+        if [ "$postgres_status" = "running" ] &&
+           [ "$api_status" = "running" ] &&
+           [ "$web_status" = "running" ]; then
+
+            success "Banco de dados em execução"
+            success "API em execução"
+            success "Painel web em execução"
+            return
+        fi
+
+        sleep 3
+    done
+
+    warning "Algum serviço ainda não está em execução."
+
+    docker compose ps || true
+
+    echo
+    warning "Verifique os logs:"
+    echo
+    echo "  cd ${INSTALL_DIR}"
+    echo "  docker compose logs --tail=200"
+}
+
+# ============================================================
+# VERIFICAÇÃO HTTP
+# ============================================================
+
+wait_for_panel() {
+    section "Testando painel"
 
     local check_url=""
+    local attempt
+    local status=1
 
     if [ "$USE_DOMAIN" = "true" ]; then
         check_url="https://${VELIX_DOMAIN}"
@@ -890,28 +1296,41 @@ wait_for_velix() {
         check_url="http://127.0.0.1:${PANEL_PORT}"
     fi
 
-    local attempt
+    start_spinner "Aguardando resposta do painel"
+
+    set +e
 
     for attempt in $(seq 1 80); do
-        if curl -kfsS \
+        curl -kfsS \
             --max-time 5 \
             "$check_url" \
-            >/dev/null 2>&1; then
+            >/dev/null 2>>"$LOG_FILE"
 
-            success "O painel respondeu corretamente"
-            return
+        status=$?
+
+        if [ "$status" -eq 0 ]; then
+            break
         fi
 
-        printf '.'
         sleep 3
     done
 
-    echo
-    warning "Os containers estão ativos, mas o painel ainda não respondeu."
-    warning "Verifique os logs com:"
-    echo
-    echo "  cd ${INSTALL_DIR}"
-    echo "  docker compose logs -f"
+    set -e
+
+    stop_spinner "$status"
+
+    if [ "$status" -eq 0 ]; then
+        success "O painel respondeu corretamente"
+    else
+        warning "O painel ainda não respondeu pela URL configurada."
+        warning "Os containers podem ainda estar inicializando."
+
+        echo
+        echo "Veja os logs com:"
+        echo
+        echo "  cd ${INSTALL_DIR}"
+        echo "  docker compose logs -f"
+    fi
 }
 
 # ============================================================
@@ -922,47 +1341,48 @@ show_result() {
     section "Instalação concluída"
 
     echo -e "${GREEN}${BOLD}"
-    echo "✔ Velix instalado com sucesso"
+    echo "  ✔ Velix instalado com sucesso"
     echo -e "${NC}"
 
-    echo "URL:             ${WEB_ORIGIN}"
-    echo "Administrador:   ${ADMIN_EMAIL}"
-    echo "Senha:           ${ADMIN_PASSWORD}"
+    echo "  URL:             ${WEB_ORIGIN}"
+    echo "  Administrador:   ${ADMIN_EMAIL}"
+    echo "  Senha:           ${ADMIN_PASSWORD}"
     echo
-    echo "Diretório:       ${INSTALL_DIR}"
-    echo "Configurações:   ${ENV_FILE}"
-    echo "Override:        ${OVERRIDE_FILE}"
+    echo "  Diretório:       ${INSTALL_DIR}"
+    echo "  Configuração:    ${ENV_FILE}"
+    echo "  Log:             ${LOG_FILE}"
 
     if [ "$USE_DOMAIN" = "true" ]; then
-        echo "Proxy:           Traefik"
-        echo "SSL:             Let's Encrypt"
+        echo "  Proxy:           Traefik"
+        echo "  SSL:             Let's Encrypt"
     else
-        echo "Porta:           ${PANEL_PORT}"
+        echo "  Porta:           ${PANEL_PORT}"
     fi
 
     echo
     echo -e "${BOLD}Comandos úteis${NC}"
     echo
-    echo "Status:"
-    echo "  cd ${INSTALL_DIR} && docker compose ps"
+    echo "  Ver containers:"
+    echo "    cd ${INSTALL_DIR} && docker compose ps"
     echo
-    echo "Logs:"
-    echo "  cd ${INSTALL_DIR} && docker compose logs -f"
+    echo "  Acompanhar logs:"
+    echo "    cd ${INSTALL_DIR} && docker compose logs -f"
     echo
-    echo "Reiniciar:"
-    echo "  systemctl restart velix"
+    echo "  Log do instalador:"
+    echo "    tail -f ${LOG_FILE}"
     echo
-    echo "Parar:"
-    echo "  systemctl stop velix"
+    echo "  Reiniciar:"
+    echo "    systemctl restart velix"
     echo
-    echo "Atualizar:"
-    echo "  cd ${INSTALL_DIR}"
-    echo "  git pull"
-    echo "  docker compose up -d --build --remove-orphans"
+    echo "  Parar:"
+    echo "    systemctl stop velix"
+    echo
+    echo "  Iniciar:"
+    echo "    systemctl start velix"
     echo
 
-    warning "Guarde a senha do administrador em um local seguro."
-    warning "O arquivo .env contém informações sigilosas."
+    warning "Guarde a senha administrativa em local seguro."
+    warning "O arquivo .env contém senhas e segredos do sistema."
 }
 
 # ============================================================
@@ -970,22 +1390,25 @@ show_result() {
 # ============================================================
 
 main() {
+    prepare_log
     show_banner
     require_root
-    validate_os
-
+    detect_system
+    check_hardware
     install_dependencies
     detect_public_ip
     collect_configuration
     install_docker
-    download_source
+    prepare_source
+    check_required_ports
     generate_environment
     generate_compose_override
     check_dns
     configure_firewall
     create_systemd_service
     deploy_velix
-    wait_for_velix
+    wait_for_containers
+    wait_for_panel
     show_result
 }
 
