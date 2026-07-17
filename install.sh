@@ -866,9 +866,7 @@ generate_environment() {
         touch "$ENV_FILE"
     fi
 
-    postgres_password="${
-        postgres_password:-$(openssl rand -hex 32)
-    }"
+    ${postgres_password:-$(openssl rand -hex 32)}
 
     jwt_secret="${
         jwt_secret:-$(openssl rand -hex 48)
