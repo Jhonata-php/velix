@@ -76,7 +76,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (res.status === 401 && !isLoginRequest) {
     clearToken();
     if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      window.location.href = '/login';
+      // Preserva a página atual em `next` — o login redireciona de volta pra
+      // cá em vez de sempre cair no /dashboard genérico.
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
     }
     throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
   }
@@ -88,6 +91,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     }
     if (res.status === 403) {
       throw new ApiError(body.message ?? 'Você não tem permissão para executar esta ação.', 403);
+    }
+    if (res.status === 429) {
+      throw new ApiError('Muitas tentativas. Aguarde alguns minutos e tente novamente.', 429);
     }
     if (res.status >= 500) {
       throw new ApiError('Erro interno no servidor. Tente novamente em instantes.', res.status);

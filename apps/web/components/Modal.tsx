@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { IconX } from './icons';
 import { Alert } from './Alert';
 
@@ -13,6 +13,15 @@ interface Props {
 }
 
 export function Modal({ title, onClose, closeDisabled, maxWidth = 'max-w-md', children }: Props) {
+  useEffect(() => {
+    if (!onClose || closeDisabled) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose?.();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose, closeDisabled]);
+
   return (
     <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-md">
       <div className={`modal-pop card w-full ${maxWidth} p-6`}>

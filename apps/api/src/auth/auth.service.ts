@@ -1,9 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SessionService } from './session.service';
+import { validatePassword } from './password-policy.util';
 
 const SESSION_TTL_DEFAULT = '12h';
 const SESSION_TTL_REMEMBER_ME = '30d';
@@ -80,6 +81,31 @@ export class AuthService {
   async revokeSession(sessionId: string, userId: string, ip: string, userAgent: string) {
     await this.sessions.revoke(sessionId, userId);
     await this.audit.record({ event: 'SESSION_REVOKED', userId, ip, userAgent, metadata: { sessionId } });
+  }
+
+  /** "Encerrar todas as outras sessões" — mantém a sessão atual viva (diferente de logoutAll). */
+  async revokeOtherSessions(userId: string, currentSessionId: string, ip: string, userAgent: string) {
+    await this.sessions.revokeAllForUser(userId, currentSessionId);
+    await this.audit.record({ event: 'LOGOUT_ALL', userId, ip, userAgent, metadata: { keptCurrentSession: true } });
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string, currentSessionId: string, ip: string, userAgent: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Sua sessão expirou. Entre novamente.');
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Senha atual incorreta.');
+
+    const policyError = validatePassword(newPassword, user.email);
+    if (policyError) throw new BadRequestException(policyError);
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+    // Mantém a sessão atual (o usuário continua logado onde acabou de trocar
+    // a senha), mas derruba qualquer outro dispositivo/sessão esquecido.
+    await this.sessions.revokeAllForUser(userId, currentSessionId);
+    await this.audit.record({ event: 'PASSWORD_CHANGED', userId, ip, userAgent });
   }
 
   private async recordAttempt(email: string, ip: string, success: boolean) {

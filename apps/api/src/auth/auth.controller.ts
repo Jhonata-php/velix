@@ -3,6 +3,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard, AuthenticatedUser } from './jwt-auth.guard';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
@@ -57,5 +58,30 @@ export class AuthController {
   async revokeSession(@Param('id') id: string, @Req() req: AuthedRequest) {
     await this.authService.revokeSession(id, req.user.sub, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
     return { message: 'Sessão encerrada.' };
+  }
+
+  // Mantém a sessão atual — diferente de /logout-all (usado quando o usuário
+  // suspeita de acesso indevido mas ainda quer continuar logado aqui).
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions/revoke-others')
+  @HttpCode(HttpStatus.OK)
+  async revokeOtherSessions(@Req() req: AuthedRequest) {
+    await this.authService.revokeOtherSessions(req.user.sub, req.user.sid ?? '', req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    return { message: 'As outras sessões foram encerradas.' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: AuthedRequest) {
+    await this.authService.changePassword(
+      req.user.sub,
+      dto.currentPassword,
+      dto.newPassword,
+      req.user.sid ?? '',
+      req.ip ?? 'unknown',
+      req.headers['user-agent'] ?? '',
+    );
+    return { message: 'Senha alterada com sucesso.' };
   }
 }

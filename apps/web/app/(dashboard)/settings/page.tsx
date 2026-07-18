@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { Alert } from '@/components/Alert';
+import { IconShield, IconChevronRight } from '@/components/icons';
 
 interface AccountStatus {
   connected: boolean;
@@ -81,6 +83,17 @@ export default function SettingsPage() {
         <h1 className="page-title">Configurações</h1>
         <p className="text-xs text-slate-400">Sistema e integrações</p>
       </div>
+
+      <Link href="/settings/security" className="card card-hover flex items-center gap-3 p-4">
+        <span className="icon-chip bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+          <IconShield className="h-[18px] w-[18px]" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">Segurança</span>
+          <span className="block text-xs text-slate-400">Senha, sessões ativas e atividade da conta</span>
+        </span>
+        <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+      </Link>
 
       <section className="card p-4">
         <h2 className="section-title mb-1">Cloudflare</h2>
