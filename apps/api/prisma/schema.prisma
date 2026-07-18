@@ -14,6 +14,98 @@ model User {
   passwordHash String
   role         String   @default("admin")
   createdAt    DateTime @default(now())
+
+  sessions     UserSession[]
+  resetTokens  PasswordResetToken[]
+}
+
+// Uma linha por login bem-sucedido — o JWT carrega `sid` apontando pra cá.
+// Revogar (revokedAt) derruba o acesso mesmo com um JWT ainda "válido" na
+// assinatura/expiração, o que é o que permite: logout de um dispositivo
+// específico, logout de todas as sessões, e invalidar tudo após redefinir
+// senha. Sem isso, um JWT vazado continuaria valendo até expirar sozinho.
+model UserSession {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId, revokedAt])
+}
+
+// Token de "esqueci minha senha" — só o hash SHA-256 é gravado; o valor bruto
+// existe apenas no link enviado por e-mail e nunca toca o banco ou os logs.
+// Uso único (usedAt) e expiração curta (~30min); uma nova solicitação invalida
+// qualquer token anterior do mesmo usuário (ver PasswordRecoveryService).
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  requestedIp String?
+  userAgent   String?
+
+  @@index([userId, createdAt])
+}
+
+// Trilha de auditoria de segurança mais ampla que LoginAttempt (que só cobre
+// tentativas de login) — cobre todo o ciclo de recuperação/redefinição de
+// senha e sessão. `userId` fica nulo quando o evento não tem um usuário real
+// associado (ex.: recuperação pedida pra um e-mail que não existe) — sem
+// revelar isso na resposta ao cliente, só no registro interno.
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  email     String?
+  event     String
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+}
+
+// Trilha de auditoria de login — nunca grava a senha, só o desfecho.
+// Consultada pelo `velix doctor` e por telas futuras de segurança/admin.
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  email     String
+  ip        String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
+// Histórico de verificações de atualização (tela "Atualizações"). Cada
+// consulta à API de Releases do GitHub — manual ou por polling — grava uma
+// linha aqui. Não representa o ciclo de vida de uma instalação de atualização
+// (isso é a fase seguinte, ainda não implementada); é só o registro de "o que
+// a gente viu, e quando".
+model UpdateCheck {
+  id              String    @id @default(uuid())
+  checkedAt       DateTime  @default(now())
+  installedVersion String
+  latestVersion   String?
+  channel         String    @default("stable")
+  updateAvailable Boolean   @default(false)
+  releaseUrl      String?
+  publishedAt     DateTime?
+  // Populado quando a consulta ao GitHub falha (rate limit, token inválido,
+  // repositório privado sem acesso, rede) — o registro existe mesmo assim
+  // pra a tela mostrar "última tentativa falhou" em vez de nada.
+  error           String?
+
+  @@index([checkedAt])
 }
 
 enum ServerStatus {

@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { clearToken, getUser, type StoredUser } from '@/lib/api';
-import { IconDashboard, IconServer, IconSettings, IconLogout, IconStore } from './icons';
+import { useUpdateStatus } from '@/lib/useUpdateStatus';
+import { IconDashboard, IconServer, IconSettings, IconLogout, IconStore, IconDownload } from './icons';
 
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', description: 'Visão geral da infraestrutura', icon: IconDashboard },
   { href: '/servers', label: 'Servidores', description: 'Cadastro e monitoramento', icon: IconServer },
   { href: '/library', label: 'Biblioteca', description: 'Catálogo de aplicações', icon: IconStore },
+  { href: '/updates', label: 'Atualizações', description: 'Versão instalada e releases', icon: IconDownload },
   { href: '/settings', label: 'Configurações', description: 'Sistema e integrações', icon: IconSettings },
 ];
 
@@ -46,6 +48,8 @@ export function Sidebar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const user = useLoggedUser();
   const logout = useLogout();
+  const updateStatus = useUpdateStatus();
+  const updateAvailable = !!updateStatus?.updateAvailable;
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -79,6 +83,9 @@ export function Sidebar() {
               >
                 {active && <span className="absolute -left-2.5 h-4 w-0.5 rounded-full bg-indigo-500" />}
                 <Icon className="h-[18px] w-[18px]" />
+                {link.href === '/updates' && updateAvailable && (
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                )}
                 {/* Submenu contextual: aparece ao lado ao passar o mouse */}
                 <span className="pointer-events-none absolute left-full top-1/2 z-30 ml-3 w-52 -translate-y-1/2 translate-x-1 rounded-lg border border-slate-200 bg-white p-3 opacity-0 shadow-lg transition group-hover:translate-x-0 group-hover:opacity-100 dark:border-slate-700 dark:bg-slate-800">
                   <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{link.label}</span>
@@ -122,11 +129,16 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${
+              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${
                 active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              <Icon className="h-5 w-5" />
+              <span className="relative">
+                <Icon className="h-5 w-5" />
+                {link.href === '/updates' && updateAvailable && (
+                  <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                )}
+              </span>
               {link.label}
             </Link>
           );

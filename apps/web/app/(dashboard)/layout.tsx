@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<string, string> = {
   settings: 'Configurações',
   databases: 'Banco de dados',
   library: 'Biblioteca',
+  updates: 'Atualizações',
 };
 
 function pageTitleFor(pathname: string | null) {

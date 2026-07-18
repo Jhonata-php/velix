@@ -36,6 +36,9 @@ services:
       postgres:
         condition: service_healthy
 
+    env_file:
+      - .env
+
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -50,12 +53,16 @@ services:
       VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
       VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
 
-    command: >
-      sh -c "
-        npx prisma db push --skip-generate &&
-        npm run seed &&
-        node dist/main.js
-      "
+    # O fluxo de start (esperar banco, migrar, semear, subir a API) mora na
+    # imagem (ver apps/api/docker-entrypoint.sh) — não numa string de shell
+    # aqui, que é frágil de editar e não é versionada junto do código que roda.
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
     expose:
       - "3001"
@@ -72,12 +79,23 @@ services:
     restart: unless-stopped
 
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+
+    env_file:
+      - .env
 
     environment:
       NODE_ENV: production
       INTERNAL_API_URL: http://api:3001/api
       NEXT_PUBLIC_APP_URL: ${WEB_ORIGIN}
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
     expose:
       - "3000"

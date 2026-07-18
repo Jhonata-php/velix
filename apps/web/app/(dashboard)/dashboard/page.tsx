@@ -9,6 +9,7 @@ import { MetricCard, MetricValue } from '@/components/MetricCard';
 import { ServerRow } from '@/components/ServerRow';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRow } from '@/components/Skeleton';
+import { UpdateBanner } from '@/components/UpdateBanner';
 import { IconServer, IconActivity, IconX, IconInbox, IconRefresh } from '@/components/icons';
 
 export default function DashboardPage() {
@@ -44,6 +45,8 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <UpdateBanner />
+
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="page-title">Visão geral</h1>

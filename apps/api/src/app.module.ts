@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
+import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { ServersModule } from './servers/servers.module';
 import { CloudflareModule } from './cloudflare/cloudflare.module';
@@ -7,8 +8,20 @@ import { DatabaseModule } from './database/database.module';
 import { TraefikModule } from './traefik/traefik.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ApplicationsModule } from './applications/applications.module';
+import { UpdateModule } from './updates/update.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ServersModule, CloudflareModule, DatabaseModule, TraefikModule, CatalogModule, ApplicationsModule],
+  imports: [
+    PrismaModule,
+    HealthModule,
+    AuthModule,
+    ServersModule,
+    CloudflareModule,
+    DatabaseModule,
+    TraefikModule,
+    CatalogModule,
+    ApplicationsModule,
+    UpdateModule,
+  ],
 })
 export class AppModule {}

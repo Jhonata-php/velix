@@ -17,8 +17,6 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-VELIX_VERSION="1.0.1"
-
 INSTALL_DIR="${INSTALL_DIR:-/opt/velix}"
 REPO_URL="${REPO_URL:-https://github.com/Jhonata-php/velix.git}"
 LOG_FILE="${LOG_FILE:-/var/log/velix-install.log}"
@@ -26,10 +24,19 @@ SYSTEMD_FILE="/etc/systemd/system/velix.service"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
+# Fonte única da versão: apps/api/VERSION (ver VersionService) — nunca
+# hardcoded aqui. Se install.sh estiver rodando fora de um checkout do
+# repositório (ex.: baixado avulso antes do `git clone`), o arquivo ainda não
+# existe localmente; "dev" é só um rótulo de exibição no banner, não afeta
+# nada funcional.
+VELIX_VERSION="$(cat "${SCRIPT_DIR}/apps/api/VERSION" 2>/dev/null || echo "dev")"
+
 DEFAULT_PANEL_PORT="3000"
 DEFAULT_ADMIN_EMAIL="admin@velix.local"
 MIN_MEMORY_MB="1800"
 SWAP_SIZE_GB="${SWAP_SIZE_GB:-4}"
+MIN_DOCKER_VERSION="24.0.0"
+MIN_DOCKER_API_VERSION="1.40"
 
 ENV_FILE=""
 OVERRIDE_FILE=""
@@ -516,6 +523,34 @@ install_docker() {
     run_step "Instalando Docker Engine" apt-get install -y \
         docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     run_step "Ativando serviço Docker" systemctl enable --now docker
+    success "$(docker compose version)"
+}
+
+# Traefik 3.3.x negocia a API do Docker na versão 1.24, que engines recentes
+# (Docker 29+) já não aceitam ("client version 1.24 is too old"). A imagem
+# traefik:v3.7 usada em generate_compose_override() corrige isso, mas só se o
+# Docker instalado também for recente o bastante — checa os dois lados aqui,
+# antes de subir os containers, em vez de deixar falhar num healthcheck confuso.
+version_ge() {
+    [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
+}
+
+check_traefik_compatibility() {
+    section "Verificando compatibilidade Docker/Traefik"
+
+    local docker_version docker_api_version
+    docker_version="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
+    docker_api_version="$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null)"
+
+    [ -n "$docker_version" ] || fatal "Não foi possível obter a versão do Docker (o daemon está rodando?)."
+
+    version_ge "$docker_version" "$MIN_DOCKER_VERSION" \
+        || fatal "Docker ${docker_version} é muito antigo (mínimo: ${MIN_DOCKER_VERSION}). Atualize o Docker Engine antes de continuar."
+
+    version_ge "$docker_api_version" "$MIN_DOCKER_API_VERSION" \
+        || fatal "API do Docker ${docker_api_version} é muito antiga (mínimo: ${MIN_DOCKER_API_VERSION}). Atualize o Docker Engine antes de continuar."
+
+    success "Docker ${docker_version} (API ${docker_api_version}) compatível com Traefik v3.7"
 
     docker compose version >/dev/null 2>&1 || fatal "Docker Compose não foi instalado corretamente."
     success "$(docker --version)"
@@ -660,7 +695,7 @@ services:
       - "traefik.http.services.velix.loadbalancer.server.port=3000"
 
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7
     container_name: velix-traefik
     restart: unless-stopped
     command:
@@ -833,6 +868,18 @@ container_state() {
     docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true
 }
 
+# postgres, api e web têm HEALTHCHECK real definido (ver docker-compose.yml)
+# — "running" sozinho não prova nada, um container pode estar "running" no
+# instante exato entre dois ciclos de um restart loop. Containers sem
+# healthcheck (nenhum definido) contam como ok assim que estão "running",
+# senão o script travaria esperando um sinal que nunca chega.
+container_healthy() {
+    local container="$1"
+    local health
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
+    [ "$health" = "healthy" ] || [ "$health" = "none" ]
+}
+
 wait_for_containers() {
     section "Verificando serviços"
 
@@ -843,9 +890,9 @@ wait_for_containers() {
         api_status="$(container_state velix-api)"
         web_status="$(container_state velix-web)"
 
-        if [ "$postgres_status" = "running" ] &&
-           [ "$api_status" = "running" ] &&
-           [ "$web_status" = "running" ]; then
+        if [ "$postgres_status" = "running" ] && container_healthy velix-postgres &&
+           [ "$api_status" = "running" ] && container_healthy velix-api &&
+           [ "$web_status" = "running" ] && container_healthy velix-web; then
             success "Banco de dados em execução"
             success "API em execução"
             success "Painel web em execução"
@@ -949,6 +996,7 @@ main() {
     detect_public_ip
     collect_configuration
     install_docker
+    check_traefik_compatibility
     prepare_source
     check_required_ports
     generate_environment
