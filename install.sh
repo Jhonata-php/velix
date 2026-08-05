@@ -871,12 +871,20 @@ check_required_ports() {
     done
 }
 
+# Uma porta por linha, não separadas por espaço: este script roda com
+# IFS=$'\n\t' (ver topo), então `for port in $(public_ports)` NÃO quebraria em
+# espaços — viraria uma palavra só, "80 443", e o ufw responderia "Bad port".
 public_ports() {
     if [ "$USE_DOMAIN" = "true" ]; then
-        echo "80 443"
+        printf '80\n443\n'
     else
-        echo "$PANEL_PORT"
+        printf '%s\n' "$PANEL_PORT"
     fi
+}
+
+# Mesma lista numa linha só, pra exibir e pra embutir no script de firewall.
+public_ports_inline() {
+    public_ports | tr '\n' ' '
 }
 
 # Portas publicadas por containers entram pelo FORWARD e são NATeadas antes do
@@ -892,7 +900,7 @@ write_firewall_script() {
 #
 # Para liberar outras portas de containers deste host, adicione-as a PORTS e
 # rode: systemctl restart velix
-PORTS="$(public_ports)"
+PORTS="$(public_ports_inline)"
 EOF
 
     cat >>"$FIREWALL_SCRIPT" <<'EOF'
@@ -927,7 +935,7 @@ configure_firewall() {
 
     write_firewall_script
     run_step "Aplicando regras de iptables aos containers" "$FIREWALL_SCRIPT"
-    success "Portas liberadas nos containers: $(public_ports)"
+    success "Portas liberadas nos containers: $(public_ports_inline)"
 
     command -v ufw >/dev/null 2>&1 || { warning "UFW não encontrado"; return; }
 
