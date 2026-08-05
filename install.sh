@@ -415,7 +415,7 @@ install_dependencies() {
     run_step "Atualizando lista de pacotes" apt-get update -y
     run_step "Instalando dependências" apt-get install -y \
         ca-certificates curl dnsutils git gnupg jq lsb-release openssl \
-        rsync ufw iptables fail2ban iproute2 util-linux
+        rsync iptables fail2ban iproute2 util-linux
 }
 
 detect_public_ip() {
@@ -930,26 +930,25 @@ EOF
     chmod 700 "$FIREWALL_SCRIPT"
 }
 
+# Uma única ferramenta: iptables direto, na chain DOCKER-USER. O UFW saiu daqui
+# — ele é um frontend do próprio iptables, então manter os dois era escrever nas
+# mesmas tabelas por dois caminhos diferentes, com o instalador dependendo do
+# estado de um serviço que ele não controla.
+#
+# O que este instalador NÃO gerencia é a chain INPUT (tráfego para o host, não
+# para os containers). É de propósito: só o dono da máquina sabe o que mais ela
+# serve — SSH numa porta trocada, SMTP, DNS, um serviço legado — e uma política
+# padrão DROP escrita às cegas aqui derrubaria isso junto, sem aviso e sem
+# retorno fácil num servidor remoto. Regras de host continuam por sua conta;
+# o fail2ban configurado logo abaixo também escreve na INPUT e segue valendo.
 configure_firewall() {
     section "Configurando firewall"
 
     write_firewall_script
     run_step "Aplicando regras de iptables aos containers" "$FIREWALL_SCRIPT"
     success "Portas liberadas nos containers: $(public_ports_inline)"
-
-    command -v ufw >/dev/null 2>&1 || { warning "UFW não encontrado"; return; }
-
-    if ! ufw status | grep -q "Status: active"; then
-        warning "UFW está inativo; nenhuma regra do UFW foi modificada"
-        return
-    fi
-
-    run_step "Mantendo acesso SSH liberado" ufw allow OpenSSH
-
-    local port
-    for port in $(public_ports); do
-        run_step "Liberando porta ${port}" ufw allow "${port}/tcp"
-    done
+    echo -e "${GRAY}  Regras em DOCKER-USER, reaplicadas a cada boot pelo velix.service.${NC}"
+    echo -e "${GRAY}  Tráfego para o próprio host (SSH, e-mail, etc.) não é alterado.${NC}"
 }
 
 configure_fail2ban() {
