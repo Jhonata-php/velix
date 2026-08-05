@@ -257,3 +257,100 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Tela de atualização: um nó central irradiando para seis nós da malha, com
+   pacotes viajando pelos enlaces — a metáfora é a própria infraestrutura que o
+   Velix gerencia, não um spinner genérico. Só CSS sobre um SVG inline: uma tela
+   que aparece duas vezes por ano não justifica biblioteca de animação no bundle.
+   O @media prefers-reduced-motion no fim deste arquivo já neutraliza tudo. */
+@keyframes velix-net-packet {
+  0% {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(74px);
+    opacity: 0;
+  }
+}
+@keyframes velix-net-node {
+  0%,
+  100% {
+    r: 4;
+    opacity: 0.45;
+  }
+  50% {
+    r: 6;
+    opacity: 1;
+  }
+}
+@keyframes velix-net-link {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+@keyframes velix-net-hub {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.06);
+  }
+}
+@keyframes velix-net-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.velix-net {
+  width: 12.5rem;
+  height: 12.5rem;
+}
+
+/* view-box mantém as unidades das animações iguais às do viewBox do SVG,
+   independente do tamanho renderizado. */
+.velix-net *,
+.velix-net {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+}
+
+.velix-net__spoke {
+  transform: rotate(var(--angle));
+}
+
+.velix-net__link {
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.65;
+  animation: velix-net-link 1.6s linear infinite;
+}
+
+.velix-net__node {
+  animation: velix-net-node 2.4s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+.velix-net__packet {
+  animation: velix-net-packet 2.2s linear infinite;
+  animation-delay: var(--delay);
+}
+
+.velix-net__halo {
+  animation: velix-net-hub 2.8s ease-in-out infinite;
+}
+
+.velix-net__sweep {
+  animation: velix-net-sweep 6s linear infinite;
+}

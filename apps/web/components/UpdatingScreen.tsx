@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { IconCheck, IconAlertTriangle } from './icons';
+import { IconCheck } from './icons';
 
 interface SelfUpdateStatus {
   available: boolean;
@@ -22,6 +22,95 @@ interface Props {
 const POLL_MS = 3000;
 
 const STEPS = ['Pedido enviado ao servidor', 'Baixando a nova versão', 'Reconstruindo e reiniciando os serviços', 'Pronto'];
+
+/** Seis nós na malha: o suficiente pra leitura de rede sem virar poluição. */
+const NODES = [0, 60, 120, 180, 240, 300];
+
+/**
+ * Nó central irradiando pacotes para os nós da malha — a imagem é a própria
+ * infraestrutura que o Velix gerencia, em vez de um spinner qualquer. SVG
+ * inline com animação em CSS (ver globals.css): sem dependência nova e o
+ * `prefers-reduced-motion` já existente neutraliza tudo de uma vez.
+ */
+function NetworkPulse({ state }: { state: 'running' | 'success' | 'error' }) {
+  const tone = state === 'error' ? '#f87171' : state === 'success' ? '#4ade80' : '#818cf8';
+  const accent = state === 'error' ? '#fca5a5' : state === 'success' ? '#86efac' : '#c4b5fd';
+  const moving = state === 'running';
+
+  return (
+    <svg viewBox="0 0 200 200" className="velix-net mx-auto mb-7" role="img" aria-label="Atualizando">
+      <defs>
+        <radialGradient id="velix-net-glow">
+          <stop offset="0%" stopColor={tone} stopOpacity="0.85" />
+          <stop offset="100%" stopColor={tone} stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="velix-net-hub" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={accent} />
+          <stop offset="100%" stopColor={tone} />
+        </linearGradient>
+      </defs>
+
+      <circle cx="100" cy="100" r="70" fill="url(#velix-net-glow)" className={moving ? 'velix-net__halo' : ''} opacity="0.45" />
+
+      {/* Polígono ligando os nós: é o que faz a figura ler como malha, e não
+          como um sol com raios. */}
+      <polygon
+        points={NODES.map((a) => {
+          const rad = (a * Math.PI) / 180;
+          return `${100 + 76 * Math.cos(rad)},${100 + 76 * Math.sin(rad)}`;
+        }).join(' ')}
+        fill="none"
+        stroke={tone}
+        strokeWidth="0.75"
+        opacity="0.22"
+      />
+
+      {moving && (
+        <g className="velix-net__sweep" opacity="0.25">
+          <path d="M100 100 L100 24 A76 76 0 0 1 152 46 Z" fill={`url(#velix-net-glow)`} />
+        </g>
+      )}
+
+      <g style={{ color: tone }}>
+        {NODES.map((angle, i) => (
+          <g key={angle} className="velix-net__spoke" style={{ '--angle': `${angle}deg` } as React.CSSProperties}>
+            <line x1="128" y1="100" x2="176" y2="100" className={moving ? 'velix-net__link' : ''} stroke={tone} strokeWidth="1.3" opacity="0.45" />
+            <circle
+              cx="176"
+              cy="100"
+              r="4.5"
+              fill={tone}
+              className={moving ? 'velix-net__node' : ''}
+              style={{ '--delay': `${i * 0.28}s` } as React.CSSProperties}
+              opacity={moving ? undefined : 0.8}
+            />
+            {moving && (
+              <circle
+                cx="100"
+                cy="100"
+                r="2.5"
+                fill={accent}
+                className="velix-net__packet"
+                style={{ '--delay': `${i * 0.36}s` } as React.CSSProperties}
+              />
+            )}
+          </g>
+        ))}
+      </g>
+
+      <circle cx="100" cy="100" r="26" fill="url(#velix-net-hub)" />
+      {state === 'running' ? (
+        <text x="100" y="101" textAnchor="middle" dominantBaseline="central" fontSize="24" fontWeight="700" fill="#fff">
+          V
+        </text>
+      ) : (
+        <g transform="translate(88 88) scale(1)" stroke="#fff" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          {state === 'success' ? <path d="M4 13l6 6L20 5" /> : <path d="M12 5v10M12 19h.01" />}
+        </g>
+      )}
+    </svg>
+  );
+}
 
 function stepIndex(status: SelfUpdateStatus | null, unreachable: boolean) {
   if (!status) return unreachable ? 2 : 0;
@@ -78,21 +167,7 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-6 backdrop-blur-xl">
       <div className="w-full max-w-md text-center">
-        <div className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center">
-          {!done && !failed && (
-            <>
-              <span className="absolute inset-0 animate-ping rounded-full bg-indigo-500/20" />
-              <span className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-indigo-500 border-r-indigo-500/40" />
-            </>
-          )}
-          <span
-            className={`flex h-16 w-16 items-center justify-center rounded-2xl text-2xl font-bold text-white shadow-lg ${
-              failed ? 'bg-red-500' : done ? 'bg-green-500' : 'animate-logo-glow bg-gradient-to-br from-indigo-500 to-indigo-700'
-            }`}
-          >
-            {failed ? <IconAlertTriangle className="h-7 w-7" /> : done ? <IconCheck className="h-7 w-7" /> : 'V'}
-          </span>
-        </div>
+        <NetworkPulse state={failed ? 'error' : done ? 'success' : 'running'} />
 
         <h2 className="text-xl font-semibold text-white">
           {failed ? 'A atualização falhou' : done ? `Atualizado para v${toVersion}` : 'Atualizando o Velix'}
