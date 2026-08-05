@@ -45,6 +45,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      VELIX_HOST_DIR: /host/velix
 
       DATABASE_URL: postgresql://velix:${POSTGRES_PASSWORD}@postgres:5432/velix?schema=public
 
@@ -59,6 +60,13 @@ services:
     # O fluxo de start (esperar banco, migrar, semear, subir a API) mora na
     # imagem (ver apps/api/docker-entrypoint.sh) — não numa string de shell
     # aqui, que é frágil de editar e não é versionada junto do código que roda.
+
+    # Só o diretório de instalação — nada de /var/run/docker.sock. A API escreve
+    # ali o pedido de atualização; quem executa é o host (ver velix-updater.path
+    # no install.sh). Assim a aplicação web nunca ganha controle do Docker, que
+    # seria root no servidor.
+    volumes:
+      - ${VELIX_INSTALL_DIR:-/opt/velix}:/host/velix
 
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

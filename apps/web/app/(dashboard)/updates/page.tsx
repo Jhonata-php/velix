@@ -7,6 +7,7 @@ import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
+import { UpdatingScreen } from '@/components/UpdatingScreen';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
 
 interface VersionInfo {
@@ -50,6 +51,15 @@ type TimelineEntry =
       error: string | null;
     };
 
+interface SelfUpdateStatus {
+  available: boolean;
+  state: 'idle' | 'requested' | 'running' | 'success' | 'error';
+  message: string | null;
+  requestedBy: string | null;
+  fromVersion: string | null;
+  updatedAt: string | null;
+}
+
 const CHANNEL_LABEL: Record<string, string> = { stable: 'Stable', beta: 'Beta', nightly: 'Nightly' };
 
 function formatUptime(seconds: number) {
@@ -76,6 +86,10 @@ export default function UpdatesPage() {
   const [history, setHistory] = useState<TimelineEntry[]>([]);
   const [checking, setChecking] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [selfUpdate, setSelfUpdate] = useState<SelfUpdateStatus | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   function loadHistory() {
     apiFetch<TimelineEntry[]>('/updates/history?limit=12').then(setHistory).catch(() => {});
@@ -85,6 +99,15 @@ export default function UpdatesPage() {
     apiFetch<VersionInfo>('/updates/current').then(setCurrent).catch(() => {});
     apiFetch<UpdateCheckSummary>('/updates/latest').then(setStatus).catch(() => {});
     loadHistory();
+
+    // Uma atualização em andamento pode ter sido pedida em outra aba, por outro
+    // usuário, ou antes de um F5 — a tela de espera tem que reaparecer sozinha.
+    apiFetch<SelfUpdateStatus>('/updates/apply/status')
+      .then((s) => {
+        setSelfUpdate(s);
+        if (s.state === 'requested' || s.state === 'running') setUpdating(true);
+      })
+      .catch(() => {});
   }, []);
 
   async function handleCheck() {
@@ -94,6 +117,20 @@ export default function UpdatesPage() {
       loadHistory();
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function handleApply() {
+    setApplying(true);
+    setApplyError(null);
+    try {
+      await apiFetch('/updates/apply', { method: 'POST' });
+      setModalOpen(false);
+      setUpdating(true);
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Não foi possível iniciar a atualização.');
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -245,7 +282,23 @@ export default function UpdatesPage() {
       </details>
 
       {modalOpen && available && current && (
-        <UpdateModal installedVersion={current.version} release={available} onClose={() => setModalOpen(false)} />
+        <UpdateModal
+          installedVersion={current.version}
+          release={available}
+          selfUpdateAvailable={!!selfUpdate?.available}
+          applying={applying}
+          error={applyError}
+          onApply={handleApply}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+
+      {updating && (
+        <UpdatingScreen
+          fromVersion={current?.version ?? '—'}
+          toVersion={available?.version ?? selfUpdate?.fromVersion ?? '—'}
+          onDismiss={() => setUpdating(false)}
+        />
       )}
     </div>
   );

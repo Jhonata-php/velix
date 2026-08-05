@@ -22,6 +22,7 @@ REPO_URL="${REPO_URL:-https://github.com/Jhonata-php/velix.git}"
 LOG_FILE="${LOG_FILE:-/var/log/velix-install.log}"
 SYSTEMD_FILE="/etc/systemd/system/velix.service"
 FIREWALL_SCRIPT="/usr/local/sbin/velix-firewall"
+SELF_UPDATE_SCRIPT="/usr/local/sbin/velix-self-update"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -625,8 +626,9 @@ is_velix_source_directory() {
 copy_local_source() {
     mkdir -p "$INSTALL_DIR"
 
+    # .git vai junto de propósito (era excluído): sem um checkout de verdade em
+    # INSTALL_DIR, o botão "Atualizar" do painel não teria de onde puxar código.
     run_step "Copiando arquivos do Velix" rsync -a --delete \
-        --exclude='.git/' \
         --exclude='.env' \
         --exclude='.env.backup.*' \
         --exclude='docker-compose.override.yml' \
@@ -691,6 +693,7 @@ VELIX_DOMAIN=${VELIX_DOMAIN}
 VELIX_HTTP_PORT=${PANEL_PORT}
 TRAEFIK_ACME_EMAIL=${ACME_EMAIL}
 VELIX_UPDATED_BY=${VELIX_UPDATED_BY}
+VELIX_INSTALL_DIR=${INSTALL_DIR}
 EOF
 }
 
@@ -700,7 +703,9 @@ generate_environment() {
     # Quem está rodando o instalador — a API grava isso no histórico de
     # atualizações. SUDO_USER é o usuário real por trás do sudo; sem sudo (root
     # direto) sobra o próprio usuário efetivo.
-    VELIX_UPDATED_BY="${SUDO_USER:-$(id -un)}@$(hostname -s 2>/dev/null || echo servidor)"
+    # Respeita um valor já definido no ambiente: é assim que o velix-self-update
+    # informa quem clicou no botão do painel, em vez do root do systemd.
+    VELIX_UPDATED_BY="${VELIX_UPDATED_BY:-${SUDO_USER:-$(id -un)}@$(hostname -s 2>/dev/null || echo servidor)}"
 
     local postgres_password=""
     local jwt_secret=""
@@ -968,6 +973,93 @@ EOF
     success "Jail sshd ativo: 5 tentativas em 10 min, banimento de 1 hora"
 }
 
+# Atualização pelo painel sem dar o socket do Docker pra API.
+#
+# A API roda dentro de um dos containers que a atualização substitui — ela não
+# pode conduzir o próprio rebuild. A saída comum é montar /var/run/docker.sock
+# no container, o que equivale a entregar root do host pra aplicação web.
+# Aqui o caminho é outro: a API só escreve um arquivo de pedido no diretório de
+# instalação (que ela já enxerga por volume), e quem age é o host — um path
+# unit do systemd que dispara UM script fixo, sem parâmetros vindos da rede.
+# O pior caso de um comprometimento da API é disparar a atualização oficial.
+write_self_update_units() {
+    cat >"$SELF_UPDATE_SCRIPT" <<EOF
+#!/usr/bin/env bash
+# Gerado pelo install.sh do Velix — disparado pelo velix-updater.path.
+set -Eeuo pipefail
+
+INSTALL_DIR="${INSTALL_DIR}"
+EOF
+
+    cat >>"$SELF_UPDATE_SCRIPT" <<'SCRIPT'
+REQUEST="${INSTALL_DIR}/.velix-update-request"
+STATUS="${INSTALL_DIR}/.velix-update-status"
+UPDATE_LOG="${INSTALL_DIR}/.velix-update.log"
+
+[ -f "$REQUEST" ] || exit 0
+
+requested_by="$(tr ',' '\n' <"$REQUEST" | grep '"requestedBy"' | cut -d'"' -f4 | head -n1)"
+[ -n "$requested_by" ] || requested_by="painel"
+from_version="$(cat "${INSTALL_DIR}/apps/api/VERSION" 2>/dev/null || echo '')"
+
+rm -f "$REQUEST"
+
+write_status() {
+    cat >"$STATUS" <<JSON
+{"state":"$1","requestedBy":"${requested_by}","fromVersion":"${from_version}","message":"$2","updatedAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"}
+JSON
+    chmod 644 "$STATUS"
+}
+
+: >"$UPDATE_LOG"
+chmod 644 "$UPDATE_LOG"
+
+write_status running "Baixando a nova versão"
+if ! git -C "$INSTALL_DIR" pull --ff-only >>"$UPDATE_LOG" 2>&1; then
+    write_status error "Falha ao baixar a nova versão (git pull)"
+    exit 1
+fi
+
+write_status running "Reconstruindo e reiniciando os serviços"
+if ! VELIX_UPDATED_BY="$requested_by" INSTALL_DIR="$INSTALL_DIR" bash "${INSTALL_DIR}/install.sh" >>"$UPDATE_LOG" 2>&1; then
+    write_status error "Falha ao aplicar a atualização — veja .velix-update.log"
+    exit 1
+fi
+
+write_status success "Atualização concluída"
+SCRIPT
+
+    chmod 700 "$SELF_UPDATE_SCRIPT"
+
+    # PathChanged em vez de um serviço que fica de pé esperando: o host não
+    # mantém processo nenhum enquanto ninguém pede atualização.
+    cat >/etc/systemd/system/velix-updater.path <<EOF
+[Unit]
+Description=Observa pedidos de atualização do painel Velix
+
+[Path]
+PathExists=${INSTALL_DIR}/.velix-update-request
+Unit=velix-updater.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    cat >/etc/systemd/system/velix-updater.service <<EOF
+[Unit]
+Description=Aplica a atualização do Velix pedida pelo painel
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=${SELF_UPDATE_SCRIPT}
+TimeoutStartSec=0
+EOF
+
+    run_step "Ativando atualização pelo painel" systemctl enable --now velix-updater.path
+}
+
 create_systemd_service() {
     section "Criando serviço automático"
 
@@ -1182,6 +1274,7 @@ main() {
     configure_firewall
     configure_fail2ban
     create_systemd_service
+    write_self_update_units
     deploy_velix
     wait_for_containers
     wait_for_panel

@@ -8,6 +8,11 @@ import { IconCopy, IconCheck, IconDownload, IconTerminal } from './icons';
 interface Props {
   installedVersion: string;
   release: { version: string; url: string; changelogHtml: string; publishedAt: string | null };
+  /** Falso em instalações anteriores ao recurso: a tela cai no passo a passo manual. */
+  selfUpdateAvailable: boolean;
+  applying: boolean;
+  error: string | null;
+  onApply: () => void;
   onClose: () => void;
 }
 
@@ -38,17 +43,17 @@ function CopyableCommand({ command }: { command: string }) {
 }
 
 /**
- * O botão de atualizar entrega o comando, não executa a atualização.
+ * Confirmação em dois passos de propósito: atualizar derruba o painel por
+ * alguns minutos, e um clique acidental no cartão de destaque da tela inicial
+ * não pode ser suficiente pra isso acontecer.
  *
- * Atualizar o Velix significa reconstruir e reiniciar os containers em que a
- * própria API roda — de dentro de um deles, sem acesso ao Docker do host, isso
- * é impossível: o processo que dispara o rebuild morre no meio dele. Fazer de
- * verdade exige montar /var/run/docker.sock na API (equivale a root no host) e
- * um container efêmero que faça a troca de fora. É uma decisão de arquitetura e
- * de segurança, não um detalhe de tela — até lá, o modal é honesto sobre o que
- * faz e tira do usuário a parte chata, que é lembrar o comando exato.
+ * O comando manual continua aqui mesmo quando o botão existe — instalação
+ * quebrada no meio da atualização se conserta pelo terminal, e é justamente
+ * nessa hora que ninguém lembra o comando.
  */
-export function UpdateModal({ installedVersion, release, onClose }: Props) {
+export function UpdateModal({ installedVersion, release, selfUpdateAvailable, applying, error, onApply, onClose }: Props) {
+  const [confirming, setConfirming] = useState(false);
+
   return (
     <Modal title={`Atualizar para v${release.version}`} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
@@ -72,21 +77,56 @@ export function UpdateModal({ installedVersion, release, onClose }: Props) {
           </a>
         </div>
 
+        {selfUpdateAvailable ? (
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            {confirming ? (
+              <>
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Tem certeza que quer atualizar agora?</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  O painel sai do ar por alguns minutos enquanto os serviços são reconstruídos. Ninguém consegue usar o
+                  Velix nesse período — os servidores gerenciados e as aplicações neles continuam rodando normalmente.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setConfirming(false)} disabled={applying} className="btn-secondary px-3 py-1.5 text-xs">
+                    Cancelar
+                  </button>
+                  <button onClick={onApply} disabled={applying} className="btn-primary px-3 py-1.5 text-xs">
+                    {applying ? 'Enviando...' : 'Sim, atualizar agora'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Atualizar pelo painel</p>
+                  <p className="text-xs text-slate-500">O servidor baixa, reconstrói e reinicia sozinho.</p>
+                </div>
+                <button onClick={() => setConfirming(true)} className="btn-primary shrink-0 px-4 py-2 text-sm">
+                  Atualizar agora
+                </button>
+              </div>
+            )}
+            {error && (
+              <div className="mt-3">
+                <Alert variant="error">{error}</Alert>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Alert variant="info" title="Atualização pelo painel indisponível nesta instalação">
+            Ela é configurada pelo instalador. Rode o comando abaixo uma vez e o botão passa a existir.
+          </Alert>
+        )}
+
         <div>
           <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Rode no servidor, no diretório onde você clonou o Velix:
+            {selfUpdateAvailable ? 'Ou, se preferir fazer na mão, no servidor:' : 'No servidor, no diretório onde você clonou o Velix:'}
           </p>
           <CopyableCommand command={UPDATE_COMMAND} />
           <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-            O instalador é idempotente: preserva o <code>.env</code>, os volumes e o banco. O painel fica alguns minutos
-            fora do ar durante o rebuild — os servidores gerenciados não são afetados.
+            O instalador é idempotente: preserva o <code>.env</code>, os volumes e o banco.
           </p>
         </div>
-
-        <Alert variant="info" title="Por que não é um clique só?">
-          A atualização reconstrói e reinicia os containers em que esta API roda. De dentro deles, sem acesso ao Docker
-          do host, o processo que dispara o rebuild morre no meio dele.
-        </Alert>
 
         {release.changelogHtml && (
           <details className="group rounded-lg border border-slate-200 dark:border-slate-700" open>
