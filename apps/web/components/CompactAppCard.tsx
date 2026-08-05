@@ -52,6 +52,7 @@ export function CompactAppCard({ app, serverId, onInstall, installLoading }: Pro
         <div className="flex items-center gap-1.5">
           <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-slate-100">{app.name}</p>
           {installed && <StatusBadge tone="success">instalado</StatusBadge>}
+          {app.trending && !installed && <StatusBadge tone="warning">em alta</StatusBadge>}
         </div>
         <p className="line-clamp-2 text-[12.5px] leading-snug text-slate-500">{app.description}</p>
         <p className="mt-0.5 truncate text-[11px] text-slate-400">{CATEGORY_LABEL[app.category] ?? app.category}</p>

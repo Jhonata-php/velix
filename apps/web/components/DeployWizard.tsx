@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { CatalogApplicationDetail, ServerSummary } from '@/lib/types';
@@ -55,6 +55,10 @@ interface Props {
 export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
+
+  // Trilha de etapas: barra de rolagem escondida, arraste horizontal no lugar.
+  const stepsRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; left: number } | null>(null);
 
   // 1. Informações
   const [name, setName] = useState(manifest.name);
@@ -157,7 +161,23 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
           </button>
         </div>
 
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-5 py-2.5 dark:border-slate-700">
+        <div
+          ref={stepsRef}
+          onPointerDown={(e) => {
+            const el = stepsRef.current;
+            if (!el) return;
+            dragRef.current = { x: e.clientX, left: el.scrollLeft };
+            el.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const drag = dragRef.current;
+            if (!drag || !stepsRef.current) return;
+            stepsRef.current.scrollLeft = drag.left - (e.clientX - drag.x);
+          }}
+          onPointerUp={() => { dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+          className="no-scrollbar flex cursor-grab select-none items-center gap-1 overflow-x-auto border-b border-slate-200 px-5 py-2.5 active:cursor-grabbing dark:border-slate-700"
+        >
           {STEPS.map((label, i) => (
             <div key={label} className="flex items-center gap-1">
               <span

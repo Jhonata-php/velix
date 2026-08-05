@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard, AuthenticatedUser } from './jwt-auth.guard';
+import { clientIp } from './client-ip.util';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -19,7 +20,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto.email, dto.password, req.ip ?? 'unknown', req.headers['user-agent'] ?? '', dto.rememberMe ?? false);
+    return this.authService.login(dto.email, dto.password, clientIp(req), req.headers['user-agent'] ?? '', dto.rememberMe ?? false);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -33,7 +34,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: AuthedRequest) {
     if (req.user.sid) {
-      await this.authService.logout(req.user.sid, req.user.sub, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+      await this.authService.logout(req.user.sid, req.user.sub, clientIp(req), req.headers['user-agent'] ?? '');
     }
     return { message: 'Sessão encerrada.' };
   }
@@ -42,7 +43,7 @@ export class AuthController {
   @Post('logout-all')
   @HttpCode(HttpStatus.OK)
   async logoutAll(@Req() req: AuthedRequest) {
-    await this.authService.logoutAll(req.user.sub, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    await this.authService.logoutAll(req.user.sub, clientIp(req), req.headers['user-agent'] ?? '');
     return { message: 'Todas as sessões foram encerradas.' };
   }
 
@@ -56,7 +57,7 @@ export class AuthController {
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.OK)
   async revokeSession(@Param('id') id: string, @Req() req: AuthedRequest) {
-    await this.authService.revokeSession(id, req.user.sub, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    await this.authService.revokeSession(id, req.user.sub, clientIp(req), req.headers['user-agent'] ?? '');
     return { message: 'Sessão encerrada.' };
   }
 
@@ -66,7 +67,7 @@ export class AuthController {
   @Post('sessions/revoke-others')
   @HttpCode(HttpStatus.OK)
   async revokeOtherSessions(@Req() req: AuthedRequest) {
-    await this.authService.revokeOtherSessions(req.user.sub, req.user.sid ?? '', req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    await this.authService.revokeOtherSessions(req.user.sub, req.user.sid ?? '', clientIp(req), req.headers['user-agent'] ?? '');
     return { message: 'As outras sessões foram encerradas.' };
   }
 
@@ -79,7 +80,7 @@ export class AuthController {
       dto.currentPassword,
       dto.newPassword,
       req.user.sid ?? '',
-      req.ip ?? 'unknown',
+      clientIp(req),
       req.headers['user-agent'] ?? '',
     );
     return { message: 'Senha alterada com sucesso.' };

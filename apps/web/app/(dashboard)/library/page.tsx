@@ -12,10 +12,11 @@ import { Toolbar } from '@/components/Toolbar';
 import { IconSearch } from '@/components/icons';
 import { useInstallWizard } from '@/lib/useInstallWizard';
 
-type TrustFilter = 'all' | 'official' | 'community' | 'installed';
+type TrustFilter = 'all' | 'trending' | 'official' | 'community' | 'installed';
 
 const TRUST_TABS: { key: TrustFilter; label: string }[] = [
   { key: 'all', label: 'Todos' },
+  { key: 'trending', label: 'Em alta' },
   { key: 'official', label: 'Oficiais' },
   { key: 'community', label: 'Comunidade' },
   { key: 'installed', label: 'Instalados' },
@@ -40,6 +41,7 @@ export default function LibraryPage() {
   const visible = useMemo(() => {
     let list = apps ?? [];
     if (category) list = list.filter((a) => a.category === category);
+    if (trust === 'trending') list = list.filter((a) => a.trending);
     if (trust === 'official') list = list.filter((a) => a.trust === 'official');
     if (trust === 'community') list = list.filter((a) => a.trust !== 'official');
     if (trust === 'installed') list = list.filter((a) => a.installed.length > 0);

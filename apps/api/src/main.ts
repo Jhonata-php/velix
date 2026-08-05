@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AppModule } from './app.module';
@@ -13,7 +14,14 @@ import { TraefikService } from './traefik/traefik.service';
 import { ApplicationsService } from './applications/applications.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Sem isto, `req.ip` é o IP do container do frontend (::ffff:172.18.x.x) —
+  // era o que aparecia em "Sessões ativas" e no que o rate limit de login
+  // usava como chave. 1 salto = o server.js do web, que é quem entrega o
+  // X-Forwarded-For já confiável (ver apps/web/server.js e client-ip.util.ts).
+  app.set('trust proxy', 1);
+
   app.enableCors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api');

@@ -55,6 +55,7 @@ export interface CatalogApplicationSummary {
   source: string;
   trust: string;
   riskLevel: 'low' | 'medium' | 'high' | 'blocked';
+  trending: boolean;
   servicesCount: number;
   minResources: { memoryMb: number };
   installed: CatalogInstallInfo[];

@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { PasswordRecoveryService } from './password-recovery.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { clientIp } from './client-ip.util';
 
 @Controller('auth')
 export class PasswordRecoveryController {
@@ -16,7 +17,7 @@ export class PasswordRecoveryController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
-    await this.recovery.forgotPassword(dto.email, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    await this.recovery.forgotPassword(dto.email, clientIp(req), req.headers['user-agent'] ?? '');
     // Sempre a mesma mensagem, exista ou não o e-mail — evita enumeração de usuários.
     return { message: 'Se existir uma conta associada a este e-mail, enviaremos as instruções de recuperação.' };
   }
@@ -33,7 +34,7 @@ export class PasswordRecoveryController {
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
-    await this.recovery.resetPassword(dto.token, dto.password, req.ip ?? 'unknown', req.headers['user-agent'] ?? '');
+    await this.recovery.resetPassword(dto.token, dto.password, clientIp(req), req.headers['user-agent'] ?? '');
     return { message: 'Senha alterada com sucesso.' };
   }
 }

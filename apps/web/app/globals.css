@@ -247,3 +247,13 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Rolagem sem barra visível: a trilha de etapas do wizard rola por arrasto
+   (ver DeployWizard.tsx) e por trackpad/touch — a barra só ocupava espaço. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

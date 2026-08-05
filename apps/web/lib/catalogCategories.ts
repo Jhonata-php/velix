@@ -10,4 +10,5 @@ export const CATEGORY_LABEL: Record<string, string> = {
   media: 'Mídia',
   ai: 'Inteligência artificial',
   network: 'Redes',
+  games: 'Jogos',
 };

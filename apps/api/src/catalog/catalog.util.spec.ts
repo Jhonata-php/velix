@@ -22,6 +22,8 @@ import {
   type VelixManifest,
 } from './catalog.util';
 import { uptimeKumaManifest } from './manifests/uptime-kuma';
+import { QUICK_MANIFESTS } from './manifests/quick-apps';
+import { immichManifest } from './manifests/immich';
 
 // validação: o manifesto oficial é válido
 assert.equal(validateManifest(uptimeKumaManifest).ok, true);
@@ -190,4 +192,20 @@ assert.equal((sharedCompose.match(/meuapp_shared:/g) ?? []).length, 3); // 2x no
 const badDeps: VelixManifest = { ...uptimeKumaManifest, services: [{ name: 'app', image: 'x:1', dependsOn: ['fantasma'] }] };
 assert.equal(validateManifest(badDeps).ok, false);
 
-console.log('catalog.util self-check OK');
+// validação: todo manifesto do catálogo passa na validação estrutural, tem slug
+// único e fixa a versão da imagem (a tabela de quick-apps é gerada, então um
+// erro de digitação lá vira 100 apps quebrados de uma vez)
+const catalog = [...QUICK_MANIFESTS, immichManifest];
+const catalogSlugs = catalog.map((m) => m.slug);
+assert.equal(new Set(catalogSlugs).size, catalogSlugs.length, 'slug duplicado no catálogo');
+for (const manifest of catalog) {
+  const result = validateManifest(manifest);
+  assert.equal(result.ok, true, `${manifest.slug}: ${result.errors.join('; ')}`);
+  assert.ok(manifest.services.some((s) => s.ports?.length), `${manifest.slug} sem porta declarada`);
+  for (const service of manifest.services) {
+    assert.ok(/:[^:]+$/.test(service.image), `${manifest.slug}: imagem "${service.image}" sem tag`);
+    assert.ok(!service.image.endsWith(':latest'), `${manifest.slug}: imagem sem versão fixa`);
+  }
+}
+
+console.log(`catalog.util self-check OK (${catalog.length} manifestos novos validados)`);

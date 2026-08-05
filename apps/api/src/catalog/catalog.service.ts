@@ -27,6 +27,8 @@ import { openWebuiManifest } from './manifests/open-webui';
 import { homeAssistantManifest } from './manifests/home-assistant';
 import { keycloakManifest } from './manifests/keycloak';
 import { qbittorrentManifest } from './manifests/qbittorrent';
+import { immichManifest } from './manifests/immich';
+import { QUICK_MANIFESTS } from './manifests/quick-apps';
 
 /**
  * Catálogo oficial do Velix — hoje é uma lista embutida no código (curada e
@@ -62,7 +64,42 @@ const OFFICIAL_MANIFESTS: VelixManifest[] = [
   homeAssistantManifest,
   keycloakManifest,
   qbittorrentManifest,
+  immichManifest,
+  ...QUICK_MANIFESTS,
 ];
+
+/**
+ * "Em alta" é curadoria, não métrica — o Velix não coleta instalação de
+ * ninguém pra ranquear nada. É uma lista de slugs mantida à mão aqui em vez de
+ * um campo em cada manifesto: assim dá pra mexer na vitrine (entrar, sair,
+ * reordenar) sem tocar em 100 arquivos de definição de aplicação.
+ */
+const TRENDING_SLUGS = new Set([
+  'immich',
+  'homepage',
+  'beszel',
+  'dockge',
+  'pocket-id',
+  'stirling-pdf',
+  'glance',
+  'mealie',
+  'actual-budget',
+  'memos',
+  'searxng',
+  'forgejo',
+  'adguard-home',
+  'portainer',
+  'nocodb',
+  'it-tools',
+  'n8n',
+  'ollama',
+  'open-webui',
+  'uptime-kuma',
+  'vaultwarden',
+  'jellyfin',
+  'paperless-ngx',
+  'nextcloud',
+]);
 
 export interface CatalogInstallInfo {
   serverId: string;
@@ -83,6 +120,7 @@ export interface CatalogApplicationSummary {
   source: 'velix-official';
   trust: 'official';
   riskLevel: ReturnType<typeof highestRiskLevel>;
+  trending: boolean;
   servicesCount: number;
   minResources: VelixManifest['minResources'];
   installed: CatalogInstallInfo[];
@@ -129,6 +167,7 @@ export class CatalogService {
       source: 'velix-official',
       trust: 'official',
       riskLevel: highestRiskLevel(scanSecurityRisks(manifest)),
+      trending: TRENDING_SLUGS.has(manifest.slug),
       servicesCount: manifest.services.length,
       minResources: manifest.minResources,
       installed,

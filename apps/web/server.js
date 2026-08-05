@@ -21,10 +21,25 @@ function getInternalApiUrl() {
   return new URL(process.env.INTERNAL_API_URL ?? 'http://localhost:3001/api');
 }
 
+// A API enxerga só a conexão deste container, então o IP real do usuário
+// precisa chegar por header — é ele que aparece em "Sessões ativas", na
+// auditoria e no rate limit de login.
+//
+// Com domínio: o Traefik já sanitiza o X-Forwarded-For (descarta o que o
+// cliente mandar e escreve o IP real), então repassar é seguro. Sem domínio
+// não há proxy na frente: qualquer X-Forwarded-For que chegue veio do próprio
+// cliente e é chute — sobrescreve com o endereço do socket, que não dá pra
+// forjar. Ver client-ip.util.ts no lado da API.
+function forwardedHeaders(req) {
+  const behindTraefik = !!process.env.VELIX_DOMAIN;
+  const forwarded = behindTraefik ? req.headers['x-forwarded-for'] : null;
+  return { ...req.headers, 'x-forwarded-for': forwarded || req.socket.remoteAddress || '' };
+}
+
 function proxyApiRequest(req, res) {
   const target = getInternalApiUrl();
   const proxyReq = http.request(
-    { hostname: target.hostname, port: target.port, path: req.url, method: req.method, headers: req.headers },
+    { hostname: target.hostname, port: target.port, path: req.url, method: req.method, headers: forwardedHeaders(req) },
     (proxyRes) => {
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
