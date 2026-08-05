@@ -23,13 +23,6 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Metadados opcionais de build — GET /api/health e o Centro de Atualizações
-# mostram isso quando presente. Sem --build-arg, ficam null (não é erro).
-ARG GIT_COMMIT=""
-ARG BUILD_DATE=""
-ENV GIT_COMMIT=${GIT_COMMIT}
-ENV BUILD_DATE=${BUILD_DATE}
-
 # ca-certificates: chamadas HTTPS de saída (API da Cloudflare, GitHub Releases,
 # verificação de certificado, etc.) — sem isso toda requisição TLS falha.
 RUN apt-get update \
@@ -48,6 +41,15 @@ COPY --from=build /app/VERSION ./VERSION
 COPY prisma ./prisma
 COPY docker-entrypoint.sh wait-for-db.js ./
 RUN chmod +x docker-entrypoint.sh
+
+# Metadados de build — GET /api/health e o Centro de Atualizações mostram isso
+# quando presente; sem --build-arg ficam null (não é erro). Declarados no fim
+# de propósito: BUILD_DATE muda a cada build, e mais acima invalidaria o cache
+# do apt e do npm ci, transformando toda atualização num build do zero.
+ARG GIT_COMMIT=""
+ARG BUILD_DATE=""
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
 
 EXPOSE 3001
 

@@ -121,7 +121,11 @@ export function Sidebar() {
         {!collapsed && <span className="text-sm font-semibold tracking-wide text-slate-700 dark:text-slate-200">Velix</span>}
       </div>
 
-      <nav className={`flex flex-1 flex-col gap-4 overflow-y-auto ${collapsed ? 'items-center px-2' : 'px-3'}`}>
+      {/* Recolhido não rola: os tooltips são `absolute left-full w-52`, e um
+          container com overflow os contava na largura rolável — daí a barra de
+          rolagem horizontal que aparecia no rodapé da barra — além de recortar
+          o próprio tooltip na borda. São 5 ícones, nunca precisa rolar. */}
+      <nav className={`flex flex-1 flex-col gap-4 ${collapsed ? 'items-center overflow-visible px-2' : 'overflow-y-auto px-3'}`}>
         {GROUPS.map((group) => (
           <div key={group.title} className={collapsed ? '' : 'w-full'}>
             {!collapsed && <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group.title}</p>}

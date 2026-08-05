@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
-import { IconRefresh, IconDownload, IconCheck, IconClock } from '@/components/icons';
+import { Skeleton } from '@/components/Skeleton';
+import { StatusBadge } from '@/components/StatusBadge';
+import { UpdateModal } from '@/components/UpdateModal';
+import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
 
 interface VersionInfo {
   version: string;
@@ -46,168 +49,184 @@ interface HistoryEntry {
 
 const CHANNEL_LABEL: Record<string, string> = { stable: 'Stable', beta: 'Beta', nightly: 'Nightly' };
 
+function formatUptime(seconds: number) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}min`;
+  return `${minutes}min`;
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="truncate text-[13px] font-medium text-slate-700 dark:text-slate-200">{value}</p>
+    </div>
+  );
+}
+
 export default function UpdatesPage() {
   const [current, setCurrent] = useState<VersionInfo | null>(null);
   const [status, setStatus] = useState<UpdateCheckSummary | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [checking, setChecking] = useState(false);
-
-  function loadCurrent() {
-    apiFetch<VersionInfo>('/updates/current').then(setCurrent).catch(() => {});
-  }
+  const [modalOpen, setModalOpen] = useState(false);
 
   function loadHistory() {
     apiFetch<HistoryEntry[]>('/updates/history?limit=10').then(setHistory).catch(() => {});
   }
 
-  function loadLatest() {
-    apiFetch<UpdateCheckSummary>('/updates/latest').then(setStatus).catch(() => {});
-  }
-
   useEffect(() => {
-    loadCurrent();
-    loadLatest();
+    apiFetch<VersionInfo>('/updates/current').then(setCurrent).catch(() => {});
+    apiFetch<UpdateCheckSummary>('/updates/latest').then(setStatus).catch(() => {});
     loadHistory();
   }, []);
 
   async function handleCheck() {
     setChecking(true);
     try {
-      const result = await apiFetch<UpdateCheckSummary>('/updates/check', { method: 'POST' });
-      setStatus(result);
+      setStatus(await apiFetch<UpdateCheckSummary>('/updates/check', { method: 'POST' }));
       loadHistory();
     } finally {
       setChecking(false);
     }
   }
 
+  const available = status?.updateAvailable && status.release ? status.release : null;
+
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-3xl space-y-4">
       <div>
         <h1 className="page-title">Atualizações</h1>
         <p className="text-xs text-slate-400">Versão instalada e releases publicadas no GitHub</p>
       </div>
 
-      <section className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="section-title">Versão instalada</h2>
-          <button
-            onClick={handleCheck}
-            disabled={checking}
-            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs"
-          >
-            <IconRefresh className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
-            Verificar novamente
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Versão</p>
-            <p className="text-sm font-medium">v{current?.version ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Canal</p>
-            <p className="text-sm font-medium">{CHANNEL_LABEL[status?.channel ?? 'stable']}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Commit</p>
-            <p className="truncate text-sm font-medium">{current?.commit ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Node</p>
-            <p className="text-sm font-medium">{current?.nodeVersion ?? '—'}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="section-title">Status</h2>
-          {status && (
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
-              <IconClock className="h-3 w-3" />
-              Última verificação: {relativeTime(status.checkedAt)}
-            </span>
-          )}
-        </div>
-
-        {!status ? (
-          <p className="text-sm text-slate-400">Carregando...</p>
-        ) : status.error ? (
-          <Alert variant="warning" title="Não foi possível consultar novas versões.">
-            {status.error}
-          </Alert>
-        ) : status.updateAvailable && status.release ? (
-          <div className="space-y-3">
-            <Alert variant="info" title={`Nova versão disponível: v${status.release.version}`}>
-              Você está usando v{status.installedVersion}. Publicada{' '}
-              {status.release.publishedAt ? relativeTime(status.release.publishedAt) : 'recentemente'}.
-            </Alert>
+      {/* Cartão único com versão, estado e ação — antes eram três cartões
+          empilhados que diziam a mesma coisa em três alturas diferentes. */}
+      <section className={`card overflow-hidden p-0 ${available ? 'border-indigo-400/60' : ''}`}>
+        <div className="flex flex-wrap items-center gap-4 p-5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-slate-400">Versão instalada</p>
             <div className="flex items-center gap-2">
-              <a
-                href={status.release.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs"
-              >
-                <IconDownload className="h-3.5 w-3.5" />
-                Ver changelog completo no GitHub
-              </a>
+              <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+                v{current?.version ?? '—'}
+              </span>
+              <StatusBadge tone="neutral">{CHANNEL_LABEL[status?.channel ?? 'stable']}</StatusBadge>
+              {available && <StatusBadge tone="info">atualização disponível</StatusBadge>}
             </div>
-            {status.release.changelogHtml && (
-              <div
-                className="changelog-body rounded-lg border border-slate-200 p-4 text-sm leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300"
-                dangerouslySetInnerHTML={{ __html: status.release.changelogHtml }}
-              />
-            )}
-            <p className="text-xs text-slate-400">
-              Instalação automatizada de atualizações ainda não está disponível nesta versão do Velix — esta tela
-              acompanha a versão mais recente publicada, mas a atualização em si segue manual por enquanto.
+            <p className="mt-1 text-xs text-slate-400">
+              {!status ? (
+                'Consultando o GitHub...'
+              ) : status.error ? (
+                <span className="flex items-center gap-1 text-amber-500">
+                  <IconAlertTriangle className="h-3.5 w-3.5" aria-hidden /> {status.error}
+                </span>
+              ) : available ? (
+                <>
+                  v{available.version} publicada {available.publishedAt ? relativeTime(available.publishedAt) : 'recentemente'}
+                </>
+              ) : status.release ? (
+                <span className="flex items-center gap-1 text-green-500">
+                  <IconCheck className="h-3.5 w-3.5" aria-hidden /> Esta é a versão mais recente do canal{' '}
+                  {CHANNEL_LABEL[status.channel]}
+                </span>
+              ) : (
+                `Nenhuma release publicada no canal ${CHANNEL_LABEL[status.channel]} ainda`
+              )}
             </p>
           </div>
-        ) : status.release ? (
-          <Alert variant="success" title="O Velix está atualizado.">
-            <span className="flex items-center gap-1">
-              <IconCheck className="h-3.5 w-3.5" /> v{status.installedVersion} é a versão mais recente do canal {CHANNEL_LABEL[status.channel]}.
-            </span>
-          </Alert>
-        ) : (
-          <Alert variant="info" title="Nenhuma release encontrada.">
-            Não há releases publicadas no canal {CHANNEL_LABEL[status.channel]} deste repositório ainda.
-          </Alert>
-        )}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCheck}
+              disabled={checking}
+              aria-label="Verificar novamente"
+              title="Verificar novamente"
+              className="btn-secondary flex h-9 w-9 items-center justify-center p-0"
+            >
+              <IconRefresh className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} aria-hidden />
+            </button>
+            {available && (
+              <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+                <IconDownload className="h-4 w-4" aria-hidden />
+                Atualizar para v{available.version}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 border-t border-slate-200 bg-slate-50/60 px-5 py-3 sm:grid-cols-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <Meta label="Commit" value={current?.commit?.slice(0, 7) ?? '—'} />
+          <Meta label="Node" value={current?.nodeVersion ?? '—'} />
+          {/* uptimeSeconds é o process.uptime() da API (ver VersionService) —
+              tempo desde o último restart do container, não do servidor. */}
+          <Meta label="API sem reiniciar" value={current ? formatUptime(current.uptimeSeconds) : '—'} />
+          <Meta label="Verificado" value={status ? relativeTime(status.checkedAt) : '—'} />
+        </div>
       </section>
 
-      <section className="card p-4">
-        <h2 className="section-title mb-3">Histórico de verificações</h2>
-        {history.length === 0 ? (
-          <p className="text-sm text-slate-400">Nenhuma verificação registrada ainda.</p>
-        ) : (
-          <div className="space-y-2">
-            {history.map((h) => (
+      {status === null && <Skeleton className="h-24" />}
+
+      {available?.changelogHtml && (
+        <section className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="section-title">Novidades da v{available.version}</h2>
+            <a href={available.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:underline">
+              Ver no GitHub
+            </a>
+          </div>
+          <div
+            className="changelog-body text-sm leading-relaxed text-slate-600 dark:text-slate-300"
+            dangerouslySetInnerHTML={{ __html: available.changelogHtml }}
+          />
+        </section>
+      )}
+
+      {status?.error && (
+        <Alert variant="warning" title="Não foi possível consultar novas versões.">
+          {status.error}
+        </Alert>
+      )}
+
+      {/* Fechado por padrão: são dezenas de linhas "Sem novidades" idênticas,
+          úteis pra diagnosticar mas não pra encarar toda vez que a tela abre. */}
+      <details className="card overflow-hidden p-0">
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-600 marker:text-slate-400 dark:text-slate-300">
+          Histórico de verificações
+          {history.length > 0 && <span className="ml-1.5 text-xs font-normal text-slate-400">({history.length})</span>}
+        </summary>
+        <div className="border-t border-slate-200 dark:border-slate-700">
+          {history.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-slate-400">Nenhuma verificação registrada ainda.</p>
+          ) : (
+            history.map((h) => (
               <div
                 key={h.id}
-                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700"
+                className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-2 text-xs last:border-0 dark:border-slate-800"
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-600 dark:text-slate-300">
-                    {h.error ? 'Falha na verificação' : h.updateAvailable ? `Atualização encontrada (v${h.latestVersion})` : 'Sem novidades'}
-                  </p>
-                  <p className="truncate text-slate-400">
-                    {new Date(h.checkedAt).toLocaleString('pt-BR')} · canal {CHANNEL_LABEL[h.channel] ?? h.channel} · instalada v{h.installedVersion}
-                  </p>
-                </div>
-                {h.releaseUrl && (
-                  <a href={h.releaseUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-indigo-500 hover:underline">
-                    Ver release
-                  </a>
-                )}
+                <span className="truncate text-slate-500 dark:text-slate-400">
+                  {new Date(h.checkedAt).toLocaleString('pt-BR')} · v{h.installedVersion} · {CHANNEL_LABEL[h.channel] ?? h.channel}
+                </span>
+                <span className="shrink-0">
+                  {h.error ? (
+                    <StatusBadge tone="warning">falhou</StatusBadge>
+                  ) : h.updateAvailable ? (
+                    <StatusBadge tone="info">v{h.latestVersion}</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="neutral">sem novidades</StatusBadge>
+                  )}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            ))
+          )}
+        </div>
+      </details>
+
+      {modalOpen && available && current && (
+        <UpdateModal installedVersion={current.version} release={available} onClose={() => setModalOpen(false)} />
+      )}
     </div>
   );
 }

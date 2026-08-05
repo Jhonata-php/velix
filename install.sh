@@ -47,6 +47,7 @@ ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 GENERATED_ADMIN_PASSWORD="false"
 
+UPDATE_MODE="false"
 USE_DOMAIN="false"
 VELIX_DOMAIN=""
 ACME_EMAIL=""
@@ -435,6 +436,46 @@ detect_public_ip() {
     fi
 }
 
+# Atualizar não é reinstalar: se já existe um .env completo no diretório de
+# instalação, todas as respostas já foram dadas uma vez e estão gravadas lá.
+# Perguntar de novo (diretório, e-mail, senha, domínio, porta) só cria chance de
+# o usuário digitar algo diferente e reconfigurar o que estava funcionando.
+existing_installation() {
+    local env_file="${INSTALL_DIR}/.env"
+    [ -f "$env_file" ] || return 1
+    [ -n "$(get_env_value WEB_ORIGIN "$env_file")" ] || return 1
+    [ -n "$(get_env_value VELIX_ADMIN_EMAIL "$env_file")" ] || return 1
+}
+
+load_existing_configuration() {
+    section "Atualizando instalação existente"
+
+    ENV_FILE="${INSTALL_DIR}/.env"
+    OVERRIDE_FILE="${INSTALL_DIR}/docker-compose.override.yml"
+
+    ADMIN_EMAIL="$(get_env_value VELIX_ADMIN_EMAIL "$ENV_FILE")"
+    ADMIN_PASSWORD="$(get_env_value VELIX_ADMIN_PASSWORD "$ENV_FILE")"
+    VELIX_DOMAIN="$(get_env_value VELIX_DOMAIN "$ENV_FILE")"
+    ACME_EMAIL="$(get_env_value TRAEFIK_ACME_EMAIL "$ENV_FILE")"
+    PANEL_PORT="$(get_env_value VELIX_HTTP_PORT "$ENV_FILE")"
+    WEB_ORIGIN="$(get_env_value WEB_ORIGIN "$ENV_FILE")"
+
+    [ -n "$PANEL_PORT" ] || PANEL_PORT="$DEFAULT_PANEL_PORT"
+    [ -n "$VELIX_DOMAIN" ] && USE_DOMAIN="true" || USE_DOMAIN="false"
+
+    echo "  Diretório:       ${INSTALL_DIR}"
+    echo "  Administrador:   ${ADMIN_EMAIL}"
+    echo "  URL:             ${WEB_ORIGIN}"
+    if [ "$USE_DOMAIN" = "true" ]; then
+        echo "  Proxy:           Traefik (SSL Let's Encrypt)"
+    else
+        echo "  Porta:           ${PANEL_PORT}"
+    fi
+    echo
+    success "Configuração existente reaproveitada — nenhuma pergunta necessária"
+    echo -e "${GRAY}  Para reconfigurar do zero, remova ${ENV_FILE} e rode novamente.${NC}"
+}
+
 collect_configuration() {
     section "Configuração inicial"
 
@@ -764,6 +805,9 @@ YAML
 
 check_dns() {
     [ "$USE_DOMAIN" = "true" ] || return
+    # Numa atualização o domínio já respondeu antes; revalidar só rende uma
+    # pergunta a mais quando o DNS está atrás de proxy (Cloudflare, por ex.).
+    [ "$UPDATE_MODE" = "true" ] && return
 
     section "Verificando domínio"
 
@@ -794,6 +838,10 @@ check_dns() {
 }
 
 check_required_ports() {
+    # Numa atualização a porta está ocupada pelo próprio Velix que está no ar —
+    # avisar sobre isso e pedir confirmação seria só ruído.
+    [ "$UPDATE_MODE" = "true" ] && return
+
     section "Verificando portas"
 
     local ports=()
@@ -952,6 +1000,12 @@ deploy_velix() {
     export COMPOSE_PARALLEL_LIMIT=1
     export DOCKER_BUILDKIT=1
 
+    # Sem isso o painel mostra "—" no commit pra sempre. Vem do checkout de
+    # onde o instalador foi executado; se não for um repositório git, fica vazio
+    # e o comportamento é o de antes.
+    export GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo '')"
+    export BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
     run_step "Validando Docker Compose" docker compose --env-file "$ENV_FILE" config
     run_step "Baixando imagens externas" docker compose --env-file "$ENV_FILE" pull --ignore-buildable
 
@@ -1052,13 +1106,21 @@ wait_for_panel() {
 }
 
 show_result() {
-    section "Instalação concluída"
-
-    echo -e "${GREEN}${BOLD}  ✔ Velix instalado com sucesso${NC}"
+    if [ "$UPDATE_MODE" = "true" ]; then
+        section "Atualização concluída"
+        echo -e "${GREEN}${BOLD}  ✔ Velix atualizado para ${VELIX_VERSION}${NC}"
+    else
+        section "Instalação concluída"
+        echo -e "${GREEN}${BOLD}  ✔ Velix instalado com sucesso${NC}"
+    fi
     echo
     echo "  URL:             ${WEB_ORIGIN}"
     echo "  Administrador:   ${ADMIN_EMAIL}"
-    echo "  Senha:           ${ADMIN_PASSWORD}"
+    if [ "$UPDATE_MODE" = "true" ]; then
+        echo "  Senha:           (inalterada)"
+    else
+        echo "  Senha:           ${ADMIN_PASSWORD}"
+    fi
     echo
     echo "  Diretório:       ${INSTALL_DIR}"
     echo "  Configuração:    ${ENV_FILE}"
@@ -1082,7 +1144,9 @@ show_result() {
     echo "  fail2ban-client status sshd"
     echo
 
-    warning "Guarde a senha administrativa em local seguro."
+    if [ "$UPDATE_MODE" != "true" ]; then
+        warning "Guarde a senha administrativa em local seguro."
+    fi
     warning "O arquivo .env contém senhas e segredos do sistema."
 }
 
@@ -1095,7 +1159,12 @@ main() {
     install_dependencies
     ensure_swap
     detect_public_ip
-    collect_configuration
+    if existing_installation; then
+        UPDATE_MODE="true"
+        load_existing_configuration
+    else
+        collect_configuration
+    fi
     install_docker
     check_traefik_compatibility
     prepare_source
