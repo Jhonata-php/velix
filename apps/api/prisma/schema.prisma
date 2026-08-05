@@ -1,5 +1,13 @@
 generator client {
   provider = "prisma-client-js"
+
+  // "native" é detectado em tempo de `prisma generate`, e a imagem de build
+  // (node:20-bookworm-slim) não traz o binário do OpenSSL — sem ele o Prisma
+  // não consegue ler a versão e cai no chute "debian-openssl-1.1.x", que não
+  // existe no Bookworm. O runtime então quebra em PrismaClientInitializationError
+  // ("could not locate the Query Engine for debian-openssl-3.0.x"). Declarar o
+  // alvo explicitamente tira a detecção do caminho crítico.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

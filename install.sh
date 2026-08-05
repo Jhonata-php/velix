@@ -21,6 +21,7 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/velix}"
 REPO_URL="${REPO_URL:-https://github.com/Jhonata-php/velix.git}"
 LOG_FILE="${LOG_FILE:-/var/log/velix-install.log}"
 SYSTEMD_FILE="/etc/systemd/system/velix.service"
+FIREWALL_SCRIPT="/usr/local/sbin/velix-firewall"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -213,6 +214,21 @@ on_error() {
 
     if command -v docker >/dev/null 2>&1; then
         docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || true
+
+        # "Restarting (1)" na tabela acima não diz nada sobre a causa; o log do
+        # container que morreu diz. Sem isso, toda falha de start vira uma ida
+        # e volta manual ao `docker logs`.
+        local container
+        for container in velix-api velix-web velix-postgres; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+                if [ "$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)" != "running" ] ||
+                   ! container_healthy "$container"; then
+                    echo
+                    echo "── Últimas linhas de ${container} ──"
+                    docker logs --tail 40 "$container" 2>&1 | tee -a "$LOG_FILE" || true
+                fi
+            fi
+        done
     fi
 
     exit "$exit_code"
@@ -396,7 +412,7 @@ install_dependencies() {
     run_step "Atualizando lista de pacotes" apt-get update -y
     run_step "Instalando dependências" apt-get install -y \
         ca-certificates curl dnsutils git gnupg jq lsb-release openssl \
-        rsync ufw iproute2 util-linux
+        rsync ufw iptables fail2ban iproute2 util-linux
 }
 
 detect_public_ip() {
@@ -795,24 +811,106 @@ check_required_ports() {
     done
 }
 
+public_ports() {
+    if [ "$USE_DOMAIN" = "true" ]; then
+        echo "80 443"
+    else
+        echo "$PANEL_PORT"
+    fi
+}
+
+# Portas publicadas por containers entram pelo FORWARD e são NATeadas antes do
+# INPUT — ou seja, o UFW não as vê e um "ufw deny" não bloqueia nada que o
+# compose exponha. DOCKER-USER é a única chain consultada pelo Docker antes das
+# regras dele e preservada entre reinícios do daemon, então é onde a política
+# externa dos containers precisa morar. O script é reaplicado a cada boot pelo
+# ExecStartPre do velix.service, já que o iptables não persiste sozinho.
+write_firewall_script() {
+    cat >"$FIREWALL_SCRIPT" <<EOF
+#!/usr/bin/env bash
+# Gerado pelo install.sh do Velix — reaplicado a cada boot por velix.service.
+#
+# Para liberar outras portas de containers deste host, adicione-as a PORTS e
+# rode: systemctl restart velix
+PORTS="$(public_ports)"
+EOF
+
+    cat >>"$FIREWALL_SCRIPT" <<'EOF'
+
+set -eu
+
+iptables -w -N DOCKER-USER 2>/dev/null || true
+iptables -w -F DOCKER-USER
+
+# Interface de saída padrão: só o tráfego que chega por ela é considerado
+# externo. Tráfego entre containers e da rede interna continua livre.
+WAN="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
+
+iptables -w -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+for port in $PORTS; do
+    iptables -w -A DOCKER-USER -p tcp --dport "$port" -j ACCEPT
+done
+
+if [ -n "$WAN" ]; then
+    iptables -w -A DOCKER-USER -i "$WAN" -j DROP
+fi
+
+iptables -w -A DOCKER-USER -j RETURN
+EOF
+
+    chmod 700 "$FIREWALL_SCRIPT"
+}
+
 configure_firewall() {
     section "Configurando firewall"
+
+    write_firewall_script
+    run_step "Aplicando regras de iptables aos containers" "$FIREWALL_SCRIPT"
+    success "Portas liberadas nos containers: $(public_ports)"
 
     command -v ufw >/dev/null 2>&1 || { warning "UFW não encontrado"; return; }
 
     if ! ufw status | grep -q "Status: active"; then
-        warning "UFW está inativo; nenhuma regra foi modificada"
+        warning "UFW está inativo; nenhuma regra do UFW foi modificada"
         return
     fi
 
     run_step "Mantendo acesso SSH liberado" ufw allow OpenSSH
 
-    if [ "$USE_DOMAIN" = "true" ]; then
-        run_step "Liberando porta HTTP" ufw allow 80/tcp
-        run_step "Liberando porta HTTPS" ufw allow 443/tcp
-    else
-        run_step "Liberando porta ${PANEL_PORT}" ufw allow "${PANEL_PORT}/tcp"
-    fi
+    local port
+    for port in $(public_ports); do
+        run_step "Liberando porta ${port}" ufw allow "${port}/tcp"
+    done
+}
+
+configure_fail2ban() {
+    section "Configurando fail2ban"
+
+    command -v fail2ban-server >/dev/null 2>&1 || {
+        warning "fail2ban não encontrado; proteção contra força bruta não foi ativada"
+        return
+    }
+
+    # backend=systemd porque Ubuntu 24.04+ não instala rsyslog e o jail padrão
+    # (auto) procura /var/log/auth.log, que não existe — o serviço sobe mas o
+    # jail fica sem ler nada. banaction=iptables-multiport funciona com ou sem
+    # UFW ativo, e as regras ficam em chains próprias do fail2ban.
+    cat >/etc/fail2ban/jail.local <<'EOF'
+[DEFAULT]
+bantime   = 1h
+findtime  = 10m
+maxretry  = 5
+banaction = iptables-multiport
+
+[sshd]
+enabled = true
+backend = systemd
+EOF
+
+    run_step "Ativando fail2ban" systemctl enable fail2ban
+    run_step "Reiniciando fail2ban" systemctl restart fail2ban
+    success "Jail sshd ativo: 5 tentativas em 10 min, banimento de 1 hora"
 }
 
 create_systemd_service() {
@@ -831,6 +929,7 @@ RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
 Environment=COMPOSE_PROJECT_NAME=velix
 Environment=COMPOSE_PARALLEL_LIMIT=1
+ExecStartPre=-${FIREWALL_SCRIPT}
 ExecStart=/usr/bin/docker compose --env-file ${ENV_FILE} up -d --remove-orphans
 ExecReload=/usr/bin/docker compose --env-file ${ENV_FILE} up -d --remove-orphans
 ExecStop=/usr/bin/docker compose --env-file ${ENV_FILE} stop
@@ -979,6 +1078,8 @@ show_result() {
     echo "  cd ${INSTALL_DIR} && docker compose --env-file .env logs -f"
     echo "  tail -f ${LOG_FILE}"
     echo "  systemctl restart velix"
+    echo "  iptables -S DOCKER-USER"
+    echo "  fail2ban-client status sshd"
     echo
 
     warning "Guarde a senha administrativa em local seguro."
@@ -1003,6 +1104,7 @@ main() {
     generate_compose_override
     check_dns
     configure_firewall
+    configure_fail2ban
     create_systemd_service
     deploy_velix
     wait_for_containers
