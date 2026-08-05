@@ -36,16 +36,19 @@ interface UpdateCheckSummary {
   checkedAt: string;
 }
 
-interface HistoryEntry {
-  id: string;
-  checkedAt: string;
-  installedVersion: string;
-  latestVersion: string | null;
-  channel: string;
-  updateAvailable: boolean;
-  releaseUrl: string | null;
-  error: string | null;
-}
+type TimelineEntry =
+  | { id: string; type: 'update'; at: string; fromVersion: string | null; toVersion: string; appliedBy: string }
+  | {
+      id: string;
+      type: 'check';
+      at: string;
+      installedVersion: string;
+      latestVersion: string | null;
+      channel: string;
+      updateAvailable: boolean;
+      releaseUrl: string | null;
+      error: string | null;
+    };
 
 const CHANNEL_LABEL: Record<string, string> = { stable: 'Stable', beta: 'Beta', nightly: 'Nightly' };
 
@@ -70,12 +73,12 @@ function Meta({ label, value }: { label: string; value: string }) {
 export default function UpdatesPage() {
   const [current, setCurrent] = useState<VersionInfo | null>(null);
   const [status, setStatus] = useState<UpdateCheckSummary | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [history, setHistory] = useState<TimelineEntry[]>([]);
   const [checking, setChecking] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
   function loadHistory() {
-    apiFetch<HistoryEntry[]>('/updates/history?limit=10').then(setHistory).catch(() => {});
+    apiFetch<TimelineEntry[]>('/updates/history?limit=12').then(setHistory).catch(() => {});
   }
 
   useEffect(() => {
@@ -194,32 +197,49 @@ export default function UpdatesPage() {
           úteis pra diagnosticar mas não pra encarar toda vez que a tela abre. */}
       <details className="card overflow-hidden p-0">
         <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-600 marker:text-slate-400 dark:text-slate-300">
-          Histórico de verificações
+          Histórico de atualizações e verificações
           {history.length > 0 && <span className="ml-1.5 text-xs font-normal text-slate-400">({history.length})</span>}
         </summary>
         <div className="border-t border-slate-200 dark:border-slate-700">
           {history.length === 0 ? (
             <p className="px-5 py-4 text-sm text-slate-400">Nenhuma verificação registrada ainda.</p>
           ) : (
-            history.map((h) => (
-              <div
-                key={h.id}
-                className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-2 text-xs last:border-0 dark:border-slate-800"
-              >
-                <span className="truncate text-slate-500 dark:text-slate-400">
-                  {new Date(h.checkedAt).toLocaleString('pt-BR')} · v{h.installedVersion} · {CHANNEL_LABEL[h.channel] ?? h.channel}
-                </span>
-                <span className="shrink-0">
-                  {h.error ? (
-                    <StatusBadge tone="warning">falhou</StatusBadge>
-                  ) : h.updateAvailable ? (
-                    <StatusBadge tone="info">v{h.latestVersion}</StatusBadge>
-                  ) : (
-                    <StatusBadge tone="neutral">sem novidades</StatusBadge>
-                  )}
-                </span>
-              </div>
-            ))
+            history.map((h) =>
+              h.type === 'update' ? (
+                <div
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 border-b border-slate-100 bg-indigo-500/5 px-5 py-2.5 text-xs last:border-0 dark:border-slate-800"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-700 dark:text-slate-200">
+                      {h.fromVersion ? `Atualizado de v${h.fromVersion} para v${h.toVersion}` : `Instalado na v${h.toVersion}`}
+                    </p>
+                    <p className="truncate text-slate-400">
+                      {new Date(h.at).toLocaleString('pt-BR')} · por {h.appliedBy}
+                    </p>
+                  </div>
+                  <StatusBadge tone="success">atualizado</StatusBadge>
+                </div>
+              ) : (
+                <div
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-2 text-xs last:border-0 dark:border-slate-800"
+                >
+                  <span className="truncate text-slate-500 dark:text-slate-400">
+                    {new Date(h.at).toLocaleString('pt-BR')} · v{h.installedVersion} · {CHANNEL_LABEL[h.channel] ?? h.channel}
+                  </span>
+                  <span className="shrink-0">
+                    {h.error ? (
+                      <StatusBadge tone="warning">falhou</StatusBadge>
+                    ) : h.updateAvailable ? (
+                      <StatusBadge tone="info">v{h.latestVersion}</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="neutral">sem novidades</StatusBadge>
+                    )}
+                  </span>
+                </div>
+              ),
+            )
           )}
         </div>
       </details>

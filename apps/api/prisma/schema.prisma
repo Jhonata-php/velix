@@ -116,6 +116,23 @@ model UpdateCheck {
   @@index([checkedAt])
 }
 
+/// Atualizações de fato aplicadas — não é a mesma coisa que UpdateCheck, que só
+/// registra consultas ao GitHub. Gravado no start da API quando a versão do
+/// arquivo VERSION difere da última conhecida: esse é exatamente o momento em
+/// que a troca terminou, e é o único sinal confiável, já que a atualização
+/// acontece fora do painel (instalador rodando por SSH).
+model UpdateEvent {
+  id          String   @id @default(uuid())
+  appliedAt   DateTime @default(now())
+  fromVersion String?
+  toVersion   String
+  /// Quem rodou o instalador — o install.sh grava SUDO_USER no .env. Fica
+  /// "desconhecido" se a atualização foi feita por fora dele.
+  appliedBy   String   @default("desconhecido")
+
+  @@index([appliedAt])
+}
+
 enum ServerStatus {
   PENDING
   ONLINE

@@ -43,6 +43,7 @@ ENV_FILE=""
 OVERRIDE_FILE=""
 
 SERVER_IP=""
+VELIX_UPDATED_BY=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 GENERATED_ADMIN_PASSWORD="false"
@@ -689,11 +690,17 @@ VELIX_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 VELIX_DOMAIN=${VELIX_DOMAIN}
 VELIX_HTTP_PORT=${PANEL_PORT}
 TRAEFIK_ACME_EMAIL=${ACME_EMAIL}
+VELIX_UPDATED_BY=${VELIX_UPDATED_BY}
 EOF
 }
 
 generate_environment() {
     section "Gerando configurações"
+
+    # Quem está rodando o instalador — a API grava isso no histórico de
+    # atualizações. SUDO_USER é o usuário real por trás do sudo; sem sudo (root
+    # direto) sobra o próprio usuário efetivo.
+    VELIX_UPDATED_BY="${SUDO_USER:-$(id -un)}@$(hostname -s 2>/dev/null || echo servidor)"
 
     local postgres_password=""
     local jwt_secret=""
