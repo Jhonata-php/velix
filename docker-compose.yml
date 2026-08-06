@@ -68,6 +68,12 @@ services:
     volumes:
       - ${VELIX_INSTALL_DIR:-/opt/velix}:/host/velix
 
+    # Sem isto o container não teria como falar com o SSH da própria máquina —
+    # é o que permite gerenciar o servidor onde o Velix roda como qualquer
+    # outro servidor (ver LocalServerService).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s

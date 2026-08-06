@@ -23,6 +23,8 @@ export interface ServerMetrics {
 export interface ServerSummary {
   id: string;
   name: string;
+  /** Servidor onde o próprio Velix roda — registrado pelo instalador. */
+  isLocal?: boolean;
   publicIp: string | null;
   privateIp: string | null;
   sshPort: number;

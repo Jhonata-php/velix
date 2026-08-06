@@ -46,6 +46,7 @@ OVERRIDE_FILE=""
 
 SERVER_IP=""
 VELIX_UPDATED_BY=""
+VELIX_LOCAL_SSH_PORT="22"
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 GENERATED_ADMIN_PASSWORD="false"
@@ -416,7 +417,7 @@ install_dependencies() {
     run_step "Atualizando lista de pacotes" apt-get update -y
     run_step "Instalando dependências" apt-get install -y \
         ca-certificates curl dnsutils git gnupg jq lsb-release openssl \
-        rsync iptables fail2ban iproute2 util-linux
+        rsync iptables fail2ban iproute2 util-linux openssh-client
 }
 
 detect_public_ip() {
@@ -704,6 +705,11 @@ VELIX_HTTP_PORT=${PANEL_PORT}
 TRAEFIK_ACME_EMAIL=${ACME_EMAIL}
 VELIX_UPDATED_BY=${VELIX_UPDATED_BY}
 VELIX_INSTALL_DIR=${INSTALL_DIR}
+VELIX_LOCAL_SERVER=true
+VELIX_LOCAL_NAME=${VELIX_LOCAL_NAME}
+VELIX_LOCAL_SSH_USER=root
+VELIX_LOCAL_SSH_PORT=${VELIX_LOCAL_SSH_PORT}
+VELIX_LOCAL_KEY_FILE=/host/velix/.velix-local-key
 EOF
 }
 
@@ -716,6 +722,7 @@ generate_environment() {
     # Respeita um valor já definido no ambiente: é assim que o velix-self-update
     # informa quem clicou no botão do painel, em vez do root do systemd.
     VELIX_UPDATED_BY="${VELIX_UPDATED_BY:-${SUDO_USER:-$(id -un)}@$(hostname -s 2>/dev/null || echo servidor)}"
+    VELIX_LOCAL_NAME="$(hostname -s 2>/dev/null || echo "Este servidor")"
 
     local postgres_password=""
     local jwt_secret=""
@@ -959,6 +966,63 @@ configure_firewall() {
     success "Portas liberadas nos containers: $(public_ports_inline)"
     echo -e "${GRAY}  Regras em DOCKER-USER, reaplicadas a cada boot pelo velix.service.${NC}"
     echo -e "${GRAY}  Tráfego para o próprio host (SSH, e-mail, etc.) não é alterado.${NC}"
+}
+
+# Permite instalar aplicações no próprio servidor onde o Velix roda, sem
+# cadastrar nada à mão.
+#
+# O painel fala com qualquer servidor por SSH — inclusive com este. Em vez de
+# criar um "modo local" paralelo em cada operação (deploy, Traefik, banco,
+# terminal), o que dobraria o código e obrigaria a escrever todo recurso novo
+# duas vezes, geramos um par de chaves e autorizamos a pública no próprio host.
+# A API então trata a máquina local como mais um servidor gerenciado.
+#
+# Isso dá à API acesso SSH ao host. É o mesmo poder que ela já tem sobre
+# qualquer servidor cadastrado, agora apontado pra si mesma — a diferença é que
+# aqui a decisão é explícita. Pra desativar: remova VELIX_LOCAL_SERVER do .env,
+# apague a chave em ${INSTALL_DIR}/.velix-local-key e a linha correspondente em
+# /root/.ssh/authorized_keys.
+configure_local_server() {
+    section "Habilitando o próprio servidor"
+
+    local key_file="${INSTALL_DIR}/.velix-local-key"
+    local authorized="/root/.ssh/authorized_keys"
+
+    if [ ! -f "$key_file" ]; then
+        run_step "Gerando chave de acesso local" ssh-keygen -t ed25519 -N "" -C "velix-local" -f "$key_file"
+    fi
+
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    touch "$authorized"
+    chmod 600 "$authorized"
+
+    local pubkey
+    pubkey="$(cat "${key_file}.pub")"
+    if ! grep -qF "$pubkey" "$authorized"; then
+        echo "$pubkey" >>"$authorized"
+        success "Chave do Velix autorizada em ${authorized}"
+    else
+        success "Chave do Velix já autorizada"
+    fi
+
+    # A chave é lida pela API por dentro do volume; 600 e dono root bastam,
+    # já que o container roda como root e o host não expõe o diretório.
+    chmod 600 "$key_file"
+
+    # Porta real do sshd, não o padrão 22 chutado: quem troca a porta do SSH
+    # por segurança teria o servidor local nascendo quebrado.
+    VELIX_LOCAL_SSH_PORT="$(awk '/^[[:space:]]*Port[[:space:]]+[0-9]+/ {print $2; exit}' /etc/ssh/sshd_config 2>/dev/null || true)"
+    [ -n "$VELIX_LOCAL_SSH_PORT" ] || VELIX_LOCAL_SSH_PORT=22
+
+    # PermitRootLogin no bloqueia até chave — melhor avisar agora do que deixar
+    # o painel mostrar "offline" sem explicação.
+    if grep -qE '^[[:space:]]*PermitRootLogin[[:space:]]+no' /etc/ssh/sshd_config 2>/dev/null; then
+        warning "PermitRootLogin está como \"no\" — o Velix não vai conseguir se conectar a este servidor."
+        warning "Ajuste para \"prohibit-password\" em /etc/ssh/sshd_config e rode: systemctl reload ssh"
+    fi
+
+    success "Este servidor aparecerá no painel na porta ${VELIX_LOCAL_SSH_PORT}"
 }
 
 configure_fail2ban() {
@@ -1319,6 +1383,7 @@ main() {
     check_traefik_compatibility
     prepare_source
     check_required_ports
+    configure_local_server
     generate_environment
     generate_compose_override
     check_dns

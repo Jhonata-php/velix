@@ -160,6 +160,12 @@ model Server {
   id            String       @id @default(uuid())
   name          String
   description   String?
+  /// Servidor onde o próprio Velix roda. Registrado automaticamente pelo
+  /// instalador (ver LocalServerService): o painel fala com o host por SSH,
+  /// pelo mesmo caminho de qualquer servidor remoto — nada de caminho especial
+  /// no motor de implantação. Não pode ser removido pelo usuário, porque
+  /// voltaria a ser criado no próximo start da API.
+  isLocal       Boolean      @default(false)
   publicIp      String?
   privateIp     String?
   hostname      String?

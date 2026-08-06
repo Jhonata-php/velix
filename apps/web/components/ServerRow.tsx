@@ -21,11 +21,14 @@ export function ServerRow({ server, actions }: { server: ServerSummary; actions?
       </span>
 
       <Link href={`/servers/${server.id}`} className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
-          {server.name}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
+            {server.name}
+          </p>
+          {server.isLocal && <StatusBadge tone="info">este servidor</StatusBadge>}
+        </div>
         <p className="truncate text-xs text-slate-400">
-          {server.publicIp ?? server.privateIp ?? '—'}
+          {server.isLocal ? 'Onde o Velix está instalado' : (server.publicIp ?? server.privateIp ?? '—')}
           {server.sshUser ? ` · ${server.sshUser}` : ''}
         </p>
       </Link>

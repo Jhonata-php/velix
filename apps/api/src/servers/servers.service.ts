@@ -88,7 +88,14 @@ export class ServersService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const server = await this.getRawServer(id);
+    // Remover o servidor local só o faria voltar no próximo start da API (ver
+    // LocalServerService) — recusar aqui é mais honesto que fingir que apagou.
+    if (server.isLocal) {
+      throw new BadRequestException(
+        'Este é o servidor onde o Velix está instalado e não pode ser removido. Para desativá-lo, remova VELIX_LOCAL_SERVER do .env e reinicie.',
+      );
+    }
     await this.prisma.server.delete({ where: { id } });
     return { ok: true };
   }

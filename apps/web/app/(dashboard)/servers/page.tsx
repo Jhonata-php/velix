@@ -50,6 +50,10 @@ export default function ServersPage() {
   useAutoRefresh(load, 10_000);
 
   function actionsFor(s: ServerSummary): ActionMenuItem[] {
+    // O servidor local não é editável nem removível: a credencial dele é
+    // regravada pelo instalador a cada start da API, e excluir só o faria
+    // voltar na próxima subida (ver LocalServerService no backend).
+    if (s.isLocal) return [];
     return [
       { label: 'Editar servidor', icon: <IconPencil className="h-4 w-4" />, onClick: () => setEditing(s) },
       { label: 'Excluir servidor', icon: <IconTrash className="h-4 w-4" />, onClick: () => setDeleting(s), danger: true },
