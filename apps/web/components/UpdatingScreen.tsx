@@ -20,6 +20,23 @@ interface Props {
 }
 
 const POLL_MS = 3000;
+const PHRASE_MS = 7000;
+
+/**
+ * A atualização leva minutos e a tela é bloqueante: sem nada mudando, dá a
+ * impressão de travamento. Cada frase carrega uma informação verdadeira e útil
+ * — o que está acontecendo, o que continua no ar, o que é seguro fazer — em vez
+ * de encher linguiça só pra ter movimento.
+ */
+const PHRASES = [
+  'Boa hora para um café — isso leva alguns minutos.',
+  'Seus servidores e as aplicações neles continuam rodando normalmente.',
+  'Pode fechar esta aba: a atualização segue no servidor de qualquer forma.',
+  'As imagens estão sendo reconstruídas do zero com a nova versão.',
+  'O banco, o .env e os volumes são preservados — nada é recriado.',
+  'As migrações do banco rodam sozinhas quando a API subir.',
+  'O painel volta a responder assim que os serviços terminarem de subir.',
+];
 
 const STEPS = ['Pedido enviado ao servidor', 'Baixando a nova versão', 'Reconstruindo e reiniciando os serviços', 'Pronto'];
 
@@ -134,6 +151,7 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
   const [status, setStatus] = useState<SelfUpdateStatus | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [phrase, setPhrase] = useState(0);
   const startedAt = useRef(Date.now());
 
   useEffect(() => {
@@ -153,10 +171,12 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
     poll();
     const pollTimer = setInterval(poll, POLL_MS);
     const clockTimer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 1000);
+    const phraseTimer = setInterval(() => setPhrase((i) => (i + 1) % PHRASES.length), PHRASE_MS);
     return () => {
       cancelled = true;
       clearInterval(pollTimer);
       clearInterval(clockTimer);
+      clearInterval(phraseTimer);
     };
   }, []);
 
@@ -177,7 +197,7 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
             ? status?.message ?? 'Veja .velix-update.log no diretório de instalação.'
             : done
               ? 'Recarregue o painel para usar a nova versão.'
-              : `v${fromVersion} → v${toVersion} · não feche nem use o painel até terminar`}
+              : `v${fromVersion} → v${toVersion} · o painel fica indisponível durante o processo`}
         </p>
 
         <ol className="mx-auto mt-7 max-w-xs space-y-2.5 text-left">
@@ -207,10 +227,16 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
         </ol>
 
         {!done && !failed && (
-          <p className="mt-6 text-xs text-slate-500">
-            {unreachable ? 'Serviços reiniciando — a conexão volta sozinha.' : 'Isso costuma levar de 3 a 10 minutos.'}
-            {elapsed > 0 && ` · ${Math.floor(elapsed / 60)}min ${elapsed % 60}s`}
-          </p>
+          <>
+            {/* key força o remount a cada troca, que é o que dispara a animação
+                de entrada — sem isso o texto trocaria seco. */}
+            <p key={phrase} className="animate-fade-up mx-auto mb-1 mt-7 flex min-h-[3rem] max-w-sm items-center justify-center text-sm text-slate-300">
+              {unreachable ? 'Serviços reiniciando — a conexão volta sozinha.' : PHRASES[phrase]}
+            </p>
+            <p className="text-xs text-slate-500">
+              {Math.floor(elapsed / 60)}min {elapsed % 60}s · normalmente de 3 a 10 minutos
+            </p>
+          </>
         )}
 
         {(done || failed) && (
