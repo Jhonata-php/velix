@@ -10,7 +10,8 @@ import { Alert } from './Alert';
 import { StatusBadge } from './StatusBadge';
 import { OpsLogPanel, type OpsLogStatus } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
-import { IconCheck, IconX, IconServer, IconGlobe } from './icons';
+import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff } from './icons';
+import { NetworkPulse } from './NetworkPulse';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
 
@@ -69,6 +70,10 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
   // 2. Servidor
   const [servers, setServers] = useState<ServerSummary[] | null>(null);
   const [serverId, setServerId] = useState(preselectedServerId ?? '');
+
+  function reloadServers() {
+    apiFetch<ServerSummary[]>('/servers').then(setServers);
+  }
 
   useEffect(() => {
     apiFetch<ServerSummary[]>('/servers').then((list) => {
@@ -232,6 +237,8 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               createDnsRecord={createDnsRecord}
               setCreateDnsRecord={setCreateDnsRecord}
               traefikInstalled={!!selectedServer?.traefikInstalled}
+              serverId={selectedServer?.id ?? ''}
+              onTraefikInstalled={reloadServers}
             />
           )}
           {step === 6 && (
@@ -250,7 +257,9 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               hostname={hostname}
             />
           )}
-          {step === 7 && selectedServer && <DeployStep serverId={selectedServer.id} params={deployParams} onResult={setResult} />}
+          {step === 7 && selectedServer && (
+            <DeployStep serverId={selectedServer.id} params={deployParams} onResult={setResult} appName={name.trim() || manifest.name} />
+          )}
         </div>
 
         {step < 7 && (
@@ -566,6 +575,16 @@ function StorageStep({ volumes }: { volumes: { name: string; containerPath: stri
   );
 }
 
+const ACME_INVALID_TLDS = new Set(['local', 'localhost', 'test', 'invalid', 'example', 'internal', 'lan', 'home', 'arpa']);
+
+/** Mesma validação da aba Proxy: o Let's Encrypt rejeita e-mail de TLD reservado,
+ * e o erro só aparece muito depois, na emissão do certificado. */
+function isValidAcmeEmailClient(email: string) {
+  const trimmed = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return false;
+  return !ACME_INVALID_TLDS.has(trimmed.split('.').pop() ?? '');
+}
+
 function DomainStep({
   manifest,
   wantsDomain,
@@ -575,6 +594,8 @@ function DomainStep({
   createDnsRecord,
   setCreateDnsRecord,
   traefikInstalled,
+  serverId,
+  onTraefikInstalled,
 }: {
   manifest: CatalogApplicationDetail;
   wantsDomain: boolean;
@@ -584,19 +605,127 @@ function DomainStep({
   createDnsRecord: boolean;
   setCreateDnsRecord: (v: boolean) => void;
   traefikInstalled: boolean;
+  serverId: string;
+  onTraefikInstalled: () => void;
 }) {
+  const [acmeEmail, setAcmeEmail] = useState('');
+  const [installing, setInstalling] = useState(false);
+  const [installStatus, setInstallStatus] = useState<OpsLogStatus>('connecting');
+  const [showInstallLog, setShowInstallLog] = useState(false);
+
+  const emailValid = isValidAcmeEmailClient(acmeEmail);
+  const installDone = installStatus === 'done-ok';
+
+  // Instalar sem sair do assistente: mandar o usuário pra outra tela no meio de
+  // um fluxo de 8 etapas significa perder tudo que ele já preencheu.
+  if (!traefikInstalled && !installDone) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="card space-y-4 p-5">
+          {!installing ? (
+            <>
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
+                  <IconGlobe className="h-4.5 w-4.5" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Publicar com domínio precisa do Traefik</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                    Ele é o proxy reverso que recebe o domínio e emite o certificado HTTPS. Ocupa as portas 80 e 443 do servidor e
+                    cria a rede <code>velix-proxy</code>. Dá pra instalar agora, sem sair daqui.
+                  </p>
+                </div>
+              </div>
+
+              <label className="block text-sm">
+                <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">E-mail de contato (Let&apos;s Encrypt)</span>
+                <input
+                  type="email"
+                  placeholder="voce@seudominio.com"
+                  value={acmeEmail}
+                  onChange={(e) => setAcmeEmail(e.target.value)}
+                  className="input"
+                />
+                <span className="mt-1 block text-[11px] text-slate-400">
+                  Só pra avisos de expiração de certificado. Precisa de um domínio público real — endereços como
+                  admin@velix.local são recusados pelo Let&apos;s Encrypt.
+                </span>
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setInstalling(true)} disabled={!emailValid} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
+                  Instalar Traefik agora
+                </button>
+                <button onClick={() => setWantsDomain(false)} className="btn-secondary px-4 py-2 text-sm">
+                  Seguir sem domínio
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center py-4 text-center">
+              <NetworkPulse
+                state={installStatus === 'done-error' ? 'error' : 'running'}
+                label="T"
+                className="h-28 w-28"
+                ariaLabel="Instalando Traefik"
+              />
+              <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-50">
+                {installStatus === 'done-error' ? 'Falha ao instalar o Traefik' : 'Instalando o Traefik'}
+              </h3>
+              <p className="mt-1 max-w-sm text-xs text-slate-500">
+                {installStatus === 'done-error'
+                  ? 'Veja o log abaixo. Você pode seguir sem domínio e publicar depois.'
+                  : 'Baixando a imagem, criando a rede e subindo o proxy no servidor.'}
+              </p>
+
+              <button
+                onClick={() => setShowInstallLog((v) => !v)}
+                className="mt-4 flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <IconTerminal className="h-3.5 w-3.5" aria-hidden />
+                {showInstallLog ? 'Ocultar log' : 'Ver log'}
+              </button>
+
+              {installStatus === 'done-error' && (
+                <button onClick={() => setWantsDomain(false)} className="btn-secondary mt-3 px-4 py-2 text-sm">
+                  Seguir sem domínio
+                </button>
+              )}
+
+              <div className={`mt-3 w-full ${showInstallLog ? '' : 'sr-only'}`}>
+                <TerminalWindow title="Instalação do Traefik" bodyClassName="flex h-[30vh] p-3">
+                  <OpsLogPanel
+                    serverId={serverId}
+                    op="traefik-install"
+                    params={{ acmeEmail: acmeEmail.trim() }}
+                    onStatusChange={setInstallStatus}
+                    onDone={(ok) => {
+                      if (ok) onTraefikInstalled();
+                    }}
+                  />
+                </TerminalWindow>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="card space-y-4 p-5">
-        <label className={`flex items-center gap-2 text-sm ${traefikInstalled ? '' : 'opacity-50'}`}>
-          <input type="checkbox" disabled={!traefikInstalled} checked={wantsDomain} onChange={(e) => setWantsDomain(e.target.checked)} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={wantsDomain} onChange={(e) => setWantsDomain(e.target.checked)} />
           <span className="font-medium text-slate-700 dark:text-slate-200">Publicar com domínio e HTTPS automático</span>
         </label>
-        {!traefikInstalled && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">Instale o Traefik no servidor escolhido (aba Proxy e domínios) pra publicar com domínio.</p>
+        {installDone && !traefikInstalled && (
+          <p className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+            <IconCheck className="h-3.5 w-3.5" aria-hidden /> Traefik instalado neste servidor.
+          </p>
         )}
 
-        {wantsDomain && traefikInstalled && (
+        {wantsDomain && (
           <>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
               <IconGlobe className="h-4 w-4 shrink-0 text-indigo-500" />
@@ -729,62 +858,191 @@ const DEPLOY_STATUS_BADGE: Record<OpsLogStatus, string> = {
   'done-error': 'bg-red-500/15 text-red-400',
 };
 
+/**
+ * Etapa final: o que importa aqui é "deu certo?" e "como eu acesso agora?", não
+ * o log cru — que só interessa quando algo falha ou quando o usuário quer
+ * acompanhar. Por isso o log fica atrás de um botão, e o estado de sucesso
+ * puxa as credenciais geradas: senha de admin sorteada no deploy que não é
+ * mostrada em lugar nenhum é senha perdida.
+ */
+const DEPLOY_PHRASES = [
+  'Enviando os arquivos do projeto para o servidor...',
+  'As imagens estão sendo baixadas do registro.',
+  'Isso costuma levar de 1 a 3 minutos, dependendo do tamanho das imagens.',
+  'Os volumes são criados agora e sobrevivem a reinícios do container.',
+  'Quase lá — aguardando os containers responderem.',
+];
+
 function DeployStep({
   serverId,
   params,
   onResult,
+  appName,
 }: {
   serverId: string;
   params: Record<string, unknown>;
   onResult: (r: { ok: boolean; applicationId?: string; domain?: { hostname: string } | null }) => void;
+  appName: string;
 }) {
   const [status, setStatus] = useState<OpsLogStatus>('connecting');
   const [done, setDone] = useState<{ ok: boolean; applicationId?: string; domain?: { hostname: string } | null } | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [phrase, setPhrase] = useState(0);
+  const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
+
+  const running = status === 'connecting' || status === 'running';
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setPhrase((i) => (i + 1) % DEPLOY_PHRASES.length), 6000);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  // Segredos gerados no deploy (senha de admin, root do banco) só existem
+  // depois que a aplicação foi criada — buscar antes devolveria vazio.
+  useEffect(() => {
+    if (!done?.ok || !done.applicationId) return;
+    apiFetch<Record<string, string>>(`/applications/${done.applicationId}/credentials`)
+      .then((c) => setCredentials(Object.keys(c).length ? c : null))
+      .catch(() => {});
+  }, [done]);
 
   return (
     <div className="flex h-full flex-col">
-      <TerminalWindow
-        title="Implantação"
-        statusSlot={
-          <span className={`badge ${DEPLOY_STATUS_BADGE[status]}`}>
-            {(status === 'running' || status === 'connecting') && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
-            {status === 'connecting' && 'Conectando'}
-            {status === 'running' && 'Executando'}
-            {status === 'done-ok' && 'Concluído'}
-            {status === 'done-error' && 'Falhou'}
-          </span>
-        }
-        bodyClassName="flex h-[45vh] p-3"
-      >
-        <OpsLogPanel
-          serverId={serverId}
-          op="app-deploy"
-          params={params}
-          onStatusChange={setStatus}
-          onDone={(ok, res) => {
-            const r = { ok, applicationId: (res as { applicationId?: string })?.applicationId, domain: (res as { domain?: { hostname: string } | null })?.domain };
-            setDone(r);
-            onResult(r);
-          }}
+      <div className="flex flex-1 flex-col items-center justify-center py-4 text-center">
+        <NetworkPulse
+          state={status === 'done-error' ? 'error' : status === 'done-ok' ? 'success' : 'running'}
+          label={appName.charAt(0).toUpperCase()}
+          className="h-32 w-32"
+          ariaLabel="Implantando"
         />
-      </TerminalWindow>
-      {done?.ok && (
-        <div className="mt-4">
-          <Alert variant="success">
-            Aplicação implantada com sucesso.{' '}
+
+        <h3 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-50">
+          {status === 'done-error' ? 'A implantação falhou' : status === 'done-ok' ? `${appName} está no ar` : `Implantando ${appName}`}
+        </h3>
+
+        <p className="mt-1.5 flex min-h-[2.5rem] max-w-md items-center justify-center px-4 text-sm text-slate-500">
+          {status === 'done-error'
+            ? 'Veja o log para entender o que aconteceu — nada foi deixado rodando pela metade.'
+            : status === 'done-ok'
+              ? done?.domain?.hostname
+                ? 'Domínio configurado e certificado emitido.'
+                : 'Disponível na rede interna do servidor.'
+              : DEPLOY_PHRASES[phrase]}
+        </p>
+
+        {done?.ok && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {done.domain?.hostname && (
-              <a href={`https://${done.domain.hostname}`} target="_blank" rel="noreferrer" className="underline">
+              <a href={`https://${done.domain.hostname}`} target="_blank" rel="noreferrer" className="btn-primary px-4 py-2 text-sm">
                 Abrir {done.domain.hostname}
               </a>
             )}
-          </Alert>
-        </div>
-      )}
-      {done && !done.ok && (
-        <div className="mt-4">
-          <Alert variant="error">Falha ao implantar — veja os detalhes no log acima.</Alert>
-        </div>
-      )}
+          </div>
+        )}
+
+        {credentials && (
+          <div className="mt-5 w-full max-w-md text-left">
+            <CredentialsBox credentials={credentials} />
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowLogs((v) => !v)}
+          className="mt-5 flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+        >
+          <IconTerminal className="h-3.5 w-3.5" aria-hidden />
+          {showLogs ? 'Ocultar log' : 'Ver log'}
+        </button>
+      </div>
+
+      {/* O painel fica sempre montado: é ele que abre o WebSocket e conduz a
+          operação. Esconder desmontando cancelaria a implantação em curso. */}
+      <div className={showLogs ? 'mt-2' : 'sr-only'}>
+        <TerminalWindow
+          title="Implantação"
+          statusSlot={
+            <span className={`badge ${DEPLOY_STATUS_BADGE[status]}`}>
+              {running && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+              {status === 'connecting' && 'Conectando'}
+              {status === 'running' && 'Executando'}
+              {status === 'done-ok' && 'Concluído'}
+              {status === 'done-error' && 'Falhou'}
+            </span>
+          }
+          bodyClassName="flex h-[38vh] p-3"
+        >
+          <OpsLogPanel
+            serverId={serverId}
+            op="app-deploy"
+            params={params}
+            onStatusChange={setStatus}
+            onDone={(ok, res) => {
+              const r = {
+                ok,
+                applicationId: (res as { applicationId?: string })?.applicationId,
+                domain: (res as { domain?: { hostname: string } | null })?.domain,
+              };
+              setDone(r);
+              onResult(r);
+            }}
+          />
+        </TerminalWindow>
+      </div>
+    </div>
+  );
+}
+
+/** Senhas sorteadas no deploy. Só existem aqui e na aba do projeto — nenhuma
+ * delas é recuperável depois se o usuário não guardar, então a caixa aparece
+ * aberta e com aviso, em vez de escondida atrás de mais um clique. */
+function CredentialsBox({ credentials }: { credentials: Record<string, string> }) {
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  async function copy(key: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-900/15">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+          <IconKey className="h-3.5 w-3.5" aria-hidden />
+          Credenciais geradas — guarde agora
+        </p>
+        <button
+          onClick={() => setRevealed((v) => !v)}
+          className="flex items-center gap-1 text-[11px] text-amber-700 hover:underline dark:text-amber-400"
+        >
+          {revealed ? <IconEyeOff className="h-3.5 w-3.5" aria-hidden /> : <IconEye className="h-3.5 w-3.5" aria-hidden />}
+          {revealed ? 'Ocultar' : 'Mostrar'}
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        {Object.entries(credentials).map(([key, value]) => (
+          <div key={key} className="flex items-center gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 dark:bg-slate-900/50">
+            <span className="shrink-0 text-[11px] font-medium text-slate-500">{key}</span>
+            <code className="min-w-0 flex-1 truncate text-right font-mono text-xs text-slate-800 dark:text-slate-100">
+              {revealed ? value : '•'.repeat(Math.min(value.length, 18))}
+            </code>
+            <button
+              onClick={() => copy(key, value)}
+              aria-label={`Copiar ${key}`}
+              className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+            >
+              {copied === key ? <IconCheck className="h-3.5 w-3.5 text-green-500" aria-hidden /> : <IconCopy className="h-3.5 w-3.5" aria-hidden />}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-2 text-[11px] text-amber-700/80 dark:text-amber-400/70">
+        Ficam disponíveis também na aba Aplicações do servidor, em Credenciais.
+      </p>
     </div>
   );
 }

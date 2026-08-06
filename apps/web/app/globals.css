@@ -312,9 +312,13 @@ body {
   }
 }
 
+/* Sem width/height aqui: o tamanho vem por classe utilitária de quem usa (a
+   tela de atualização é grande, a do assistente é menor). A classe existe pelas
+   regras de transform abaixo, que são o que faz a malha girar em torno do
+   centro certo — passar só as classes de tamanho, sem esta, entortava a
+   figura. */
 .velix-net {
-  width: 12.5rem;
-  height: 12.5rem;
+  display: block;
 }
 
 /* view-box mantém as unidades das animações iguais às do viewBox do SVG,
