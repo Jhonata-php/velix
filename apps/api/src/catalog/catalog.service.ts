@@ -192,6 +192,9 @@ export class CatalogService {
     return {
       ...this.toSummary(manifest, installState.get(manifest.slug) ?? []),
       documentationUrl: manifest.documentationUrl,
+      repositoryUrl: manifest.repositoryUrl,
+      websiteUrl: manifest.websiteUrl,
+      screenshots: manifest.screenshots ?? [],
       services: manifest.services.map((s) => ({
         name: s.name,
         image: s.image,

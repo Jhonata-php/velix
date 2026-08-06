@@ -27,10 +27,24 @@ interface QuickApp {
   environment?: Record<string, string>;
   command?: string;
   docs?: string;
+  /** Site oficial, quando a documentação não é o site do projeto. */
+  site?: string;
+  /** Repositório, quando `docs` não aponta para ele. */
+  repo?: string;
+  /** Capturas de tela publicadas pelo próprio projeto (README, site oficial).
+   * Só URLs reais e verificadas — imagem quebrada na loja é pior que nenhuma. */
+  screenshots?: string[];
   /** Nome do arquivo em selfh.st/icons quando difere do slug. */
   icon?: string;
   /** Precisa do socket do Docker (o scan de segurança marca como risco médio). */
   dockerSocket?: boolean;
+}
+
+const REPO_HOSTS = ['github.com', 'gitlab.com', 'codeberg.org'];
+
+function isRepoUrl(url?: string): boolean {
+  if (!url) return false;
+  return REPO_HOSTS.some((host) => url.includes(`${host}/`));
 }
 
 function build(app: QuickApp): VelixManifest {
@@ -43,6 +57,11 @@ function build(app: QuickApp): VelixManifest {
     icon: `https://cdn.jsdelivr.net/gh/selfhst/icons/svg/${app.icon ?? app.slug}.svg`,
     author: 'Velix Official',
     documentationUrl: app.docs,
+    // A maioria dos `docs` já aponta pro repositório — derivar evita repetir a
+    // mesma URL em duas propriedades em 115 linhas de tabela.
+    repositoryUrl: app.repo ?? (isRepoUrl(app.docs) ? app.docs : undefined),
+    websiteUrl: app.site,
+    ...(app.screenshots?.length ? { screenshots: app.screenshots } : {}),
     minResources: { memoryMb: app.memoryMb ?? 256 },
     primaryService: 'app',
     primaryPort: app.port,

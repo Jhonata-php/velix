@@ -9,6 +9,9 @@ import { StatusBadge } from './StatusBadge';
 interface Props {
   app: CatalogApplicationSummary;
   serverId?: string;
+  /** Quando fornecido, o clique no card abre o modal de detalhes em vez de
+   * navegar — mantém o usuário na vitrine, com filtros e rolagem preservados. */
+  onOpenDetail?: (slug: string) => void;
   /** Quando fornecido, "Instalar" chama isso (abre o assistente em modal, sem navegar)
    * em vez de ir pra página de detalhes com `?install=1`. */
   onInstall?: (slug: string) => void;
@@ -18,12 +21,16 @@ interface Props {
 /** Linha compacta de app-store — logo + nome + descrição curta + categoria +
  * botão de ação, tudo numa faixa horizontal (~110px de altura). A linha
  * inteira abre os detalhes; o botão tem sua própria ação (não propaga o clique). */
-export function CompactAppCard({ app, serverId, onInstall, installLoading }: Props) {
+export function CompactAppCard({ app, serverId, onOpenDetail, onInstall, installLoading }: Props) {
   const router = useRouter();
   const installed = app.installed[0];
   const blocked = app.riskLevel === 'blocked';
 
   function openDetail() {
+    if (onOpenDetail) {
+      onOpenDetail(app.slug);
+      return;
+    }
     router.push(`/library/${app.slug}${serverId ? `?server=${serverId}` : ''}`);
   }
 

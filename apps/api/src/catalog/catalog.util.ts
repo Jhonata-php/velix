@@ -75,6 +75,14 @@ export interface VelixManifest {
   icon: string;
   author: string;
   documentationUrl?: string;
+  /** Repositório do projeto — mostrado na tela de detalhes do catálogo. */
+  repositoryUrl?: string;
+  /** Site oficial, quando diferente da documentação. */
+  websiteUrl?: string;
+  /** Capturas de tela do próprio projeto. Só URLs de fontes que o projeto já
+   * publica (README no GitHub, site oficial) — o Velix não hospeda imagem de
+   * aplicação de terceiro. */
+  screenshots?: string[];
   minResources: { memoryMb: number };
   services: VelixManifestService[];
   /** Segredos gerados uma vez no deploy e injetados via arquivo de env (nunca no compose salvo). */

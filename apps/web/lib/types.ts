@@ -110,6 +110,9 @@ export interface CatalogSecurityFinding {
 
 export interface CatalogApplicationDetail extends CatalogApplicationSummary {
   documentationUrl?: string;
+  repositoryUrl?: string;
+  websiteUrl?: string;
+  screenshots: string[];
   services: CatalogManifestService[];
   primaryService: string;
   primaryPort: number;

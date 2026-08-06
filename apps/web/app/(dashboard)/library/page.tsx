@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { CatalogApplicationSummary } from '@/lib/types';
 import { CATEGORY_LABEL } from '@/lib/catalogCategories';
 import { CompactAppCard } from '@/components/CompactAppCard';
+import { AppDetailModal } from '@/components/AppDetailModal';
 import { DeployWizard } from '@/components/DeployWizard';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
@@ -30,7 +32,9 @@ export default function LibraryPage() {
   const [category, setCategory] = useState('');
   const [trust, setTrust] = useState<TrustFilter>('all');
   const [sort, setSort] = useState<SortKey>('name');
+  const [detailSlug, setDetailSlug] = useState<string | null>(null);
   const wizard = useInstallWizard();
+  const router = useRouter();
 
   useEffect(() => {
     apiFetch<CatalogApplicationSummary[]>('/catalog/applications').then(setApps);
@@ -128,9 +132,30 @@ export default function LibraryPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map((app) => (
-            <CompactAppCard key={app.slug} app={app} onInstall={wizard.open} installLoading={wizard.loadingSlug === app.slug} />
+            <CompactAppCard
+              key={app.slug}
+              app={app}
+              onOpenDetail={setDetailSlug}
+              onInstall={wizard.open}
+              installLoading={wizard.loadingSlug === app.slug}
+            />
           ))}
         </div>
+      )}
+
+      {detailSlug && (
+        <AppDetailModal
+          slug={detailSlug}
+          onClose={() => setDetailSlug(null)}
+          onInstall={(slug) => {
+            setDetailSlug(null);
+            wizard.open(slug);
+          }}
+          onOpenInstalled={(info) => {
+            if (info.hostname) window.open(`https://${info.hostname}`, '_blank', 'noreferrer');
+            else router.push(`/servers/${info.serverId}?tab=applications`);
+          }}
+        />
       )}
 
       {wizard.target && <DeployWizard manifest={wizard.target} onClose={wizard.close} />}
