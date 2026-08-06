@@ -137,7 +137,7 @@ export default function UpdatesPage() {
   const available = status?.updateAvailable && status.release ? status.release : null;
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4">
       <div>
         <h1 className="page-title">Atualizações</h1>
         <p className="text-xs text-slate-400">Versão instalada e releases publicadas no GitHub</p>

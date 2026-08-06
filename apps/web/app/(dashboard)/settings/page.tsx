@@ -78,7 +78,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="mx-auto max-w-3xl space-y-5">
       <div>
         <h1 className="page-title">Configurações</h1>
         <p className="text-xs text-slate-400">Sistema e integrações</p>

@@ -70,7 +70,7 @@ export default function DatabaseDetailPage() {
   if (error) return <Alert variant="error">{error}</Alert>;
   if (!instance) {
     return (
-      <div className="max-w-4xl">
+      <div className="mx-auto max-w-4xl">
         <Skeleton className="mb-2 h-3 w-32" />
         <Skeleton className="mb-6 h-9 w-64" />
         <Skeleton className="h-20" />
@@ -79,7 +79,7 @@ export default function DatabaseDetailPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className="mx-auto max-w-4xl">
       <Breadcrumb items={[{ label: 'Servidor', href: `/servers/${instance.serverId}` }, { label: instance.name }]} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
