@@ -638,8 +638,17 @@ copy_local_source() {
         "${SCRIPT_DIR}/" "${INSTALL_DIR}/"
 }
 
+# Mesma lógica do velix-self-update: o diretório de instalação é uma cópia do
+# repositório, não um espaço de edição. `pull --ff-only` transformava qualquer
+# divergência (histórico reescrito, arquivo mexido no servidor) em falha; aqui
+# ela é descartada. Arquivos não rastreados — .env, override, volumes — não são
+# tocados por `reset --hard`.
 update_existing_repository() {
-    run_step "Atualizando repositório existente" git -C "$INSTALL_DIR" pull --ff-only
+    local branch
+    branch="$(git -C "$INSTALL_DIR" symbolic-ref --short HEAD 2>/dev/null || echo main)"
+
+    run_step "Buscando atualizações do repositório" git -C "$INSTALL_DIR" fetch --prune origin
+    run_step "Aplicando versão do repositório" git -C "$INSTALL_DIR" reset --hard "origin/${branch}"
 }
 
 clone_repository() {
@@ -1022,8 +1031,26 @@ JSON
 chmod 644 "$UPDATE_LOG"
 
 write_status running "Baixando a nova versão"
-if ! git -C "$INSTALL_DIR" pull --ff-only >>"$UPDATE_LOG" 2>&1; then
-    write_status error "Falha ao baixar a nova versão (git pull)"
+
+# fetch + reset --hard, não `pull --ff-only`. O --ff-only existe pra proteger
+# trabalho local, e aqui não existe trabalho local: o diretório de instalação é
+# uma cópia do repositório, não um espaço de edição. Com ele, qualquer
+# divergência — histórico reescrito no remoto, um arquivo editado à mão no
+# servidor, um merge pendente — vira falha de atualização em vez de ser
+# descartada, que é o que se quer num diretório de deploy.
+#
+# `reset --hard` não remove arquivos não rastreados, então .env,
+# docker-compose.override.yml e os arquivos de estado desta atualização
+# sobrevivem. Nenhum `git clean` aqui, justamente por isso.
+branch="$(git -C "$INSTALL_DIR" symbolic-ref --short HEAD 2>/dev/null || echo main)"
+
+if ! git -C "$INSTALL_DIR" fetch --prune origin >>"$UPDATE_LOG" 2>&1; then
+    write_status error "Falha ao contatar o GitHub (git fetch)"
+    exit 1
+fi
+
+if ! git -C "$INSTALL_DIR" reset --hard "origin/${branch}" >>"$UPDATE_LOG" 2>&1; then
+    write_status error "Falha ao aplicar a nova versão (git reset)"
     exit 1
 fi
 
