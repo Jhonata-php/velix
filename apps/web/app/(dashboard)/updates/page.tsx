@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { useSelfUpdate } from '@/lib/useSelfUpdate';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
-import { UpdatingScreen } from '@/components/UpdatingScreen';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
 
 interface VersionInfo {
@@ -89,7 +89,7 @@ export default function UpdatesPage() {
   const [selfUpdate, setSelfUpdate] = useState<SelfUpdateStatus | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState(false);
+  const selfUpdateWatch = useSelfUpdate();
 
   function loadHistory() {
     apiFetch<TimelineEntry[]>('/updates/history?limit=12').then(setHistory).catch(() => {});
@@ -100,14 +100,9 @@ export default function UpdatesPage() {
     apiFetch<UpdateCheckSummary>('/updates/latest').then(setStatus).catch(() => {});
     loadHistory();
 
-    // Uma atualização em andamento pode ter sido pedida em outra aba, por outro
-    // usuário, ou antes de um F5 — a tela de espera tem que reaparecer sozinha.
-    apiFetch<SelfUpdateStatus>('/updates/apply/status')
-      .then((s) => {
-        setSelfUpdate(s);
-        if (s.state === 'requested' || s.state === 'running') setUpdating(true);
-      })
-      .catch(() => {});
+    // Só pra saber se o botão de atualizar pode aparecer; quem detecta uma
+    // atualização em andamento e mostra a tela cheia é o layout.
+    apiFetch<SelfUpdateStatus>('/updates/apply/status').then(setSelfUpdate).catch(() => {});
   }, []);
 
   async function handleCheck() {
@@ -126,7 +121,9 @@ export default function UpdatesPage() {
     try {
       await apiFetch('/updates/apply', { method: 'POST' });
       setModalOpen(false);
-      setUpdating(true);
+      // O layout é quem mostra a tela cheia — avisar aqui evita esperar o
+      // próximo ciclo da sonda, que é lento de propósito.
+      selfUpdateWatch.start();
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Não foi possível iniciar a atualização.');
     } finally {
@@ -290,14 +287,6 @@ export default function UpdatesPage() {
           error={applyError}
           onApply={handleApply}
           onClose={() => setModalOpen(false)}
-        />
-      )}
-
-      {updating && (
-        <UpdatingScreen
-          fromVersion={current?.version ?? '—'}
-          toVersion={available?.version ?? selfUpdate?.fromVersion ?? '—'}
-          onDismiss={() => setUpdating(false)}
         />
       )}
     </div>

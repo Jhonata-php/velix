@@ -16,7 +16,9 @@ interface SelfUpdateStatus {
 
 interface Props {
   fromVersion: string;
-  toVersion: string;
+  /** Desconhecido quando a tela abre pra um usuário que não disparou a
+   * atualização — ele não passou pela consulta de releases. */
+  toVersion?: string;
   onDismiss: () => void;
 }
 
@@ -102,14 +104,14 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
         <NetworkPulse state={failed ? 'error' : done ? 'success' : 'running'} className="mx-auto mb-7 h-[12.5rem] w-[12.5rem]" ariaLabel="Atualizando" />
 
         <h2 className="text-xl font-semibold text-white">
-          {failed ? 'A atualização falhou' : done ? `Atualizado para v${toVersion}` : 'Atualizando o Velix'}
+          {failed ? 'A atualização falhou' : done ? (toVersion ? `Atualizado para v${toVersion}` : 'Velix atualizado') : 'Atualizando o Velix'}
         </h2>
         <p className="mt-1.5 text-sm text-slate-400">
           {failed
             ? status?.message ?? 'Veja .velix-update.log no diretório de instalação.'
             : done
               ? 'Recarregue o painel para usar a nova versão.'
-              : `v${fromVersion} → v${toVersion} · o painel fica indisponível durante o processo`}
+              : `${toVersion ? `v${fromVersion} → v${toVersion} · ` : ''}o painel fica indisponível durante o processo`}
         </p>
 
         <ol className="mx-auto mt-7 max-w-xs space-y-2.5 text-left">

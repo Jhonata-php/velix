@@ -8,6 +8,8 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileHeader } from '@/components/navigation/MobileHeader';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { MoreMenuDrawer } from '@/components/navigation/MoreMenuDrawer';
+import { UpdatingScreen } from '@/components/UpdatingScreen';
+import { SelfUpdateProvider, useSelfUpdate } from '@/lib/useSelfUpdate';
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -65,6 +67,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!checked) return null;
 
   return (
+    <SelfUpdateProvider>
+      <DashboardShell pathname={pathname} user={user} moreOpen={moreOpen} setMoreOpen={setMoreOpen}>
+        {children}
+      </DashboardShell>
+    </SelfUpdateProvider>
+  );
+}
+
+/** Separado do layout porque precisa estar dentro do provider pra enxergar o
+ * estado da atualização — um componente não consegue consumir um contexto que
+ * ele mesmo monta. */
+function DashboardShell({
+  pathname,
+  user,
+  moreOpen,
+  setMoreOpen,
+  children,
+}: {
+  pathname: string | null;
+  user: StoredUser | null;
+  moreOpen: boolean;
+  setMoreOpen: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const selfUpdate = useSelfUpdate();
+
+  return (
     <div className="flex">
       <Sidebar />
       <div className="min-w-0 flex-1">
@@ -78,6 +107,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <MobileBottomNav onOpenMore={() => setMoreOpen(true)} moreActive={moreOpen} />
       {moreOpen && <MoreMenuDrawer user={user} onClose={() => setMoreOpen(false)} />}
+
+      {/* Fora do <main>: a atualização derruba o painel inteiro, então a tela
+          cobre qualquer página em que o usuário estiver. */}
+      {selfUpdate.active && (
+        <UpdatingScreen fromVersion={selfUpdate.status?.fromVersion ?? '—'} onDismiss={selfUpdate.dismiss} />
+      )}
     </div>
   );
 }
