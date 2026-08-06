@@ -23,6 +23,7 @@ LOG_FILE="${LOG_FILE:-/var/log/velix-install.log}"
 SYSTEMD_FILE="/etc/systemd/system/velix.service"
 FIREWALL_SCRIPT="/usr/local/sbin/velix-firewall"
 SELF_UPDATE_SCRIPT="/usr/local/sbin/velix-self-update"
+LOCK_FILE="/var/run/velix-install.lock"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -1283,7 +1284,23 @@ show_result() {
     warning "O arquivo .env contém senhas e segredos do sistema."
 }
 
+acquire_lock() {
+    # Duas execuções ao mesmo tempo — atualização pelo painel cruzando com um
+    # `sudo ./install.sh` manual por SSH, ou o mesmo comando disparado duas
+    # vezes — competem por apt, Docker e RAM sem gerar erro nenhum: só trava
+    # tudo, mais grave ainda num servidor com pouca memória. `flock -n` recusa
+    # na hora se outro processo já segura o lock, em vez de deixar os dois
+    # avançarem em paralelo.
+    exec 200>"$LOCK_FILE"
+    if ! flock -n 200; then
+        local holder
+        holder="$(fuser "$LOCK_FILE" 2>/dev/null | tr -d ' ')"
+        fatal "Já existe uma instalação ou atualização do Velix em andamento${holder:+ (PID ${holder})}. Aguarde terminar ou verifique: ps aux | grep install.sh"
+    fi
+}
+
 main() {
+    acquire_lock
     prepare_log
     show_banner
     require_root
