@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApplicationsService } from './applications.service';
+import { GitDeployService } from './git-deploy.service';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
 
 // A implantação (`deploy`) é demorada e tem log ao vivo — só existe via o
@@ -9,7 +10,10 @@ import { CreateApplicationDomainDto } from './dto/create-application-domain.dto'
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class ApplicationsController {
-  constructor(private readonly applications: ApplicationsService) {}
+  constructor(
+    private readonly applications: ApplicationsService,
+    private readonly gitDeploy: GitDeployService,
+  ) {}
 
   @Get('applications')
   listAll() {
@@ -59,6 +63,18 @@ export class ApplicationsController {
   @Patch('applications/:appId/domains/:domainId')
   updateDomain(@Param('appId') appId: string, @Param('domainId') domainId: string, @Body() dto: CreateApplicationDomainDto) {
     return this.applications.updateDomain(appId, domainId, dto);
+  }
+
+  /** Configuração de autodeploy — a URL do webhook só é devolvida aqui, para
+   * um usuário autenticado, nunca na listagem geral de aplicações. */
+  @Get('applications/:appId/auto-deploy')
+  getAutoDeploy(@Param('appId') appId: string) {
+    return this.gitDeploy.getAutoDeploy(appId);
+  }
+
+  @Patch('applications/:appId/auto-deploy')
+  setAutoDeploy(@Param('appId') appId: string, @Body('enabled') enabled: boolean) {
+    return this.gitDeploy.setAutoDeploy(appId, !!enabled);
   }
 
   @Get('applications/:appId/credentials')

@@ -269,6 +269,30 @@ model Application {
   description      String?
   environment      ApplicationEnvironment @default(PRODUCTION)
   tags             String[]          @default([])
+  /// "catalog" (manifesto curado) ou "git" (repositório do usuário). O motor de
+  /// implantação é o mesmo dali pra frente — muda só como a imagem nasce:
+  /// puxada de um registro ou construída no servidor a partir do código.
+  sourceType       String            @default("catalog")
+  /// Só para sourceType="git". A URL fica em claro (não é segredo); o token de
+  /// acesso, quando existe, é cifrado à parte.
+  repoUrl          String?
+  gitRef           String?
+  /// "dockerfile" ou "nixpacks".
+  buildMethod      String?
+  dockerfilePath   String?
+  /// Token de acesso a repositório privado, cifrado com AES-256-GCM — mesmo
+  /// padrão das credenciais SSH. Nunca volta em nenhuma resposta da API.
+  /// Preenchido quando o usuário digita um token avulso; quando ele escolhe uma
+  /// conta salva, o token vem de `gitAccount`.
+  repoTokenEnc     String?
+  gitAccountId     String?
+  gitAccount       GitAccount?       @relation(fields: [gitAccountId], references: [id], onDelete: SetNull)
+  /// Reimplantar sozinho quando chegar um push na branch acompanhada.
+  autoDeploy       Boolean           @default(false)
+  /// Segredo do webhook — é ele que autentica a chamada vinda da forja, já que
+  /// não há sessão de usuário nesse caminho. Único por aplicação: vazar um não
+  /// dá acesso a redeployar as outras.
+  webhookSecret    String?           @unique
   manifestSlug     String
   manifestVersion  String
   status           ApplicationStatus @default(DEPLOYING)
@@ -295,6 +319,24 @@ model Application {
   services         ProjectService[]
 
   @@index([serverId])
+}
+
+/// Conta de forja Git salva em Configurações, para não digitar o mesmo token a
+/// cada implantação. O token é cifrado com AES-256-GCM (mesmo padrão das
+/// credenciais SSH) e nunca volta em nenhuma resposta da API — a tela mostra
+/// só o rótulo e os últimos caracteres, o suficiente pra identificar qual é.
+model GitAccount {
+  id        String   @id @default(uuid())
+  label     String
+  host      String   @default("github.com")
+  username  String?
+  tokenEnc  String
+  /// Últimos 4 caracteres, em claro, só para exibição.
+  tokenHint String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications Application[]
 }
 
 enum ProjectServiceStatus {

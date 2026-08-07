@@ -13,6 +13,8 @@ export type Op =
   | 'traefik-uninstall'
   | 'server-prepare'
   | 'app-deploy'
+  | 'git-deploy'
+  | 'git-redeploy'
   | 'service-add'
   | 'updates-install'
   | 'mysql-install';
@@ -25,13 +27,21 @@ interface PanelProps {
   params?: Record<string, unknown>;
   onDone: (ok: boolean, result: unknown) => void;
   onStatusChange?: (status: OpsLogStatus) => void;
+  /** Cada linha completa de saída, já sem quebras — permite que uma tela de
+   * progresso acompanhe o que está acontecendo de verdade em vez de exibir
+   * frases genéricas em rodízio. */
+  onLine?: (line: string) => void;
 }
 
 /** Terminal + WebSocket do canal /ops, sem moldura de modal — reutilizável tanto
  * pelo `InstallLogModal` (overlay de tela cheia) quanto embutido dentro de outro
  * layout (ex.: a etapa "Implantação" do assistente de instalação). */
-export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange }: PanelProps) {
+export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange, onLine }: PanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Em ref, não em estado: o efeito que abre o WebSocket não pode depender de
+  // uma função nova a cada render, senão reconecta e reinicia a operação.
+  const onLineRef = useRef(onLine);
+  onLineRef.current = onLine;
 
   function setStatus(s: OpsLogStatus) {
     onStatusChange?.(s);
@@ -63,6 +73,7 @@ export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange }: Pa
       resizeObserver = new ResizeObserver(() => fitAddon.fit());
       resizeObserver.observe(containerRef.current);
 
+      let buffer = '';
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
       ws = new WebSocket(`${protocol}://${location.host}/ops?serverId=${serverId}&token=${getToken()}`);
 
@@ -78,6 +89,17 @@ export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange }: Pa
         const msg = JSON.parse(event.data);
         if (msg.type === 'log') {
           term?.write(msg.data.replace(/\n/g, '\r\n'));
+          if (onLineRef.current) {
+            // Um chunk pode trazer várias linhas ou meia linha; só as completas
+            // interessam pra quem está mostrando "o que está acontecendo agora".
+            buffer += msg.data;
+            const parts = buffer.split('\n');
+            buffer = parts.pop() ?? '';
+            for (const line of parts) {
+              const clean = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+              if (clean) onLineRef.current(clean);
+            }
+          }
         } else if (msg.type === 'done') {
           const ok = !!msg.ok;
           term?.write(`\r\n\x1b[${ok ? '32' : '31'}m${ok ? '✓ Concluído com sucesso.' : '✗ Falhou.'}\x1b[0m\r\n`);

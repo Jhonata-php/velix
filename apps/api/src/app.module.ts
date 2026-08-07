@@ -9,6 +9,7 @@ import { TraefikModule } from './traefik/traefik.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { UpdateModule } from './updates/update.module';
+import { GitAccountsModule } from './git-accounts/git-accounts.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UpdateModule } from './updates/update.module';
     CatalogModule,
     ApplicationsModule,
     UpdateModule,
+    GitAccountsModule,
   ],
 })
 export class AppModule {}

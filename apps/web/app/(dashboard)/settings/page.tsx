@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { Alert } from '@/components/Alert';
 import { IconShield, IconChevronRight } from '@/components/icons';
+import { GitAccountsCard } from '@/components/GitAccountsCard';
 
 interface AccountStatus {
   connected: boolean;
@@ -94,6 +95,8 @@ export default function SettingsPage() {
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
       </Link>
+
+      <GitAccountsCard />
 
       <section className="card p-4">
         <h2 className="section-title mb-1">Cloudflare</h2>

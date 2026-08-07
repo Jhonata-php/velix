@@ -12,6 +12,7 @@ import { ServersService } from './servers/servers.service';
 import { DatabaseService } from './database/database.service';
 import { TraefikService } from './traefik/traefik.service';
 import { ApplicationsService } from './applications/applications.service';
+import { GitDeployService } from './applications/git-deploy.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -46,6 +47,7 @@ async function bootstrap() {
     database: app.get(DatabaseService),
     traefik: app.get(TraefikService),
     applications: app.get(ApplicationsService),
+    gitDeploy: app.get(GitDeployService),
   });
 
   console.log(`Velix API rodando na porta ${port}`);

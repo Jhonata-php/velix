@@ -7,6 +7,7 @@ import { DatabaseService } from '../database/database.service';
 import { TraefikService } from '../traefik/traefik.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { DeployApplicationDto } from '../applications/dto/deploy-application.dto';
+import { GitDeployService, DeployFromGitInput } from '../applications/git-deploy.service';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
@@ -17,6 +18,8 @@ type StartMessage =
   | { type: 'start'; op: 'traefik-uninstall' }
   | { type: 'start'; op: 'server-prepare'; params?: { acmeEmail?: string } }
   | { type: 'start'; op: 'app-deploy'; params: DeployApplicationDto }
+  | { type: 'start'; op: 'git-deploy'; params: DeployFromGitInput }
+  | { type: 'start'; op: 'git-redeploy'; params: { applicationId: string } }
   | { type: 'start'; op: 'service-add'; params: { applicationId: string; serviceName: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
@@ -37,7 +40,14 @@ function send(ws: WebSocket, msg: object) {
  */
 export function attachOpsServer(
   httpServer: HttpServer,
-  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService; traefik: TraefikService; applications: ApplicationsService },
+  deps: {
+    jwt: JwtService;
+    servers: ServersService;
+    database: DatabaseService;
+    traefik: TraefikService;
+    applications: ApplicationsService;
+    gitDeploy: GitDeployService;
+  },
 ) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -57,7 +67,14 @@ export function attachOpsServer(
 async function handleConnection(
   ws: WebSocket,
   query: Record<string, string>,
-  deps: { jwt: JwtService; servers: ServersService; database: DatabaseService; traefik: TraefikService; applications: ApplicationsService },
+  deps: {
+    jwt: JwtService;
+    servers: ServersService;
+    database: DatabaseService;
+    traefik: TraefikService;
+    applications: ApplicationsService;
+    gitDeploy: GitDeployService;
+  },
 ) {
   const { token, serverId } = query;
   if (!token || !serverId) {
@@ -104,6 +121,10 @@ async function handleConnection(
         result = await deps.traefik.prepareServer(serverId, msg.params ?? {}, onLog);
       } else if (msg.op === 'app-deploy') {
         result = await deps.applications.deploy(serverId, msg.params, onLog);
+      } else if (msg.op === 'git-deploy') {
+        result = await deps.gitDeploy.deploy(serverId, msg.params, onLog);
+      } else if (msg.op === 'git-redeploy') {
+        result = await deps.gitDeploy.redeploy(msg.params.applicationId, onLog);
       } else if (msg.op === 'service-add') {
         result = await deps.applications.addService(msg.params.applicationId, msg.params.serviceName, onLog);
       } else if (msg.op === 'updates-install') {

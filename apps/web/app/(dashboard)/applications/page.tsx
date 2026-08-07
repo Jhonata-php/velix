@@ -11,7 +11,9 @@ import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { Toolbar } from '@/components/Toolbar';
-import { IconLayoutGrid, IconServer, IconExternalLink } from '@/components/icons';
+import { InstallLogModal } from '@/components/InstallLogModal';
+import { AutoDeployModal } from '@/components/AutoDeployModal';
+import { IconLayoutGrid, IconServer, IconExternalLink, IconGithub, IconRefresh, IconSettings } from '@/components/icons';
 import type { CatalogApplicationSummary } from '@/lib/types';
 
 interface ApplicationDomain {
@@ -24,6 +26,9 @@ interface ApplicationRow {
   id: string;
   name: string;
   slug: string;
+  sourceType?: string;
+  repoUrl?: string | null;
+  gitRef?: string | null;
   manifestSlug: string;
   manifestVersion: string;
   status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
@@ -73,6 +78,8 @@ export default function ApplicationsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [serverId, setServerId] = useState('');
+  const [redeploying, setRedeploying] = useState<ApplicationRow | null>(null);
+  const [autoDeployFor, setAutoDeployFor] = useState<ApplicationRow | null>(null);
 
   function load() {
     apiFetch<ApplicationRow[]>('/applications')
@@ -180,11 +187,18 @@ export default function ApplicationsPage() {
       ) : (
         <div className="card divide-y divide-slate-200 p-0 dark:divide-slate-700">
           {visible.map((app) => {
-            const manifest = catalog.get(app.manifestSlug);
+            const fromGit = app.sourceType === 'git';
+            const manifest = fromGit ? undefined : catalog.get(app.manifestSlug);
             const domain = app.domains.find((d) => d.status === 'ACTIVE') ?? app.domains[0];
             return (
               <div key={app.id} className="group flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <AppIcon icon={manifest?.icon} name={app.name} size="sm" />
+                {fromGit ? (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-900">
+                    <IconGithub className="h-5 w-5" aria-hidden />
+                  </span>
+                ) : (
+                  <AppIcon icon={manifest?.icon} name={app.name} size="sm" />
+                )}
 
                 <Link href={`/servers/${app.server.id}?tab=applications`} className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -194,7 +208,8 @@ export default function ApplicationsPage() {
                     <StatusBadge tone={STATUS_TONE[app.status]}>{STATUS_LABEL[app.status]}</StatusBadge>
                   </div>
                   <p className="truncate text-xs text-slate-400">
-                    {app.manifestSlug} v{app.manifestVersion} · implantada {relativeTime(app.deployedAt)}
+                    {fromGit ? `${app.repoUrl?.replace('https://', '').replace('.git', '') ?? 'repositório'} · ${app.gitRef ?? ''}` : `${app.manifestSlug} v${app.manifestVersion}`} · implantada{' '}
+                    {relativeTime(app.deployedAt)}
                     {app.lastError ? ` · ${app.lastError}` : ''}
                   </p>
                 </Link>
@@ -203,6 +218,28 @@ export default function ApplicationsPage() {
                   <IconServer className="h-3.5 w-3.5" aria-hidden />
                   {app.server.isLocal ? 'este servidor' : app.server.name}
                 </span>
+
+                {fromGit && (
+                  <button
+                    onClick={() => setAutoDeployFor(app)}
+                    title="Configurar autodeploy"
+                    aria-label={`Autodeploy de ${app.name}`}
+                    className="hidden shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 sm:block dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                  >
+                    <IconSettings className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+
+                {fromGit && (
+                  <button
+                    onClick={() => setRedeploying(app)}
+                    title="Reimplantar a partir do repositório"
+                    aria-label={`Reimplantar ${app.name}`}
+                    className="hidden shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 sm:block dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                  >
+                    <IconRefresh className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
 
                 {domain?.hostname && (
                   <a
@@ -220,6 +257,27 @@ export default function ApplicationsPage() {
             );
           })}
         </div>
+      )}
+
+      {autoDeployFor && (
+        <AutoDeployModal
+          applicationId={autoDeployFor.id}
+          appName={autoDeployFor.name}
+          onClose={() => setAutoDeployFor(null)}
+        />
+      )}
+
+      {/* Reimplantação manual — continua existindo mesmo com autodeploy ligado,
+          pra forçar uma reconstrução sem precisar de um push. */}
+      {redeploying && (
+        <InstallLogModal
+          serverId={redeploying.server.id}
+          op="git-redeploy"
+          params={{ applicationId: redeploying.id }}
+          title={`Reimplantando ${redeploying.name}`}
+          onClose={() => setRedeploying(null)}
+          onDone={load}
+        />
       )}
     </div>
   );

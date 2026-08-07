@@ -7,11 +7,12 @@ import type { CatalogApplicationSummary } from '@/lib/types';
 import { CATEGORY_LABEL } from '@/lib/catalogCategories';
 import { CompactAppCard } from '@/components/CompactAppCard';
 import { AppDetailModal } from '@/components/AppDetailModal';
+import { GitDeployWizard } from '@/components/GitDeployWizard';
 import { DeployWizard } from '@/components/DeployWizard';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { Toolbar } from '@/components/Toolbar';
-import { IconSearch } from '@/components/icons';
+import { IconSearch, IconGithub } from '@/components/icons';
 import { useInstallWizard } from '@/lib/useInstallWizard';
 
 type TrustFilter = 'all' | 'trending' | 'official' | 'community' | 'installed';
@@ -33,6 +34,7 @@ export default function LibraryPage() {
   const [trust, setTrust] = useState<TrustFilter>('all');
   const [sort, setSort] = useState<SortKey>('name');
   const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  const [gitWizard, setGitWizard] = useState(false);
   const wizard = useInstallWizard();
   const router = useRouter();
 
@@ -60,12 +62,18 @@ export default function LibraryPage() {
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="page-title">Loja de Aplicativos</h1>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">Loja de Aplicativos</h1>
         <p className="text-xs text-slate-400">
           {apps ? `${apps.length} aplicativo${apps.length === 1 ? '' : 's'} no catálogo do Velix` : 'Catálogo do Velix'} — implante com um assistente
           guiado, com variáveis, volumes, domínio e SSL configurados automaticamente.
-        </p>
+          </p>
+        </div>
+        <button onClick={() => setGitWizard(true)} className="btn-secondary flex shrink-0 items-center gap-2 px-3.5 py-2 text-sm">
+          <IconGithub className="h-4 w-4" aria-hidden />
+          Implantar do repositório
+        </button>
       </div>
 
       <Toolbar
@@ -154,6 +162,16 @@ export default function LibraryPage() {
           onOpenInstalled={(info) => {
             if (info.hostname) window.open(`https://${info.hostname}`, '_blank', 'noreferrer');
             else router.push(`/servers/${info.serverId}?tab=applications`);
+          }}
+        />
+      )}
+
+      {gitWizard && (
+        <GitDeployWizard
+          onClose={() => setGitWizard(false)}
+          onDeployed={() => {
+            setGitWizard(false);
+            router.push('/applications');
           }}
         />
       )}

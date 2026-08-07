@@ -12,6 +12,7 @@ import { OpsLogPanel, type OpsLogStatus } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
 import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff } from './icons';
 import { NetworkPulse } from './NetworkPulse';
+import { DeployProgress, type ProgressStage } from './DeployProgress';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
 
@@ -865,12 +866,13 @@ const DEPLOY_STATUS_BADGE: Record<OpsLogStatus, string> = {
  * puxa as credenciais geradas: senha de admin sorteada no deploy que não é
  * mostrada em lugar nenhum é senha perdida.
  */
-const DEPLOY_PHRASES = [
-  'Enviando os arquivos do projeto para o servidor...',
-  'As imagens estão sendo baixadas do registro.',
-  'Isso costuma levar de 1 a 3 minutos, dependendo do tamanho das imagens.',
-  'Os volumes são criados agora e sobrevivem a reinícios do container.',
-  'Quase lá — aguardando os containers responderem.',
+/** Etapas reconhecidas na saída real do deploy — ver DeployProgress. */
+const CATALOG_STAGES: ProgressStage[] = [
+  { label: 'Preparando o diretório', match: /Preparando/i },
+  { label: 'Enviando a configuração', match: /Gravando docker-compose|Gravando segredos/i },
+  { label: 'Baixando as imagens', match: /Garantindo rede|Pulling|Downloading|Extracting/i },
+  { label: 'Subindo os containers', match: /Subindo|Creating|Started|Container/i },
+  { label: 'Verificando', match: /Aguardando|Associando dom/i },
 ];
 
 function DeployStep({
@@ -887,16 +889,8 @@ function DeployStep({
   const [status, setStatus] = useState<OpsLogStatus>('connecting');
   const [done, setDone] = useState<{ ok: boolean; applicationId?: string; domain?: { hostname: string } | null } | null>(null);
   const [showLogs, setShowLogs] = useState(false);
-  const [phrase, setPhrase] = useState(0);
+  const [lastLine, setLastLine] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
-
-  const running = status === 'connecting' || status === 'running';
-
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setPhrase((i) => (i + 1) % DEPLOY_PHRASES.length), 6000);
-    return () => clearInterval(timer);
-  }, [running]);
 
   // Segredos gerados no deploy (senha de admin, root do banco) só existem
   // depois que a aplicação foi criada — buscar antes devolveria vazio.
@@ -909,52 +903,35 @@ function DeployStep({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center py-4 text-center">
-        <NetworkPulse
-          state={status === 'done-error' ? 'error' : status === 'done-ok' ? 'success' : 'running'}
-          label={appName.charAt(0).toUpperCase()}
-          className="h-32 w-32"
-          ariaLabel="Implantando"
-        />
-
-        <h3 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-50">
-          {status === 'done-error' ? 'A implantação falhou' : status === 'done-ok' ? `${appName} está no ar` : `Implantando ${appName}`}
-        </h3>
-
-        <p className="mt-1.5 flex min-h-[2.5rem] max-w-md items-center justify-center px-4 text-sm text-slate-500">
-          {status === 'done-error'
+      <DeployProgress
+        stages={CATALOG_STAGES}
+        lastLine={lastLine}
+        state={status === 'done-error' ? 'error' : status === 'done-ok' ? 'success' : 'running'}
+        label={appName.charAt(0).toUpperCase()}
+        title={status === 'done-error' ? 'A implantação falhou' : status === 'done-ok' ? `${appName} está no ar` : `Implantando ${appName}`}
+        subtitle={
+          status === 'done-error'
             ? 'Veja o log para entender o que aconteceu — nada foi deixado rodando pela metade.'
             : status === 'done-ok'
               ? done?.domain?.hostname
                 ? 'Domínio configurado e certificado emitido.'
                 : 'Disponível na rede interna do servidor.'
-              : DEPLOY_PHRASES[phrase]}
-        </p>
-
-        {done?.ok && (
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            {done.domain?.hostname && (
-              <a href={`https://${done.domain.hostname}`} target="_blank" rel="noreferrer" className="btn-primary px-4 py-2 text-sm">
-                Abrir {done.domain.hostname}
-              </a>
-            )}
-          </div>
+              : undefined
+        }
+        showLog={showLogs}
+        onToggleLog={() => setShowLogs((v) => !v)}
+      >
+        {done?.ok && done.domain?.hostname && (
+          <a href={`https://${done.domain.hostname}`} target="_blank" rel="noreferrer" className="btn-primary mt-4 px-4 py-2 text-sm">
+            Abrir {done.domain.hostname}
+          </a>
         )}
-
         {credentials && (
           <div className="mt-5 w-full max-w-md text-left">
             <CredentialsBox credentials={credentials} />
           </div>
         )}
-
-        <button
-          onClick={() => setShowLogs((v) => !v)}
-          className="mt-5 flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
-        >
-          <IconTerminal className="h-3.5 w-3.5" aria-hidden />
-          {showLogs ? 'Ocultar log' : 'Ver log'}
-        </button>
-      </div>
+      </DeployProgress>
 
       {/* O painel fica sempre montado: é ele que abre o WebSocket e conduz a
           operação. Esconder desmontando cancelaria a implantação em curso. */}
@@ -963,7 +940,7 @@ function DeployStep({
           title="Implantação"
           statusSlot={
             <span className={`badge ${DEPLOY_STATUS_BADGE[status]}`}>
-              {running && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+              {(status === 'running' || status === 'connecting') && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
               {status === 'connecting' && 'Conectando'}
               {status === 'running' && 'Executando'}
               {status === 'done-ok' && 'Concluído'}
@@ -977,6 +954,7 @@ function DeployStep({
             op="app-deploy"
             params={params}
             onStatusChange={setStatus}
+            onLine={setLastLine}
             onDone={(ok, res) => {
               const r = {
                 ok,
