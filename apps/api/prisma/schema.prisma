@@ -347,6 +347,49 @@ model GitAccount {
   applications Application[]
 }
 
+/// Destino de notificação. O `config` é cifrado porque carrega URL de webhook
+/// (que é segredo — quem a tem posta no canal) e token de bot.
+model AlertChannel {
+  id        String   @id @default(uuid())
+  label     String
+  /// discord | telegram | webhook
+  type      String
+  configEnc String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  deliveries AlertDelivery[]
+}
+
+/// Uma linha por alerta enviado. Existe por dois motivos: mostrar histórico e,
+/// principalmente, evitar reenvio — sem isso a checagem a cada 5 minutos
+/// repetiria "disco cheio" 288 vezes por dia até alguém agir, e o canal viraria
+/// ruído que ninguém mais lê.
+model AlertDelivery {
+  id         String       @id @default(uuid())
+  channelId  String
+  channel    AlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  /// Identidade do problema, não do envio: "server-offline:<id>". Reenvia só
+  /// quando o estado se resolve e volta a acontecer.
+  fingerprint String
+  title      String
+  body       String
+  ok         Boolean      @default(true)
+  error      String?
+  sentAt     DateTime     @default(now())
+
+  @@index([fingerprint, sentAt])
+}
+
+/// Estado atual de cada condição monitorada, para saber quando ela abre e quando
+/// fecha. Sem isso não há como mandar "voltou ao normal", que é metade do valor
+/// de um alerta.
+model AlertState {
+  fingerprint String   @id
+  openedAt    DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+}
+
 /// Backup do banco do Velix e do .env. Uma linha por execução — o histórico é o
 /// que permite saber que o agendamento parou de rodar, coisa que um arquivo
 /// solto no disco não conta.

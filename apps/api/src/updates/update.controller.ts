@@ -41,6 +41,11 @@ export class UpdateController {
     return this.selfUpdate.request(req.user.email);
   }
 
+  @Get('releases')
+  releases() {
+    return this.updates.releases();
+  }
+
   @Get('history')
   history(@Query('limit') limit?: string) {
     return this.updates.history(limit ? parseInt(limit, 10) : undefined);

@@ -114,7 +114,22 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
               : `${toVersion ? `v${fromVersion} → v${toVersion} · ` : ''}o painel fica indisponível durante o processo`}
         </p>
 
-        <ol className="mx-auto mt-7 max-w-xs space-y-2.5 text-left">
+        {/* Barra por etapa concluída, não por tempo estimado: o tempo real
+            varia de 2 a 15 minutos com a máquina e a rede, e uma barra que
+            "estima" fica presa em 90% — o clássico que faz ninguém confiar em
+            barra de progresso. Aqui cada traço é uma etapa que de fato acabou. */}
+        <div className="mx-auto mt-6 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-slate-800">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-400 transition-[width] duration-700"
+            style={{ width: `${Math.round(((done ? STEPS.length : active) / STEPS.length) * 100)}%` }}
+          />
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          {done ? STEPS.length : active} de {STEPS.length} etapas
+          {status?.requestedBy ? ` · iniciada por ${status.requestedBy}` : ''}
+        </p>
+
+        <ol className="mx-auto mt-6 max-w-xs space-y-2.5 text-left">
           {STEPS.map((label, i) => {
             const state = failed && i === active ? 'failed' : i < active || done ? 'done' : i === active ? 'current' : 'todo';
             return (

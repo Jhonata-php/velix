@@ -113,6 +113,32 @@ export class UpdateService implements OnModuleInit {
   }
 
   /**
+   * Histórico de versões publicadas, com a instalada marcada. É o que permite a
+   * tela mostrar "o que mudou desde a minha versão" em vez de só a última.
+   */
+  async releases() {
+    const channel = resolveChannel();
+    const installedVersion = this.version.getVersion();
+    const result = await this.github.listReleases(channel);
+
+    if (!result.ok) return { installedVersion, channel, error: result.error, releases: [] };
+
+    return {
+      installedVersion,
+      channel,
+      error: null,
+      releases: result.releases.map((r) => ({
+        ...r,
+        installed: r.version === installedVersion,
+        // "newer" é o que a tela usa pra separar o que ainda falta aplicar do
+        // que já ficou pra trás — comparar string de versão no frontend daria
+        // 1.10.0 < 1.9.0.
+        newer: compareSemver(r.version, installedVersion) > 0,
+      })),
+    };
+  }
+
+  /**
    * Linha do tempo única: atualizações aplicadas e verificações, ordenadas
    * juntas. São duas tabelas porque respondem a perguntas diferentes ("quando
    * mudou de versão" x "quando olhamos o GitHub"), mas na tela quem lê quer um

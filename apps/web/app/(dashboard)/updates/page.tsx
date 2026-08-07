@@ -8,6 +8,7 @@ import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
+import { ReleaseList, type ReleaseEntry } from '@/components/ReleaseList';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
 
 interface VersionInfo {
@@ -51,6 +52,13 @@ type TimelineEntry =
       error: string | null;
     };
 
+interface ReleasesResponse {
+  installedVersion: string;
+  channel: string;
+  error: string | null;
+  releases: ReleaseEntry[];
+}
+
 interface SelfUpdateStatus {
   available: boolean;
   state: 'idle' | 'requested' | 'running' | 'success' | 'error';
@@ -87,6 +95,7 @@ export default function UpdatesPage() {
   const [checking, setChecking] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [selfUpdate, setSelfUpdate] = useState<SelfUpdateStatus | null>(null);
+  const [releases, setReleases] = useState<ReleaseEntry[]>([]);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const selfUpdateWatch = useSelfUpdate();
@@ -103,6 +112,9 @@ export default function UpdatesPage() {
     // Só pra saber se o botão de atualizar pode aparecer; quem detecta uma
     // atualização em andamento e mostra a tela cheia é o layout.
     apiFetch<SelfUpdateStatus>('/updates/apply/status').then(setSelfUpdate).catch(() => {});
+    apiFetch<ReleasesResponse>('/updates/releases')
+      .then((r) => setReleases(r.releases))
+      .catch(() => {});
   }, []);
 
   async function handleCheck() {
@@ -206,19 +218,8 @@ export default function UpdatesPage() {
 
       {status === null && <Skeleton className="h-24" />}
 
-      {available?.changelogHtml && (
-        <section className="card p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="section-title">Novidades da v{available.version}</h2>
-            <a href={available.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:underline">
-              Ver no GitHub
-            </a>
-          </div>
-          <div
-            className="changelog-body text-sm leading-relaxed text-slate-600 dark:text-slate-300"
-            dangerouslySetInnerHTML={{ __html: available.changelogHtml }}
-          />
-        </section>
+      {releases.length > 0 && (
+        <ReleaseList releases={releases} canInstall={!!selfUpdate?.available && !!available} onInstall={() => setModalOpen(true)} />
       )}
 
       {status?.error && (
