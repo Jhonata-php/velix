@@ -23,11 +23,27 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# ca-certificates: chamadas HTTPS de saída. postgresql-client: o pg_dump usado
-# pelo backup automático — sem ele o backup falharia em runtime, num caminho que
-# só roda de madrugada e ninguém veria falhar.
+# ca-certificates: chamadas HTTPS de saída. postgresql-client-16: o pg_dump
+# usado pelo backup automático — sem ele o backup falharia em runtime, num
+# caminho que só roda de madrugada e ninguém veria falhar.
+#
+# O pacote "postgresql-client" genérico do Bookworm traz a v15 (versão padrão
+# do Debian 12), enquanto docker-compose.yml usa postgres:16-alpine — pg_dump
+# se recusa a operar contra um servidor com versão maior que a dele
+# ("aborting because of server version mismatch"). O repositório oficial do
+# PGDG é o único jeito de instalar um major específico no Bookworm; a versão
+# abaixo tem que acompanhar o "postgres:NN-alpine" do compose se ele mudar.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+       -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-16 \
+  && apt-get purge -y curl gnupg \
+  && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
