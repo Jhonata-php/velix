@@ -102,6 +102,29 @@ export class BackupService {
   }
 
   /**
+   * Variáveis de conexão a partir da DATABASE_URL.
+   *
+   * A tentativa anterior passava a URI inteira em PGDATABASE achando que o
+   * libpq a expandiria como conninfo. Ele não expande: trata como nome de banco
+   * literal, ignora host e porta, e cai no socket local — que não existe no
+   * container da API. Daí o erro
+   * `connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed`.
+   *
+   * Cada parte vira sua própria variável. Continua fora do argv, que é o que
+   * importa: `ps` mostraria a senha para qualquer processo do container.
+   */
+  private connectionEnv(url: string): Record<string, string> {
+    const parsed = new URL(url);
+    return {
+      PGHOST: parsed.hostname,
+      PGPORT: parsed.port || '5432',
+      PGUSER: decodeURIComponent(parsed.username),
+      PGPASSWORD: decodeURIComponent(parsed.password),
+      PGDATABASE: parsed.pathname.replace(/^\//, ''),
+    };
+  }
+
+  /**
    * pg_dump escrevendo direto num gzip, sem passar pela memória do Node: um
    * banco grande carregado em string derrubaria a API por heap.
    */
@@ -110,11 +133,8 @@ export class BackupService {
     if (!url) throw new Error('DATABASE_URL não definido');
 
     return new Promise((resolve, reject) => {
-      // A URL vai por variável de ambiente, não como argumento: argumentos são
-      // visíveis em `ps` para qualquer processo do container. O libpq aceita uma
-      // URI completa em PGDATABASE, que é o que permite não usar -d.
       const dump = spawn('pg_dump', ['--no-owner', '--no-privileges', '--clean', '--if-exists'], {
-        env: { ...process.env, PGDATABASE: url },
+        env: { ...process.env, ...this.connectionEnv(url) },
       });
 
       const gzip = createGzip();
