@@ -15,7 +15,10 @@ export type AuditEvent =
   | 'TOTP_ENABLED'
   | 'TOTP_DISABLED'
   | 'TOTP_RECOVERY_USED'
-  | 'ACCOUNT_LOCKED';
+  | 'ACCOUNT_LOCKED'
+  | 'USER_CREATED'
+  | 'USER_ROLE_CHANGED'
+  | 'USER_REMOVED';
 
 interface RecordInput {
   event: AuditEvent;

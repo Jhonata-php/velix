@@ -20,6 +20,7 @@ type StartMessage =
   | { type: 'start'; op: 'app-deploy'; params: DeployApplicationDto }
   | { type: 'start'; op: 'git-deploy'; params: DeployFromGitInput }
   | { type: 'start'; op: 'git-redeploy'; params: { applicationId: string } }
+  | { type: 'start'; op: 'container-logs'; params: { containerId: string } }
   | { type: 'start'; op: 'service-add'; params: { applicationId: string; serviceName: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
@@ -110,11 +111,23 @@ async function handleConnection(
   }
 
   let userId: string;
+  let role: string;
   try {
-    const payload = await deps.jwt.verifyAsync<{ sub: string }>(token);
+    const payload = await deps.jwt.verifyAsync<{ sub: string; role?: string }>(token);
     userId = payload.sub;
+    role = payload.role ?? 'viewer';
   } catch {
     send(ws, { type: 'done', ok: false, error: 'Token inválido ou expirado' });
+    ws.close();
+    return;
+  }
+
+  // O RolesGuard só cobre HTTP. Toda operação deste canal instala, implanta ou
+  // remove coisa em servidor — nenhuma delas é leitura, então 'viewer' não pode
+  // sequer abrir a conexão. Sem esta checagem os papéis seriam contornáveis por
+  // WebSocket, que é a parte que de fato executa comando no servidor.
+  if (role !== 'admin' && role !== 'operator') {
+    send(ws, { type: 'done', ok: false, error: 'Seu perfil não permite executar operações em servidores.' });
     ws.close();
     return;
   }
@@ -166,6 +179,9 @@ async function handleConnection(
         result = await deps.gitDeploy.deploy(serverId, msg.params, onLog);
       } else if (msg.op === 'git-redeploy') {
         result = await deps.gitDeploy.redeploy(msg.params.applicationId, onLog);
+      } else if (msg.op === 'container-logs') {
+        // Fica aberto até o usuário fechar a aba — não tem "concluído".
+        result = await deps.servers.streamContainerLogs(serverId, msg.params.containerId, onLog, ws);
       } else if (msg.op === 'service-add') {
         result = await deps.applications.addService(msg.params.applicationId, msg.params.serviceName, onLog);
       } else if (msg.op === 'updates-install') {

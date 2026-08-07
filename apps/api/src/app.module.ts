@@ -12,6 +12,7 @@ import { UpdateModule } from './updates/update.module';
 import { GitAccountsModule } from './git-accounts/git-accounts.module';
 import { BackupModule } from './backup/backup.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { UsersModule } from './users/users.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -32,6 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     GitAccountsModule,
     BackupModule,
     AlertsModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

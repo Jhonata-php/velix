@@ -13,7 +13,8 @@ import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { Toolbar } from '@/components/Toolbar';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { AutoDeployModal } from '@/components/AutoDeployModal';
-import { IconLayoutGrid, IconServer, IconExternalLink, IconGithub, IconRefresh, IconSettings } from '@/components/icons';
+import { LiveLogsModal } from '@/components/LiveLogsModal';
+import { IconLayoutGrid, IconServer, IconExternalLink, IconGithub, IconRefresh, IconSettings, IconTerminal } from '@/components/icons';
 import type { CatalogApplicationSummary } from '@/lib/types';
 
 interface ApplicationDomain {
@@ -32,6 +33,9 @@ interface ApplicationRow {
   manifestSlug: string;
   manifestVersion: string;
   status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
+  /** Preenchido no deploy. Apps do catálogo têm vários; o primeiro é o serviço
+   * principal, que é o que interessa nos logs. */
+  containerNames?: string[];
   deployedAt: string;
   lastError: string | null;
   domains: ApplicationDomain[];
@@ -80,6 +84,7 @@ export default function ApplicationsPage() {
   const [serverId, setServerId] = useState('');
   const [redeploying, setRedeploying] = useState<ApplicationRow | null>(null);
   const [autoDeployFor, setAutoDeployFor] = useState<ApplicationRow | null>(null);
+  const [logsFor, setLogsFor] = useState<ApplicationRow | null>(null);
 
   function load() {
     apiFetch<ApplicationRow[]>('/applications')
@@ -219,6 +224,15 @@ export default function ApplicationsPage() {
                   {app.server.isLocal ? 'este servidor' : app.server.name}
                 </span>
 
+                <button
+                  onClick={() => setLogsFor(app)}
+                  title="Ver logs ao vivo"
+                  aria-label={`Logs de ${app.name}`}
+                  className="hidden shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 sm:block dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                >
+                  <IconTerminal className="h-4 w-4" aria-hidden />
+                </button>
+
                 {fromGit && (
                   <button
                     onClick={() => setAutoDeployFor(app)}
@@ -257,6 +271,15 @@ export default function ApplicationsPage() {
             );
           })}
         </div>
+      )}
+
+      {logsFor && (
+        <LiveLogsModal
+          serverId={logsFor.server.id}
+          containerId={logsFor.containerNames?.[0] ?? `${logsFor.slug}_app`}
+          title={logsFor.name}
+          onClose={() => setLogsFor(null)}
+        />
       )}
 
       {autoDeployFor && (

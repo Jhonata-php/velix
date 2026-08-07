@@ -15,6 +15,7 @@ export type Op =
   | 'app-deploy'
   | 'git-deploy'
   | 'git-redeploy'
+  | 'container-logs'
   | 'service-add'
   | 'updates-install'
   | 'mysql-install';

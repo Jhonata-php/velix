@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServersService } from './servers.service';
 import { CreateServerDto } from './dto/create-server.dto';
@@ -8,16 +9,18 @@ import { InstallEasyPanelDto } from './dto/install-easypanel.dto';
 import { SetMirrorDto } from './dto/set-mirror.dto';
 
 @Controller('servers')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ServersController {
   constructor(private readonly servers: ServersService) {}
 
   @Post()
+  @MinRole('operator')
   create(@Body() dto: CreateServerDto) {
     return this.servers.create(dto);
   }
 
   @Post('generate-ssh-key')
+  @MinRole('operator')
   generateSshKey() {
     return this.servers.generateSshKey();
   }
@@ -33,11 +36,13 @@ export class ServersController {
   }
 
   @Patch(':id')
+  @MinRole('operator')
   update(@Param('id') id: string, @Body() dto: UpdateServerDto) {
     return this.servers.update(id, dto);
   }
 
   @Delete(':id')
+  @MinRole('admin')
   remove(@Param('id') id: string) {
     return this.servers.remove(id);
   }
@@ -64,16 +69,19 @@ export class ServersController {
   }
 
   @Post(':id/mirror')
+  @MinRole('operator')
   setMirror(@Param('id') id: string, @Body() dto: SetMirrorDto) {
     return this.servers.setMirror(id, dto.targetServerId);
   }
 
   @Delete(':id/mirror')
+  @MinRole('operator')
   clearMirror(@Param('id') id: string) {
     return this.servers.clearMirror(id);
   }
 
   @Post(':id/reboot')
+  @MinRole('operator')
   reboot(@Param('id') id: string) {
     return this.servers.reboot(id);
   }
@@ -84,11 +92,13 @@ export class ServersController {
   }
 
   @Post(':id/updates/install')
+  @MinRole('operator')
   installUpdates(@Param('id') id: string, @Body() dto: InstallUpdatesDto) {
     return this.servers.installUpdates(id, dto.securityOnly ?? false);
   }
 
   @Post(':id/docker/install')
+  @MinRole('operator')
   installDocker(@Param('id') id: string) {
     return this.servers.installDocker(id);
   }
@@ -105,26 +115,31 @@ export class ServersController {
   }
 
   @Post(':id/docker/containers/:containerId/clone')
+  @MinRole('operator')
   cloneContainer(@Param('id') id: string, @Param('containerId') containerId: string, @Body('targetServerId') targetServerId: string) {
     return this.servers.cloneContainer(id, containerId, targetServerId);
   }
 
   @Post(':id/docker/containers/:containerId/start')
+  @MinRole('operator')
   startContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
     return this.servers.startContainer(id, containerId);
   }
 
   @Post(':id/docker/containers/:containerId/stop')
+  @MinRole('operator')
   stopContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
     return this.servers.stopContainer(id, containerId);
   }
 
   @Delete(':id/docker/containers/:containerId')
+  @MinRole('operator')
   removeContainer(@Param('id') id: string, @Param('containerId') containerId: string) {
     return this.servers.removeContainer(id, containerId);
   }
 
   @Post(':id/easypanel/install')
+  @MinRole('operator')
   installEasyPanel(@Param('id') id: string, @Body() dto: InstallEasyPanelDto) {
     return this.servers.installEasyPanel(id, dto);
   }

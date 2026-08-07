@@ -402,6 +402,46 @@ export class ServersService {
       });
   }
 
+  /**
+   * Logs em tempo real, por streaming.
+   *
+   * `containerLogs` devolve um pedaço e encerra — serve pra diagnóstico rápido,
+   * mas não pra acompanhar um deploy ou um erro acontecendo. Aqui o
+   * `docker logs -f` fica aberto e cada linha é repassada assim que sai.
+   *
+   * `--tail 200` no começo dá contexto imediato: abrir num terminal vazio e
+   * esperar a próxima linha aparecer é inútil quando o container está quieto.
+   * O encerramento é amarrado ao fechamento do WebSocket, senão o processo
+   * remoto ficaria pendurado no servidor depois que o usuário fecha a aba.
+   */
+  async streamContainerLogs(
+    id: string,
+    containerId: string,
+    onLog: (line: string) => void,
+    socket: { once: (event: string, cb: () => void) => void },
+  ) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
+
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+
+    const controller = new AbortController();
+    socket.once('close', () => controller.abort());
+
+    await this.ssh.runCommand(
+      options,
+      `sudo docker logs --tail 200 -f ${containerId} 2>&1`,
+      // Sem limite prático: quem define o fim é o usuário fechando a aba. Um
+      // timeout curto aqui cortaria o acompanhamento no meio, que é justo o que
+      // este modo existe pra evitar.
+      24 * 60 * 60 * 1000,
+      (chunk) => onLog(chunk),
+      controller.signal,
+    );
+
+    return { ok: true };
+  }
+
   async containerLogs(id: string, containerId: string, tail: number) {
     if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const server = await this.getRawServer(id);

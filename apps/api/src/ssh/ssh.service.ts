@@ -43,6 +43,10 @@ export class SshService {
     command: string,
     timeoutMs = 120_000,
     onData?: (chunk: string, isError: boolean) => void,
+    /** Encerra a conexão antes do fim natural — usado pelo acompanhamento de
+     * logs, onde quem decide o término é o usuário fechando a tela. Sem isso o
+     * `docker logs -f` continuaria rodando no servidor remoto indefinidamente. */
+    abortSignal?: AbortSignal,
   ): Promise<CommandResult> {
     return new Promise((resolve) => {
       const conn = new Client();
@@ -58,6 +62,16 @@ export class SshService {
       const timer = setTimeout(() => {
         finish({ ok: false, code: null, stdout: '', stderr: '', message: 'Timeout ao executar comando via SSH' });
       }, timeoutMs);
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          finish({ ok: true, code: 0, stdout: '', stderr: '', message: 'Encerrado pelo cliente' });
+          return;
+        }
+        abortSignal.addEventListener('abort', () =>
+          finish({ ok: true, code: 0, stdout: '', stderr: '', message: 'Encerrado pelo cliente' }),
+        );
+      }
 
       conn
         .on('ready', () => {

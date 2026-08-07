@@ -9,6 +9,7 @@ import { PasswordRecoveryController } from './password-recovery.controller';
 import { PasswordRecoveryService } from './password-recovery.service';
 import { PasswordResetTokenService } from './password-reset-token.service';
 import { SessionService } from './session.service';
+import { RolesGuard } from './roles.guard';
 import { AccountLockService } from './account-lock.service';
 import { TotpService } from './totp.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -34,8 +35,9 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     TotpService,
     PasswordResetTokenService,
     PasswordRecoveryService,
+    RolesGuard,
   ],
   controllers: [AuthController, PasswordRecoveryController],
-  exports: [JwtAuthGuard, SessionService, TotpService],
+  exports: [JwtAuthGuard, RolesGuard, SessionService, TotpService],
 })
 export class AuthModule {}

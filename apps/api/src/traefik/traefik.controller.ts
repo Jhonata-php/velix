@@ -1,10 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TraefikService } from './traefik.service';
 import { CreateDomainDto } from './dto/create-domain.dto';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class TraefikController {
   constructor(private readonly traefik: TraefikService) {}
 
@@ -14,6 +15,7 @@ export class TraefikController {
   }
 
   @Post('servers/:id/traefik/uninstall')
+  @MinRole('admin')
   uninstall(@Param('id') id: string) {
     return this.traefik.uninstallTraefik(id);
   }
@@ -24,6 +26,7 @@ export class TraefikController {
   }
 
   @Post('servers/:id/domains')
+  @MinRole('operator')
   createDomain(@Param('id') id: string, @Body() dto: CreateDomainDto) {
     return this.traefik.createDomain(id, dto);
   }
@@ -44,6 +47,7 @@ export class TraefikController {
   }
 
   @Delete('domains/:domainId')
+  @MinRole('operator')
   deleteDomain(@Param('domainId') domainId: string) {
     return this.traefik.deleteDomain(domainId);
   }
