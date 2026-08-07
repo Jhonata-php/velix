@@ -7,6 +7,7 @@ import type { ServerSummary } from '@/lib/types';
 import { Alert } from '@/components/Alert';
 import { ConfirmModal } from '@/components/Modal';
 import { ServerFormModal } from '@/components/ServerFormModal';
+import { AddServerWizard } from '@/components/AddServerWizard';
 import { ServerRow } from '@/components/ServerRow';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRow } from '@/components/Skeleton';
@@ -110,8 +111,10 @@ export default function ServersPage() {
         </div>
       )}
 
+      {/* Criar passa pelo assistente (dados -> conexão -> preparação); editar
+          continua no formulário simples, porque ali não há nada a instalar. */}
       {showForm && (
-        <ServerFormModal
+        <AddServerWizard
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);

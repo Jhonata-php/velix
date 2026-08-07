@@ -11,6 +11,11 @@ import { CreateApplicationDomainDto } from './dto/create-application-domain.dto'
 export class ApplicationsController {
   constructor(private readonly applications: ApplicationsService) {}
 
+  @Get('applications')
+  listAll() {
+    return this.applications.listAll();
+  }
+
   @Get('servers/:id/applications')
   listForServer(@Param('id') id: string) {
     return this.applications.listForServer(id);

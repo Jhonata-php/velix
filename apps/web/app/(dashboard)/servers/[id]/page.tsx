@@ -92,6 +92,7 @@ interface Server {
   traefikInstalled: boolean;
   traefikVersion: string | null;
   platformState: string;
+  isLocal?: boolean;
   metrics: ServerMetrics | null;
   metricsCheckedAt: string | null;
   lastCheckedAt: string | null;
@@ -983,6 +984,9 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
 }
 
 interface TraefikStatusResp {
+  /** Traefik nas portas 80/443 que não foi instalado pelo painel — no servidor
+   * onde o Velix roda, é o dele próprio. */
+  foreignTraefik?: boolean;
   installed: boolean;
   dockerInstalled: boolean;
   cloudflareConnected: boolean;
@@ -1965,17 +1969,29 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
             }
           />
         ) : (
-          <EmptyState
-            icon={<IconShield className="h-5 w-5" />}
-            title="Traefik não instalado"
-            description="Instale o Traefik para publicar aplicações com domínio próprio e HTTPS automático. Ele ocupa as portas 80 e 443 e cria a rede velix-proxy."
-            action={
-              <button onClick={() => setShowInstallForm(true)} className="btn-primary flex items-center gap-2 px-3.5 py-2 text-sm">
-                <IconDownload className="h-4 w-4" />
-                Instalar Traefik
-              </button>
-            }
-          />
+          status.foreignTraefik ? (
+            <EmptyState
+              icon={<IconShield className="h-5 w-5" />}
+              title="As portas 80 e 443 já estão ocupadas"
+              description={
+                server.isLocal
+                  ? 'Quem está nelas é o Traefik do próprio Velix, que atende este painel. Não remova: o painel fica inacessível. Publicar aplicações com domínio neste servidor ainda não é suportado — use outro servidor por enquanto.'
+                  : 'Há um proxy nas portas 80/443 que não foi instalado pelo Velix. Libere-as antes de instalar o Traefik do painel.'
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<IconShield className="h-5 w-5" />}
+              title="Traefik não instalado"
+              description="Instale o Traefik para publicar aplicações com domínio próprio e HTTPS automático. Ele ocupa as portas 80 e 443 e cria a rede velix-proxy."
+              action={
+                <button onClick={() => setShowInstallForm(true)} className="btn-primary flex items-center gap-2 px-3.5 py-2 text-sm">
+                  <IconDownload className="h-4 w-4" />
+                  Instalar Traefik
+                </button>
+              }
+            />
+          )
         )}
         {error && (
           <div className="mt-3">

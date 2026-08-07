@@ -137,7 +137,9 @@ export class ServersService {
       },
     });
 
-    return result;
+    // O SO já é extraído aqui pra gravar no banco — devolver junto evita o
+    // assistente de cadastro ter que reparsear /etc/os-release no navegador.
+    return { ...result, osName: osName ?? null, osVersion: osVersion ?? null };
   }
 
   /** Uma única conexão SSH: testa disponibilidade e já coleta uptime/memória/disco. */

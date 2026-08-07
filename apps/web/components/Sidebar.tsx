@@ -11,6 +11,7 @@ import {
   IconSettings,
   IconLogout,
   IconStore,
+  IconLayoutGrid,
   IconDownload,
   IconChevronLeft,
   IconChevronRight,
@@ -25,7 +26,8 @@ const GROUPS = [
     title: 'Infraestrutura',
     items: [
       { href: '/servers', label: 'Servidores', description: 'Cadastro e monitoramento', icon: IconServer },
-      { href: '/library', label: 'Aplicações', description: 'Catálogo e implantação', icon: IconStore },
+      { href: '/library', label: 'Loja', description: 'Catálogo de aplicativos', icon: IconStore },
+      { href: '/applications', label: 'Aplicações', description: 'O que está implantado', icon: IconLayoutGrid },
     ],
   },
   {

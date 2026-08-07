@@ -56,6 +56,15 @@ export class ApplicationsService {
     return this.prisma.application.findMany({ where: { serverId }, orderBy: { deployedAt: 'desc' }, include: { domains: true } });
   }
 
+  /** Todas as aplicações de todos os servidores — a visão que faltava pra
+   * responder "o que eu tenho instalado?" sem abrir servidor por servidor. */
+  async listAll() {
+    return this.prisma.application.findMany({
+      orderBy: { deployedAt: 'desc' },
+      include: { domains: true, server: { select: { id: true, name: true, isLocal: true } } },
+    });
+  }
+
   async getOne(id: string) {
     const app = await this.prisma.application.findUnique({ where: { id }, include: { domains: true } });
     if (!app) throw new NotFoundException('Aplicação não encontrada');

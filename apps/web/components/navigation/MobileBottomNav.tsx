@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUpdateStatus } from '@/lib/useUpdateStatus';
-import { IconDashboard, IconServer, IconStore, IconDownload, IconMenu } from '../icons';
+import { IconDashboard, IconServer, IconStore, IconLayoutGrid, IconDownload, IconMenu } from '../icons';
 
 const ITEMS = [
   { href: '/dashboard', label: 'Início', icon: IconDashboard },
   { href: '/servers', label: 'Servidores', icon: IconServer },
-  { href: '/library', label: 'Aplicações', icon: IconStore },
+  { href: '/library', label: 'Loja', icon: IconStore },
+  { href: '/applications', label: 'Apps', icon: IconLayoutGrid },
   { href: '/updates', label: 'Atualizações', icon: IconDownload },
 ] as const;
 

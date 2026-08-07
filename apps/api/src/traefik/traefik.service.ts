@@ -80,9 +80,15 @@ export class TraefikService {
     onLog?.('Verificando se as portas 80 e 443 estão livres...\n');
     const ports = await this.ssh.runCommand(options, "sudo ss -ltnH '( sport = :80 or sport = :443 )' 2>/dev/null", 15_000);
     if (ports.stdout.trim()) {
+      // No servidor onde o Velix roda com domínio, quem está nas portas é o
+      // Traefik do próprio painel. Dizer só "portas em uso" mandaria o usuário
+      // caçar um culpado que é o próprio Velix — e removê-lo derrubaria o painel.
+      const ownTraefik = server.isLocal && ports.stdout.includes(':80');
       return {
         ok: false,
-        output: `As portas 80/443 já estão em uso neste servidor:\n${ports.stdout}\nLibere-as (por exemplo, removendo EasyPanel/Nginx) antes de instalar o Traefik do Velix.`,
+        output: ownTraefik
+          ? `As portas 80/443 estão ocupadas pelo Traefik do próprio Velix, que atende o painel neste servidor.\n\nNão remova esse Traefik: o painel fica inacessível. Para publicar aplicações com domínio aqui, use um servidor separado por enquanto — reaproveitar o Traefik do painel para rotas de aplicação ainda não é suportado.\n\nPortas em uso:\n${ports.stdout}`
+          : `As portas 80/443 já estão em uso neste servidor:\n${ports.stdout}\nLibere-as (por exemplo, removendo EasyPanel/Nginx) antes de instalar o Traefik do Velix.`,
         version: null,
       };
     }
@@ -130,23 +136,38 @@ export class TraefikService {
       15_000,
     );
     const running = ps.ok && isContainerUp(ps.stdout);
-    const version = running ? (await this.readTraefikVersion(options)) ?? server.traefikVersion : null;
 
-    if (running !== server.traefikInstalled) {
+    // Armadilha silenciosa: no servidor onde o Velix roda, o Traefik do próprio
+    // painel (criado pelo install.sh quando há domínio) usa o MESMO nome de
+    // container. Sem distinguir os dois, a tela diria "Traefik ativo", aceitaria
+    // domínios, e as rotas nunca funcionariam — aquele Traefik lê só labels do
+    // Docker, enquanto o Velix escreve rotas em arquivo. O diretório de
+    // configuração só existe quando quem instalou foi o painel.
+    const managed = running
+      ? (await this.ssh.runCommand(options, `sudo test -f ${TRAEFIK_DIR}/docker-compose.yml && echo yes`, 15_000)).stdout.includes('yes')
+      : false;
+    const foreign = running && !managed;
+
+    const version = managed ? (await this.readTraefikVersion(options)) ?? server.traefikVersion : null;
+
+    if (managed !== server.traefikInstalled) {
       await this.prisma.server.update({
         where: { id: serverId },
-        data: { traefikInstalled: running, traefikVersion: version },
+        data: { traefikInstalled: managed, traefikVersion: version },
       });
     }
 
     const domainsCount = await this.prisma.domain.count({ where: { serverId } });
 
     return {
-      installed: running,
+      installed: managed,
       dockerInstalled: true,
       cloudflareConnected,
       version,
-      running,
+      running: managed,
+      /** Há um Traefik nas portas 80/443 que não foi instalado pelo painel —
+       * tipicamente o do próprio Velix, no servidor onde ele roda. */
+      foreignTraefik: foreign,
       network: PROXY_NETWORK,
       ports: { http: 80, https: 443 },
       publicIp: server.publicIp,
