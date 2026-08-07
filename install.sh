@@ -691,11 +691,19 @@ write_env_file() {
     local postgres_password="$1"
     local jwt_secret="$2"
     local credential_secret="$3"
+    local cf_dns_api_token="$4"
 
     cat >"$ENV_FILE" <<EOF
 POSTGRES_PASSWORD=${postgres_password}
 JWT_SECRET=${jwt_secret}
 VELIX_CREDENTIAL_SECRET=${credential_secret}
+# Gravado pela API (não pelo instalador) quando uma conta Cloudflare é
+# conectada e este servidor usa o Traefik compartilhado com o painel — ver
+# TraefikService.syncSharedProxyCloudflareToken. Preservado abaixo em
+# generate_environment() pelo mesmo motivo que os segredos acima: este arquivo
+# é reescrito do zero a cada instalação/atualização, e sem preservar, toda
+# atualização apagaria o token e o SSL das aplicações voltaria a quebrar.
+CF_DNS_API_TOKEN=${cf_dns_api_token}
 WEB_ORIGIN=${WEB_ORIGIN}
 NEXT_PUBLIC_APP_URL=${WEB_ORIGIN}
 VELIX_ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -727,6 +735,7 @@ generate_environment() {
     local postgres_password=""
     local jwt_secret=""
     local credential_secret=""
+    local cf_dns_api_token=""
 
     if [ -f "$ENV_FILE" ]; then
         local backup_file="${ENV_FILE}.backup.$(date +%Y%m%d-%H%M%S)"
@@ -735,6 +744,7 @@ generate_environment() {
         postgres_password="$(get_env_value POSTGRES_PASSWORD "$ENV_FILE")"
         jwt_secret="$(get_env_value JWT_SECRET "$ENV_FILE")"
         credential_secret="$(get_env_value VELIX_CREDENTIAL_SECRET "$ENV_FILE")"
+        cf_dns_api_token="$(get_env_value CF_DNS_API_TOKEN "$ENV_FILE")"
 
         warning "Configuração anterior encontrada"
         success "Backup criado em ${backup_file}"
@@ -752,7 +762,10 @@ generate_environment() {
         credential_secret="$(openssl rand -hex 48)"
     fi
 
-    write_env_file "$postgres_password" "$jwt_secret" "$credential_secret"
+    # Sem valor padrão gerado aqui, de propósito: um token do Cloudflare não é
+    # algo que o instalador tem como criar sozinho. Fica vazio até a API gravá-lo.
+
+    write_env_file "$postgres_password" "$jwt_secret" "$credential_secret" "$cf_dns_api_token"
     chmod 600 "$ENV_FILE"
     chown root:root "$ENV_FILE"
 
@@ -815,16 +828,30 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      # Resolvedor com o nome que as rotas do painel referenciam. Mesma conta
-      # ACME e mesmo desafio; nomes diferentes porque a rota gerada pelo painel
-      # é a mesma tanto aqui quanto num Traefik instalado por ele.
+      # Resolvedor com o nome que as rotas do painel referenciam — mas desafio
+      # diferente do "letsencrypt" acima, de propósito. DNS-01 via Cloudflare
+      # em vez de HTTP-01: um domínio com o proxy laranja da Cloudflare ligado
+      # nunca completa HTTP-01 (o desafio bate no edge da Cloudflare, não neste
+      # servidor), e HTTP-01 puro depende da porta 80 estar alcançável de fora
+      # sem nenhum intermediário — DNS-01 funciona nos dois casos e é o mesmo
+      # método que o Traefik instalado pelo painel já usa em servidores
+      # remotos (ver TraefikService.installTraefik). O token só passa a existir
+      # de verdade quando uma conta Cloudflare é conectada — a API grava
+      # CF_DNS_API_TOKEN neste .env e reinicia só o serviço traefik quando isso
+      # acontece (ver TraefikService.syncSharedProxyCloudflareToken). Sem
+      # conta conectada, o valor fica vazio e a emissão para apps deste
+      # resolvedor simplesmente não completa — sem quebrar o "letsencrypt" do
+      # painel, que não depende de nada disso.
       - "--certificatesresolvers.velix-le.acme.email=${TRAEFIK_ACME_EMAIL}"
-      - "--certificatesresolvers.velix-le.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.velix-le.acme.httpchallenge=true"
-      - "--certificatesresolvers.velix-le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.velix-le.acme.storage=/letsencrypt/acme-dns.json"
+      - "--certificatesresolvers.velix-le.acme.dnschallenge=true"
+      - "--certificatesresolvers.velix-le.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.velix-le.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
       - "--ping=true"
       - "--log.level=INFO"
       - "--accesslog=true"
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN:-}
     ports:
       - "80:80"
       - "443:443"

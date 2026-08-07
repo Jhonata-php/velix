@@ -172,3 +172,28 @@ export function parseTraefikVersion(output: string): string | null {
 export function isContainerUp(statusOutput: string): boolean {
   return statusOutput.toLowerCase().includes('up');
 }
+
+/**
+ * Substitui (ou adiciona) uma variável num conteúdo de .env, preservando todo
+ * o resto do arquivo linha a linha.
+ *
+ * Usado por `syncSharedProxyCloudflareToken` para gravar CF_DNS_API_TOKEN no
+ * .env do servidor local sem tocar em nenhuma outra linha — POSTGRES_PASSWORD,
+ * JWT_SECRET e o resto continuam exatamente como estavam. Função pura de
+ * propósito: testável sem SSH, e reaproveitável se algum outro fluxo precisar
+ * editar uma variável remota sem reescrever o arquivo inteiro à mão.
+ */
+export function upsertEnvVar(envContent: string, key: string, value: string): string {
+  const line = `${key}=${value}`;
+  const hadTrailingNewline = envContent.endsWith('\n');
+  const lines = envContent.split('\n');
+  // split deixa uma string vazia no fim quando o conteúdo termina em \n —
+  // removida aqui e reposta no final, senão a chave nova entraria depois dela.
+  if (hadTrailingNewline && lines[lines.length - 1] === '') lines.pop();
+
+  const idx = lines.findIndex((l) => l.startsWith(`${key}=`));
+  if (idx === -1) lines.push(line);
+  else lines[idx] = line;
+
+  return lines.join('\n') + (hadTrailingNewline || idx === -1 ? '\n' : '');
+}

@@ -8,6 +8,7 @@ import {
   PROXY_NETWORK,
   TRAEFIK_CONTAINER,
   SHARED_PROXY_MARKER,
+  VELIX_ROOT,
   TRAEFIK_DIR,
   TRAEFIK_DYNAMIC_DIR,
   TRAEFIK_CERTS_DIR,
@@ -20,6 +21,7 @@ import {
   renderDynamicRouteToContainer,
   renderStaticConfig,
   routerName,
+  upsertEnvVar,
 } from './traefik.util';
 import { checkDns, type DnsCheckResult } from './dns.util';
 import { findCertificateInAcmeJson, parseCertificate, type CertificateInfo } from './certificate.util';
@@ -293,11 +295,63 @@ export class TraefikService {
     return { recordId: record.id, zoneId: zone.id };
   }
 
+  /**
+   * Garante que o Traefik compartilhado do servidor local (ver
+   * SHARED_PROXY_MARKER) tem o token da Cloudflare atualizado antes de emitir
+   * um certificado. O resolvedor "velix-le" usa DNS-01 via Cloudflare — sem o
+   * token, a emissão nunca completa, e o domínio fica preso em "verificando"
+   * pra sempre sem nenhum erro visível, porque a rota HTTP já funciona (só o
+   * certificado é que não sai).
+   *
+   * Não mexe em nada quando: o servidor não é o local, o Traefik dali não é o
+   * compartilhado (é um instalado pelo painel, que já recebe o token na
+   * própria instalação — ver installTraefik), ou o token já está sincronizado
+   * (evita reiniciar o Traefik à toa a cada domínio novo).
+   */
+  private async ensureSharedProxyCloudflareToken(
+    server: { id: string; isLocal: boolean },
+    options: SshConnectOptions,
+  ) {
+    if (!server.isLocal) return;
+
+    const shared = await this.ssh.runCommand(options, `sudo test -f ${SHARED_PROXY_MARKER} && echo yes`, 15_000);
+    if (!shared.stdout.includes('yes')) return;
+
+    if (!(await this.cloudflare.hasAccount())) {
+      throw new BadRequestException(
+        'Este servidor publica domínios via Cloudflare (validação DNS) — conecte uma conta Cloudflare em Configurações antes de associar um domínio aqui.',
+      );
+    }
+
+    const token = await this.cloudflare.getTokenForDnsChallenge();
+    const envPath = `${VELIX_ROOT}/.env`;
+
+    const current = await this.ssh.runCommand(options, `sudo cat ${envPath}`, 15_000);
+    if (!current.ok) throw new BadRequestException('Não foi possível ler a configuração do servidor para sincronizar o token da Cloudflare.');
+
+    const updated = upsertEnvVar(current.stdout, 'CF_DNS_API_TOKEN', token);
+    if (updated === current.stdout) return; // já sincronizado
+
+    await this.writeRemoteFile(options, envPath, updated, '600');
+
+    // Só o serviço traefik reinicia — api/web/postgres continuam de pé, e é
+    // rápido o bastante pra rodar no caminho síncrono de criar um domínio.
+    const up = await this.ssh.runCommand(
+      options,
+      `cd ${VELIX_ROOT} && sudo docker compose --env-file .env up -d traefik`,
+      120_000,
+    );
+    if (!up.ok) {
+      throw new BadRequestException('Token da Cloudflare salvo, mas falhou ao reiniciar o Traefik — tente associar o domínio de novo em instantes.');
+    }
+  }
+
   async createDomain(serverId: string, dto: CreateDomainDto) {
     const { server, options } = await this.servers.getServerWithConnectOptions(serverId);
     if (!server.traefikInstalled) {
       throw new BadRequestException('Instale o Traefik neste servidor antes de adicionar domínios');
     }
+    await this.ensureSharedProxyCloudflareToken(server, options);
     const createDns = dto.createDnsRecord ?? true;
 
     const existing = await this.prisma.domain.findUnique({ where: { hostname: dto.hostname } });
@@ -376,6 +430,7 @@ export class TraefikService {
     if (!server.traefikInstalled) {
       throw new BadRequestException('Instale o Traefik neste servidor antes de associar um domínio à aplicação');
     }
+    await this.ensureSharedProxyCloudflareToken(server, options);
     const createDns = opts.createDnsRecord ?? true;
 
     const existing = await this.prisma.domain.findUnique({ where: { hostname: opts.hostname } });

@@ -12,6 +12,7 @@ import {
   isContainerUp,
   isValidAcmeEmail,
   routerName,
+  upsertEnvVar,
 } from './traefik.util';
 
 // routerName: prefixo "velix-" + id sem hífens (nome válido de router no Traefik)
@@ -55,5 +56,39 @@ assert.equal(isValidAcmeEmail('sememail'), false);
 assert.equal(isValidAcmeEmail('sem@dominio'), false);
 assert.equal(isValidAcmeEmail('admin@meudominio.com'), true);
 assert.equal(isValidAcmeEmail('  admin@meudominio.com.br  '), true);
+
+// upsertEnvVar — regressão do SSL quebrado no servidor local: grava
+// CF_DNS_API_TOKEN sem tocar em mais nada do .env.
+{
+  const original = 'POSTGRES_PASSWORD=abc\nJWT_SECRET=def\nWEB_ORIGIN=https://x.com\n';
+
+  // chave nova: aparece no fim, resto idêntico
+  const withToken = upsertEnvVar(original, 'CF_DNS_API_TOKEN', 'tok123');
+  assert.ok(withToken.includes('CF_DNS_API_TOKEN=tok123'));
+  assert.ok(withToken.includes('POSTGRES_PASSWORD=abc'));
+  assert.ok(withToken.includes('JWT_SECRET=def'));
+  assert.ok(withToken.includes('WEB_ORIGIN=https://x.com'));
+  assert.equal((withToken.match(/CF_DNS_API_TOKEN=/g) ?? []).length, 1);
+
+  // chave já existente: substitui no lugar, não duplica, resto continua igual
+  const replaced = upsertEnvVar(withToken, 'CF_DNS_API_TOKEN', 'tok456');
+  assert.ok(replaced.includes('CF_DNS_API_TOKEN=tok456'));
+  assert.ok(!replaced.includes('tok123'));
+  assert.equal((replaced.match(/CF_DNS_API_TOKEN=/g) ?? []).length, 1);
+  assert.ok(replaced.includes('POSTGRES_PASSWORD=abc'), 'outras variáveis não podem ser afetadas');
+
+  // idempotente: aplicar o mesmo valor de novo não muda nada
+  assert.equal(upsertEnvVar(replaced, 'CF_DNS_API_TOKEN', 'tok456'), replaced);
+
+  // arquivo sem \n final continua sem \n final quando só substitui (não anexa)
+  const noNewline = 'A=1\nB=2';
+  const stillNoNewline = upsertEnvVar(noNewline, 'A', '9');
+  assert.equal(stillNoNewline, 'A=9\nB=2');
+
+  // não confunde CF_DNS_API_TOKEN com uma chave que só começa parecido
+  const tricky = upsertEnvVar('CF_DNS_API_TOKEN_OLD=x\n', 'CF_DNS_API_TOKEN', 'novo');
+  assert.ok(tricky.includes('CF_DNS_API_TOKEN_OLD=x'), 'prefixo parecido não pode ser sobrescrito');
+  assert.ok(tricky.includes('CF_DNS_API_TOKEN=novo'));
+}
 
 console.log('traefik.util self-check OK');
