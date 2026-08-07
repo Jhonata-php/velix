@@ -13,6 +13,12 @@ export const PROXY_NETWORK = 'velix-proxy';
 export const TRAEFIK_IMAGE = 'traefik:v3.3';
 export const TRAEFIK_CONTAINER = 'velix-traefik';
 
+/** Marcador escrito pelo install.sh quando o Traefik do próprio Velix também
+ * atende as aplicações do painel — ver generate_compose_override(). É o que
+ * distingue "há um Traefik aqui que eu posso usar" de "há um Traefik aqui que
+ * não é meu". */
+export const SHARED_PROXY_MARKER = `${TRAEFIK_DIR}/.velix-shared-proxy`;
+
 /** Nome determinístico e válido de router/service no Traefik a partir do id do domínio. */
 export function routerName(domainId: string): string {
   return `velix-${domainId.replace(/-/g, '')}`;

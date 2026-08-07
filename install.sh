@@ -763,6 +763,20 @@ generate_compose_override() {
     section "Configurando acesso ao painel"
 
     if [ "$USE_DOMAIN" = "true" ]; then
+        # O Traefik do Velix passa a ser também o proxy das aplicações do painel.
+        # O diretório precisa existir antes do container subir (bind mount de
+        # caminho inexistente vira um diretório vazio de propriedade do root, e
+        # o Traefik acusa provedor de arquivo inválido), e a rede precisa existir
+        # porque o compose a declara como externa.
+        mkdir -p "${INSTALL_DIR}/traefik/dynamic"
+        docker network create velix-proxy >/dev/null 2>&1 || true
+
+        # Marca que este Traefik atende o painel: é o que a API usa pra saber
+        # que não precisa instalar outro neste servidor (ver TraefikService).
+        touch "${INSTALL_DIR}/traefik/.velix-shared-proxy"
+    fi
+
+    if [ "$USE_DOMAIN" = "true" ]; then
         cat >"$OVERRIDE_FILE" <<'YAML'
 services:
   web:
@@ -789,12 +803,25 @@ services:
       - "--api.insecure=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      # Provedor de arquivo: é o que permite o painel publicar aplicações com
+      # domínio NESTE servidor. Sem ele, o Traefik do Velix leria só labels do
+      # Docker, e as rotas que o painel escreve em arquivo seriam ignoradas —
+      # obrigando a instalar um segundo Traefik que colidiria nas portas 80/443.
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Resolvedor com o nome que as rotas do painel referenciam. Mesma conta
+      # ACME e mesmo desafio; nomes diferentes porque a rota gerada pelo painel
+      # é a mesma tanto aqui quanto num Traefik instalado por ele.
+      - "--certificatesresolvers.velix-le.acme.email=${TRAEFIK_ACME_EMAIL}"
+      - "--certificatesresolvers.velix-le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.velix-le.acme.httpchallenge=true"
+      - "--certificatesresolvers.velix-le.acme.httpchallenge.entrypoint=web"
       - "--ping=true"
       - "--log.level=INFO"
       - "--accesslog=true"
@@ -804,8 +831,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - velix_letsencrypt:/letsencrypt
+      - ${VELIX_INSTALL_DIR:-/opt/velix}/traefik/dynamic:/etc/traefik/dynamic:ro
     networks:
       - velix_proxy
+      - velix-proxy
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s
@@ -816,6 +845,14 @@ services:
 volumes:
   velix_letsencrypt:
     name: velix_letsencrypt
+
+networks:
+  # Rede onde as aplicações implantadas pelo painel entram. Criada aqui como
+  # externa porque quem a cria primeiro é o motor de implantação; declarar sem
+  # `external` faria o compose criar uma segunda rede com nome prefixado.
+  velix-proxy:
+    name: velix-proxy
+    external: true
 YAML
         success "Traefik e HTTPS configurados"
     else

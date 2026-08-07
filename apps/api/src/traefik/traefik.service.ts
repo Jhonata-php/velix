@@ -7,6 +7,7 @@ import { CreateDomainDto } from './dto/create-domain.dto';
 import {
   PROXY_NETWORK,
   TRAEFIK_CONTAINER,
+  SHARED_PROXY_MARKER,
   TRAEFIK_DIR,
   TRAEFIK_DYNAMIC_DIR,
   TRAEFIK_CERTS_DIR,
@@ -77,6 +78,16 @@ export class TraefikService {
     }
     const stream: LogFn | undefined = onLog && ((chunk) => onLog(chunk));
 
+    const shared = await this.ssh.runCommand(options, `sudo test -f ${SHARED_PROXY_MARKER} && echo yes`, 15_000);
+    if (shared.stdout.includes('yes')) {
+      return {
+        ok: true,
+        output:
+          'Este servidor já usa o Traefik do próprio Velix, que também atende as aplicações do painel. Não há nada a instalar — pode associar domínios direto.\n',
+        version: null,
+      };
+    }
+
     onLog?.('Verificando se as portas 80 e 443 estão livres...\n');
     const ports = await this.ssh.runCommand(options, "sudo ss -ltnH '( sport = :80 or sport = :443 )' 2>/dev/null", 15_000);
     if (ports.stdout.trim()) {
@@ -137,15 +148,28 @@ export class TraefikService {
     );
     const running = ps.ok && isContainerUp(ps.stdout);
 
-    // Armadilha silenciosa: no servidor onde o Velix roda, o Traefik do próprio
-    // painel (criado pelo install.sh quando há domínio) usa o MESMO nome de
-    // container. Sem distinguir os dois, a tela diria "Traefik ativo", aceitaria
-    // domínios, e as rotas nunca funcionariam — aquele Traefik lê só labels do
-    // Docker, enquanto o Velix escreve rotas em arquivo. O diretório de
-    // configuração só existe quando quem instalou foi o painel.
-    const managed = running
-      ? (await this.ssh.runCommand(options, `sudo test -f ${TRAEFIK_DIR}/docker-compose.yml && echo yes`, 15_000)).stdout.includes('yes')
-      : false;
+    // Três situações diferentes com o mesmo nome de container:
+    //
+    // 1. Instalado pelo painel — tem o docker-compose.yml em TRAEFIK_DIR.
+    // 2. O Traefik do próprio Velix, no servidor onde ele roda, configurado
+    //    pelo instalador para também servir o painel (marcador presente). Desde
+    //    que o instalador passou a habilitar o provedor de arquivo, este caso
+    //    é utilizável e não precisa de um segundo Traefik.
+    // 3. Um Traefik de terceiros ocupando 80/443 — aí sim não dá pra usar.
+    //
+    // Sem essa distinção, o caso 2 caía no 3 e o painel pedia pra instalar um
+    // Traefik que colidiria de porta com o que já estava ali servindo ele mesmo.
+    const probe = running
+      ? await this.ssh.runCommand(
+          options,
+          `sudo test -f ${TRAEFIK_DIR}/docker-compose.yml && echo own; sudo test -f ${SHARED_PROXY_MARKER} && echo shared`,
+          15_000,
+        )
+      : null;
+
+    const installedByPanel = !!probe?.stdout.includes('own');
+    const sharedWithPanel = !!probe?.stdout.includes('shared');
+    const managed = installedByPanel || sharedWithPanel;
     const foreign = running && !managed;
 
     const version = managed ? (await this.readTraefikVersion(options)) ?? server.traefikVersion : null;
@@ -165,9 +189,11 @@ export class TraefikService {
       cloudflareConnected,
       version,
       running: managed,
-      /** Há um Traefik nas portas 80/443 que não foi instalado pelo painel —
-       * tipicamente o do próprio Velix, no servidor onde ele roda. */
+      /** Traefik de terceiros nas portas 80/443 — não dá pra usar nem instalar. */
       foreignTraefik: foreign,
+      /** É o Traefik do próprio Velix, servindo também as aplicações do painel.
+       * A tela usa pra explicar que não há nada a instalar aqui. */
+      sharedWithPanel,
       network: PROXY_NETWORK,
       ports: { http: 80, https: 443 },
       publicIp: server.publicIp,
@@ -178,6 +204,18 @@ export class TraefikService {
 
   async uninstallTraefik(serverId: string, onLog?: LogFn) {
     const { options } = await this.servers.getServerWithConnectOptions(serverId);
+
+    // Sem esta guarda, o caminho de baixo cai no `docker rm -f velix-traefik` e
+    // mata o Traefik que serve o PRÓPRIO painel — o usuário perderia o acesso
+    // ao Velix clicando em "desinstalar" numa tela do Velix, sem volta pela
+    // interface. Desfazer isso é papel do instalador, não de um botão.
+    const shared = await this.ssh.runCommand(options, `sudo test -f ${SHARED_PROXY_MARKER} && echo yes`, 15_000);
+    if (shared.stdout.includes('yes')) {
+      throw new BadRequestException(
+        'Este Traefik atende o próprio painel do Velix — removê-lo deixaria o Velix inacessível. Para desativá-lo, reinstale o Velix sem domínio.',
+      );
+    }
+
     const stream: LogFn | undefined = onLog && ((chunk) => onLog(chunk));
 
     onLog?.('Parando e removendo o Traefik...\n');

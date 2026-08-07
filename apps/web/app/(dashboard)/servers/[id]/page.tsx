@@ -984,9 +984,10 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
 }
 
 interface TraefikStatusResp {
-  /** Traefik nas portas 80/443 que não foi instalado pelo painel — no servidor
-   * onde o Velix roda, é o dele próprio. */
+  /** Traefik de terceiros nas portas 80/443 — não dá pra usar nem instalar. */
   foreignTraefik?: boolean;
+  /** É o Traefik do próprio Velix, já servindo as aplicações do painel. */
+  sharedWithPanel?: boolean;
   installed: boolean;
   dockerInstalled: boolean;
   cloudflareConnected: boolean;
@@ -1975,7 +1976,7 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
               title="As portas 80 e 443 já estão ocupadas"
               description={
                 server.isLocal
-                  ? 'Quem está nelas é o Traefik do próprio Velix, que atende este painel. Não remova: o painel fica inacessível. Publicar aplicações com domínio neste servidor ainda não é suportado — use outro servidor por enquanto.'
+                  ? 'Há um proxy nas portas 80/443 que não é o do Velix. Se você instalou o Velix com domínio, rode o instalador novamente para que o Traefik dele passe a atender também as aplicações do painel.'
                   : 'Há um proxy nas portas 80/443 que não foi instalado pelo Velix. Libere-as antes de instalar o Traefik do painel.'
               }
             />
@@ -2047,7 +2048,11 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
               </button>
             </>
           }
-          menu={[{ label: 'Desinstalar Traefik', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmUninstall(true), danger: true }]}
+          menu={
+            status?.sharedWithPanel
+              ? []
+              : [{ label: 'Desinstalar Traefik', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmUninstall(true), danger: true }]
+          }
         />
 
         {error && (
