@@ -33,15 +33,33 @@ ENV NODE_ENV=production
 # ("aborting because of server version mismatch"). O repositório oficial do
 # PGDG é o único jeito de instalar um major específico no Bookworm; a versão
 # abaixo tem que acompanhar o "postgres:NN-alpine" do compose se ele mudar.
+#
+# O bloco do PGDG roda em `|| true`, de propósito: ele depende de alcançar
+# apt.postgresql.org durante o build, uma rede que a instalação em si não
+# precisa (só o backup precisa, em runtime). Deixar esse passo derrubar o
+# build inteiro significa que uma rede instável faz TODA atualização do Velix
+# falhar por causa de um recurso de apoio — igual ao que aconteceu aqui: a
+# reconstrução falhou e o painel ficou fora do ar. Se o PGDG não resolver, cai
+# no postgresql-client genérico (mismatch de versão vira erro no backup, não
+# build quebrado) — pior o backup atrasar do que o painel inteiro não subir.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
-  && install -d /usr/share/postgresql-common/pgdg \
-  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-       -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
-       > /etc/apt/sources.list.d/pgdg.list \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client-16 \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && ( \
+       apt-get install -y --no-install-recommends curl gnupg \
+       && install -d /usr/share/postgresql-common/pgdg \
+       && curl -fsSL --max-time 20 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+       && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+            > /etc/apt/sources.list.d/pgdg.list \
+       && apt-get update \
+       && apt-get install -y --no-install-recommends postgresql-client-16 \
+     || ( \
+       echo "AVISO: repositório PGDG indisponível no build — caindo para postgresql-client genérico do Bookworm (pode não bater com a versão do servidor)." >&2 \
+       && rm -f /etc/apt/sources.list.d/pgdg.list \
+       && apt-get update \
+       && apt-get install -y --no-install-recommends postgresql-client \
+     ) \
+     ) \
   && apt-get purge -y curl gnupg \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
