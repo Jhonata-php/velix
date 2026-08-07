@@ -37,6 +37,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    /** Campo `reason` do corpo, quando a API precisa distinguir causas dentro
+     * do mesmo código HTTP — o login usa pra separar "senha errada" de
+     * "falta o código de duas etapas", que são ambos 401. */
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -85,9 +89,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: undefined as string | undefined }));
+    const body = await res.json().catch(() => ({ message: undefined as string | undefined, reason: undefined as string | undefined }));
     if (res.status === 401) {
-      throw new ApiError(body.message ?? 'E-mail ou senha inválidos.', 401);
+      throw new ApiError(body.message ?? 'E-mail ou senha inválidos.', 401, body.reason);
     }
     if (res.status === 403) {
       throw new ApiError(body.message ?? 'Você não tem permissão para executar esta ação.', 403);

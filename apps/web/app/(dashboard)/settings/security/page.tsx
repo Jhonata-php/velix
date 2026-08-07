@@ -9,6 +9,7 @@ import { PasswordInput } from '@/components/auth/PasswordInput';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import { Spinner } from '@/components/ui/Spinner';
 import { IconDevice, IconShield, IconLock } from '@/components/icons';
+import { TwoFactorCard } from '@/components/TwoFactorCard';
 
 interface SessionInfo {
   id: string;
@@ -191,17 +192,7 @@ export default function SecurityPage() {
         )}
       </section>
 
-      <section className="card p-4">
-        <div className="flex items-center gap-2.5">
-          <span className="icon-chip bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-            <IconShield className="h-[18px] w-[18px]" />
-          </span>
-          <div>
-            <h2 className="section-title">Autenticação em dois fatores</h2>
-            <p className="text-xs text-slate-400">Em breve — a arquitetura de sessões já está preparada para suportar 2FA.</p>
-          </div>
-        </div>
-      </section>
+      <TwoFactorCard />
 
       <p className="flex items-center gap-1.5 text-xs text-slate-400">
         <IconLock className="h-3.5 w-3.5" />

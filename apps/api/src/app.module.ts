@@ -10,9 +10,14 @@ import { CatalogModule } from './catalog/catalog.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { UpdateModule } from './updates/update.module';
 import { GitAccountsModule } from './git-accounts/git-accounts.module';
+import { BackupModule } from './backup/backup.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
+    // Sem isto o @Cron do backup nunca dispara — e a falha é silenciosa:
+    // nada quebra, o backup só não acontece.
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     AuthModule,
@@ -24,6 +29,7 @@ import { GitAccountsModule } from './git-accounts/git-accounts.module';
     ApplicationsModule,
     UpdateModule,
     GitAccountsModule,
+    BackupModule,
   ],
 })
 export class AppModule {}

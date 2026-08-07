@@ -9,6 +9,8 @@ import { PasswordRecoveryController } from './password-recovery.controller';
 import { PasswordRecoveryService } from './password-recovery.service';
 import { PasswordResetTokenService } from './password-reset-token.service';
 import { SessionService } from './session.service';
+import { AccountLockService } from './account-lock.service';
+import { TotpService } from './totp.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Module({
@@ -24,8 +26,16 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     AuditModule,
     MailModule,
   ],
-  providers: [AuthService, JwtAuthGuard, SessionService, PasswordResetTokenService, PasswordRecoveryService],
+  providers: [
+    AuthService,
+    JwtAuthGuard,
+    SessionService,
+    AccountLockService,
+    TotpService,
+    PasswordResetTokenService,
+    PasswordRecoveryService,
+  ],
   controllers: [AuthController, PasswordRecoveryController],
-  exports: [JwtAuthGuard, SessionService],
+  exports: [JwtAuthGuard, SessionService, TotpService],
 })
 export class AuthModule {}

@@ -16,4 +16,10 @@ export class LoginDto {
   @IsOptional()
   @IsBoolean()
   rememberMe?: boolean;
+
+  /** Código do app autenticador ou de recuperação — exigido só quando a conta
+   * tem 2FA ativo. */
+  @IsOptional()
+  @IsString()
+  totpCode?: string;
 }

@@ -23,10 +23,11 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# ca-certificates: chamadas HTTPS de saída (API da Cloudflare, GitHub Releases,
-# verificação de certificado, etc.) — sem isso toda requisição TLS falha.
+# ca-certificates: chamadas HTTPS de saída. postgresql-client: o pg_dump usado
+# pelo backup automático — sem ele o backup falharia em runtime, num caminho que
+# só roda de madrugada e ninguém veria falhar.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./

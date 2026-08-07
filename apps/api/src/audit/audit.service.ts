@@ -11,7 +11,11 @@ export type AuditEvent =
   | 'LOGOUT_ALL'
   | 'SESSION_REVOKED'
   | 'TOKEN_EXPIRED'
-  | 'RATE_LIMIT_BLOCKED';
+  | 'RATE_LIMIT_BLOCKED'
+  | 'TOTP_ENABLED'
+  | 'TOTP_DISABLED'
+  | 'TOTP_RECOVERY_USED'
+  | 'ACCOUNT_LOCKED';
 
 interface RecordInput {
   event: AuditEvent;

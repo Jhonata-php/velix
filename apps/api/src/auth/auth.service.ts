@@ -4,6 +4,8 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SessionService } from './session.service';
+import { AccountLockService } from './account-lock.service';
+import { TotpService } from './totp.service';
 import { validatePassword } from './password-policy.util';
 
 const SESSION_TTL_DEFAULT = '12h';
@@ -18,12 +20,26 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly sessions: SessionService,
+    private readonly lock: AccountLockService,
+    private readonly totp: TotpService,
   ) {}
 
-  async login(rawEmail: string, password: string, ip: string, userAgent: string, rememberMe = false) {
+  async login(rawEmail: string, password: string, ip: string, userAgent: string, rememberMe = false, totpCode?: string) {
     // E-mail é normalizado (comparação case/whitespace-insensitive); a senha
     // nunca é — um espaço no fim pode ser parte intencional da senha do usuário.
     const email = rawEmail.trim().toLowerCase();
+
+    // Antes de conferir a senha: continuar validando numa conta travada
+    // devolveria, pelo tempo de resposta, a informação de que a senha estava
+    // certa — exatamente o que o bloqueio existe pra negar.
+    const lockedMinutes = await this.lock.lockedMinutes(email);
+    if (lockedMinutes > 0) {
+      await this.audit.record({ event: 'RATE_LIMIT_BLOCKED', email, ip, userAgent, metadata: { scope: 'account-lock' } });
+      throw new UnauthorizedException(
+        `Muitas tentativas falhas. Tente novamente em ${lockedMinutes} minuto${lockedMinutes === 1 ? '' : 's'}.`,
+      );
+    }
+
     const user = await this.prisma.user.findUnique({ where: { email } });
     const valid = user ? await bcrypt.compare(password, user.passwordHash) : false;
 
@@ -37,8 +53,25 @@ export class AuthService {
     });
 
     if (!user || !valid) {
+      await this.lock.registerFailure(email, ip);
       throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
+
+    // Segundo fator depois da senha, nunca antes: pedir o código a quem nem
+    // acertou a senha revelaria que aquele e-mail existe e tem 2FA ativo.
+    if (user.totpEnabledAt) {
+      if (!totpCode) {
+        // 'totp_required' é o que o frontend usa pra pedir o código sem tratar
+        // como erro de credencial.
+        throw new UnauthorizedException({ message: 'Código de verificação necessário', reason: 'totp_required' });
+      }
+      if (!(await this.totp.verifyForLogin(user.id, totpCode))) {
+        await this.lock.registerFailure(email, ip);
+        throw new UnauthorizedException({ message: 'Código de verificação inválido', reason: 'totp_invalid' });
+      }
+    }
+
+    await this.lock.registerSuccess(email);
 
     const session = await this.sessions.create(user.id, ip, userAgent);
     const expiresIn = rememberMe ? SESSION_TTL_REMEMBER_ME : SESSION_TTL_DEFAULT;

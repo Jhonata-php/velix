@@ -22,6 +22,14 @@ model User {
   passwordHash String
   role         String   @default("admin")
   createdAt    DateTime @default(now())
+  /// Segredo TOTP, cifrado. Só existe depois que o usuário confirma um código —
+  /// guardar antes deixaria contas em estado meio-ativado, onde o app já mostra
+  /// códigos mas o login não os exige.
+  totpSecretEnc     String?
+  totpEnabledAt     DateTime?
+  /// Códigos de recuperação, guardados como hash. Perder o celular não pode
+  /// significar perder o painel.
+  recoveryCodesHash String[]  @default([])
 
   sessions     UserSession[]
   resetTokens  PasswordResetToken[]
@@ -337,6 +345,34 @@ model GitAccount {
   updatedAt DateTime @updatedAt
 
   applications Application[]
+}
+
+/// Backup do banco do Velix e do .env. Uma linha por execução — o histórico é o
+/// que permite saber que o agendamento parou de rodar, coisa que um arquivo
+/// solto no disco não conta.
+model BackupRun {
+  id          String    @id @default(uuid())
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  /// RUNNING | SUCCESS | ERROR
+  status      String    @default("RUNNING")
+  /// "scheduled" ou "manual" — distinguir importa pra diagnosticar agendamento.
+  trigger     String    @default("scheduled")
+  fileName    String?
+  sizeBytes   Int?
+  error       String?
+
+  @@index([startedAt])
+}
+
+/// Bloqueio de conta por tentativas falhas. Separado de LoginAttempt (que é
+/// trilha de auditoria, append-only) porque aqui o estado é mutável e
+/// consultado a cada login.
+model AccountLock {
+  email       String    @id
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
 }
 
 enum ProjectServiceStatus {

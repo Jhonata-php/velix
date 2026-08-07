@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { apiFetch, setToken, setUser } from '@/lib/api';
+import { apiFetch, setToken, setUser, ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { Spinner } from '@/components/ui/Spinner';
@@ -29,6 +29,8 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [needsTotp, setNeedsTotp] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,16 +51,30 @@ function LoginForm() {
         method: 'POST',
         // E-mail é normalizado; a senha é enviada exatamente como digitada
         // (trim() cortaria um espaço que pode ser parte real da senha).
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password, rememberMe }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password, rememberMe, ...(totpCode ? { totpCode } : {}) }),
       });
       setToken(data.accessToken);
       setUser(data.user);
       router.push(safeNextPath(searchParams.get('next')));
     } catch (err) {
+      // Pedir o segundo fator não é erro de credencial: a senha estava certa.
+      // Limpar a senha aqui obrigaria a redigitar tudo a cada tentativa de
+      // código, que é o caminho onde mais se erra.
+      if (err instanceof ApiError && err.reason === 'totp_required') {
+        setNeedsTotp(true);
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Falha no login');
+      if (err instanceof ApiError && err.reason === 'totp_invalid') {
+        setTotpCode('');
+        return;
+      }
       // Preserva o e-mail (foi digitado certo, provavelmente), nunca a senha —
       // e leva o foco pro campo mais provável de precisar de correção.
       setPassword('');
+      setNeedsTotp(false);
+      setTotpCode('');
       passwordRef.current?.focus();
     } finally {
       setLoading(false);
@@ -103,6 +119,24 @@ function LoginForm() {
           invalid={!!error}
         />
 
+        {needsTotp && (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Código de verificação</span>
+            <input
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value)}
+              placeholder="000000"
+              inputMode="numeric"
+              autoFocus
+              autoComplete="one-time-code"
+              className="input text-center font-mono text-lg tracking-[0.4em]"
+            />
+            <span className="mt-1.5 block text-xs text-slate-400">
+              Do seu app autenticador, ou um dos códigos de recuperação.
+            </span>
+          </label>
+        )}
+
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <input
@@ -126,7 +160,7 @@ function LoginForm() {
 
         <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 btn-primary px-3 py-2.5 text-sm">
           {loading && <Spinner className="h-4 w-4" />}
-          {loading ? 'Entrando...' : 'Entrar'}
+          {loading ? 'Entrando...' : needsTotp ? 'Verificar código' : 'Entrar'}
         </button>
 
         <p className="flex items-center justify-center gap-1.5 text-xs text-slate-400">

@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { Alert } from '@/components/Alert';
 import { IconShield, IconChevronRight } from '@/components/icons';
 import { GitAccountsCard } from '@/components/GitAccountsCard';
+import { BackupCard } from '@/components/BackupCard';
 
 interface AccountStatus {
   connected: boolean;
@@ -95,6 +96,8 @@ export default function SettingsPage() {
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
       </Link>
+
+      <BackupCard />
 
       <GitAccountsCard />
 

@@ -33,6 +33,32 @@ function send(ws: WebSocket, msg: object) {
 }
 
 /**
+ * Limite de operações simultâneas por usuário.
+ *
+ * O ThrottlerGuard do Nest só cobre HTTP — este canal é WebSocket e passava
+ * sem nenhum limite. Cada conexão aceita dispara um build ou uma instalação no
+ * servidor gerenciado; abrir cem de uma vez, com um token válido, derruba a
+ * máquina por exaustão de CPU e disco sem precisar de nenhuma falha de
+ * autenticação. Três é o suficiente pra qualquer uso legítimo (implantar em
+ * alguns servidores ao mesmo tempo) e longe do que causa dano.
+ */
+const MAX_CONCURRENT_OPS = 3;
+const activeOps = new Map<string, number>();
+
+function tryAcquireSlot(userId: string): boolean {
+  const current = activeOps.get(userId) ?? 0;
+  if (current >= MAX_CONCURRENT_OPS) return false;
+  activeOps.set(userId, current + 1);
+  return true;
+}
+
+function releaseSlot(userId: string) {
+  const current = activeOps.get(userId) ?? 0;
+  if (current <= 1) activeOps.delete(userId);
+  else activeOps.set(userId, current - 1);
+}
+
+/**
  * Canal de log ao vivo pra operações demoradas (instalar Docker/EasyPanel,
  * atualizações) — mesmo padrão do /terminal: WebSocket cru, autenticação por
  * query string, um comando roda no servidor de destino e cada linha de saída
@@ -83,13 +109,28 @@ async function handleConnection(
     return;
   }
 
+  let userId: string;
   try {
-    await deps.jwt.verifyAsync(token);
+    const payload = await deps.jwt.verifyAsync<{ sub: string }>(token);
+    userId = payload.sub;
   } catch {
     send(ws, { type: 'done', ok: false, error: 'Token inválido ou expirado' });
     ws.close();
     return;
   }
+
+  if (!tryAcquireSlot(userId)) {
+    send(ws, {
+      type: 'done',
+      ok: false,
+      error: `Já existem ${MAX_CONCURRENT_OPS} operações em andamento. Aguarde uma terminar antes de iniciar outra.`,
+    });
+    ws.close();
+    return;
+  }
+  // Liberado no fechamento, não no fim da operação: se o cliente sumir no meio,
+  // o slot precisa voltar de qualquer forma, senão o usuário fica travado.
+  ws.once('close', () => releaseSlot(userId));
 
   ws.once('message', async (raw) => {
     let msg: StartMessage;

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, 
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import { TotpService } from './totp.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard, AuthenticatedUser } from './jwt-auth.guard';
@@ -11,7 +12,10 @@ type AuthedRequest = Request & { user: AuthenticatedUser };
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly totp: TotpService,
+  ) {}
 
   // 10 tentativas/min por IP — generoso pro uso normal (erro de digitação),
   // apertado o bastante pra tornar força bruta impraticável. Guard aplicado
@@ -20,7 +24,39 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto.email, dto.password, clientIp(req), req.headers['user-agent'] ?? '', dto.rememberMe ?? false);
+    return this.authService.login(
+      dto.email,
+      dto.password,
+      clientIp(req),
+      req.headers['user-agent'] ?? '',
+      dto.rememberMe ?? false,
+      dto.totpCode,
+    );
+  }
+
+  // --- verificação em duas etapas ---
+  @UseGuards(JwtAuthGuard)
+  @Get('2fa')
+  totpStatus(@Req() req: AuthedRequest) {
+    return this.totp.status(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/begin')
+  totpBegin(@Req() req: AuthedRequest) {
+    return this.totp.begin(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/confirm')
+  totpConfirm(@Req() req: AuthedRequest, @Body('code') code: string) {
+    return this.totp.confirm(req.user.sub, code ?? '');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/disable')
+  totpDisable(@Req() req: AuthedRequest, @Body('password') password: string) {
+    return this.totp.disable(req.user.sub, password ?? '');
   }
 
   @UseGuards(JwtAuthGuard)
