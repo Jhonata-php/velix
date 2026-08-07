@@ -3,7 +3,7 @@
  *   npx ts-node src/applications/applications.util.spec.ts
  */
 import assert from 'node:assert';
-import { slugify, appDir, allContainersUp, parseExposedPorts } from './applications.util';
+import { slugify, appDir, allContainersUp, parseExposedPorts, isValidContainerRef } from './applications.util';
 
 assert.equal(slugify('Meu App Legal!'), 'meu-app-legal');
 assert.equal(slugify('   '), 'app');
@@ -25,3 +25,22 @@ assert.deepEqual(parseExposedPorts(''), []);
 assert.deepEqual(parseExposedPorts('não é json'), []);
 
 console.log('applications.util self-check OK');
+
+// --- identificador de container ---------------------------------------------
+// Regressão: este valor vem da URL e entra num comando shell executado como
+// root no servidor gerenciado.
+assert.equal(isValidContainerRef('velix-traefik'), true);
+assert.equal(isValidContainerRef('a1b2c3d4e5f6'), true);
+assert.equal(isValidContainerRef('meuapp_app'), true);
+assert.equal(isValidContainerRef('app.v2'), true);
+
+assert.equal(isValidContainerRef('abc; id > /tmp/owned'), false);
+assert.equal(isValidContainerRef('abc$(whoami)'), false);
+assert.equal(isValidContainerRef('abc`whoami`'), false);
+assert.equal(isValidContainerRef('abc|sh'), false);
+assert.equal(isValidContainerRef('abc && rm -rf /'), false);
+assert.equal(isValidContainerRef('--rm'), false);
+assert.equal(isValidContainerRef(''), false);
+assert.equal(isValidContainerRef('a'.repeat(200)), false);
+
+console.log('container ref self-check OK');

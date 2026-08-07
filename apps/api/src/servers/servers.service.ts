@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { isValidContainerRef } from '../applications/applications.util';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { encryptCredential } from '../ssh/crypto.util';
 import { buildConnectOptions } from '../ssh/connect-options.util';
@@ -402,6 +403,7 @@ export class ServersService {
   }
 
   async containerLogs(id: string, containerId: string, tail: number) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
     const result = await this.ssh.runCommand(options, `sudo docker logs --tail ${tail} ${containerId} 2>&1`, 15_000);
@@ -421,6 +423,7 @@ export class ServersService {
    * de reconfiguração manual pós-clone.
    */
   async cloneContainer(sourceServerId: string, containerId: string, targetServerId: string) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const source = await this.getRawServer(sourceServerId);
     const sourceOptions = this.toConnectOptions(source);
 
@@ -467,6 +470,7 @@ export class ServersService {
   }
 
   async startContainer(id: string, containerId: string) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
     const result = await this.ssh.runCommand(options, `sudo docker start ${containerId}`, 30_000);
@@ -475,6 +479,7 @@ export class ServersService {
   }
 
   async stopContainer(id: string, containerId: string) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
     const result = await this.ssh.runCommand(options, `sudo docker stop ${containerId}`, 30_000);
@@ -483,6 +488,7 @@ export class ServersService {
   }
 
   async removeContainer(id: string, containerId: string) {
+    if (!isValidContainerRef(containerId)) throw new BadRequestException('Identificador de container inválido');
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
     const result = await this.ssh.runCommand(options, `sudo docker rm -f ${containerId}`, 30_000);

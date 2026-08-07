@@ -54,3 +54,20 @@ export function parseExposedPorts(dockerInspectOutput: string): { port: number; 
     return [];
   }
 }
+
+/**
+ * Identificador de container vindo da URL, antes de entrar num comando shell.
+ *
+ * `containerId` chega como parâmetro de rota e era interpolado direto em
+ * `sudo docker <ação> ${containerId}` executado por SSH como root. Um valor
+ * como `abc%3B%20curl...` decodifica para `abc; curl...` e o `;` encerra o
+ * comando — execução arbitrária como root no servidor gerenciado, por qualquer
+ * usuário autenticado do painel.
+ *
+ * O Docker aceita nome (letras, números, `_`, `.`, `-`) ou hash hexadecimal, e
+ * nada mais. Recusar o resto é mais simples e mais seguro que tentar escapar.
+ */
+export function isValidContainerRef(value: string): boolean {
+  if (!value || value.length > 128) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
+}

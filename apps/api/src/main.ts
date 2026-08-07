@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
@@ -22,6 +23,17 @@ async function bootstrap() {
   // usava como chave. 1 salto = o server.js do web, que é quem entrega o
   // X-Forwarded-For já confiável (ver apps/web/server.js e client-ip.util.ts).
   app.set('trust proxy', 1);
+
+  // Cabeçalhos de segurança: não havia nenhum. contentSecurityPolicy fica
+  // desligado aqui porque quem serve HTML é o Next, no container do frontend —
+  // uma CSP definida na API só valeria para respostas JSON, onde não faz efeito,
+  // e daria falsa sensação de cobertura.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   app.enableCors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
