@@ -358,3 +358,82 @@ body {
 .velix-net__sweep {
   animation: velix-net-sweep 6s linear infinite;
 }
+
+/* Verificação em duas etapas no login. A animação existe porque a checagem do
+   código leva um instante em que nada acontece na tela — e num campo de
+   segurança, silêncio é lido como "deu errado". */
+@keyframes velix-otp-scan {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+@keyframes velix-otp-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+@keyframes velix-otp-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes velix-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.velix-otp {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Faixa de luz varrendo os campos enquanto o código é conferido. */
+.velix-otp--verifying::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.35), transparent);
+  animation: velix-otp-scan 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.velix-otp--error {
+  animation: velix-otp-shake 0.4s ease-in-out;
+}
+
+.velix-otp__success {
+  animation: velix-otp-pop 0.35s ease-out both;
+}
+
+.velix-otp__check {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: velix-check-draw 0.4s ease-out 0.15s forwards;
+}

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch, setToken, setUser, ApiError } from '@/lib/api';
+import { OtpInput, type OtpState } from '@/components/auth/OtpInput';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { Spinner } from '@/components/ui/Spinner';
@@ -31,6 +32,8 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [needsTotp, setNeedsTotp] = useState(false);
+  const [otpState, setOtpState] = useState<OtpState>('idle');
+  const [useRecovery, setUseRecovery] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,20 +44,32 @@ function LoginForm() {
     emailRef.current?.focus();
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, codeOverride?: string) {
     e.preventDefault();
     if (loading) return; // evita duplo submit (ex.: Enter + clique quase simultâneos)
+    // O código pode vir por parâmetro: quando o OtpInput completa os 6 dígitos
+    // ele dispara na hora, e o estado do React ainda não refletiu a última tecla.
+    const code = codeOverride ?? totpCode;
     setError(null);
     setLoading(true);
+    if (needsTotp) setOtpState('verifying');
     try {
       const data = await apiFetch<{ accessToken: string; user: { name: string; email: string; role: string } }>('/auth/login', {
         method: 'POST',
         // E-mail é normalizado; a senha é enviada exatamente como digitada
         // (trim() cortaria um espaço que pode ser parte real da senha).
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password, rememberMe, ...(totpCode ? { totpCode } : {}) }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password, rememberMe, ...(code ? { totpCode: code } : {}) }),
       });
       setToken(data.accessToken);
       setUser(data.user);
+      if (needsTotp) {
+        // Deixa a confirmação visível antes de sair da tela: entrar no mesmo
+        // instante em que o código é aceito passa a sensação de que nada foi
+        // conferido.
+        setOtpState('success');
+        setTimeout(() => router.push(safeNextPath(searchParams.get('next'))), 700);
+        return;
+      }
       router.push(safeNextPath(searchParams.get('next')));
     } catch (err) {
       // Pedir o segundo fator não é erro de credencial: a senha estava certa.
@@ -62,11 +77,13 @@ function LoginForm() {
       // código, que é o caminho onde mais se erra.
       if (err instanceof ApiError && err.reason === 'totp_required') {
         setNeedsTotp(true);
+        setOtpState('idle');
         setError(null);
         return;
       }
       setError(err instanceof Error ? err.message : 'Falha no login');
       if (err instanceof ApiError && err.reason === 'totp_invalid') {
+        setOtpState('error');
         setTotpCode('');
         return;
       }
@@ -75,6 +92,7 @@ function LoginForm() {
       setPassword('');
       setNeedsTotp(false);
       setTotpCode('');
+      setOtpState('idle');
       passwordRef.current?.focus();
     } finally {
       setLoading(false);
@@ -120,21 +138,58 @@ function LoginForm() {
         />
 
         {needsTotp && (
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Código de verificação</span>
-            <input
-              value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value)}
-              placeholder="000000"
-              inputMode="numeric"
-              autoFocus
-              autoComplete="one-time-code"
-              className="input text-center font-mono text-lg tracking-[0.4em]"
-            />
-            <span className="mt-1.5 block text-xs text-slate-400">
-              Do seu app autenticador, ou um dos códigos de recuperação.
+          <div>
+            <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
+              {useRecovery ? 'Código de recuperação' : 'Código de verificação'}
             </span>
-          </label>
+
+            {/* Código de recuperação tem 11 caracteres com hífen e não cabe nas
+                caixas de 6 dígitos — precisa de um campo próprio, senão a opção
+                anunciada abaixo do campo seria impossível de usar. */}
+            {useRecovery ? (
+              <input
+                value={totpCode}
+                onChange={(e) => {
+                  setTotpCode(e.target.value);
+                  if (otpState === 'error') setOtpState('idle');
+                }}
+                placeholder="a1b2c-3d4e5"
+                autoFocus
+                autoComplete="off"
+                disabled={loading}
+                className={`input text-center font-mono tracking-widest ${otpState === 'error' ? 'border-red-500/60' : ''}`}
+              />
+            ) : (
+              <OtpInput
+                value={totpCode}
+                onChange={(v) => {
+                  setTotpCode(v);
+                  if (otpState === 'error') setOtpState('idle');
+                }}
+                onComplete={(code) => handleSubmit(new Event('submit') as unknown as React.FormEvent, code)}
+                state={otpState}
+              />
+            )}
+
+            {otpState !== 'success' && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-400">
+                  {otpState === 'verifying' ? 'Conferindo o código...' : useRecovery ? 'Cada código serve uma vez só.' : 'Do seu app autenticador.'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseRecovery((v) => !v);
+                    setTotpCode('');
+                    setOtpState('idle');
+                  }}
+                  className="shrink-0 text-xs font-medium text-indigo-500 hover:text-indigo-400 hover:underline"
+                >
+                  {useRecovery ? 'Usar o app' : 'Perdi o celular'}
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="flex items-center justify-between">
