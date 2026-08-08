@@ -1,8 +1,3 @@
--- AlterEnum
--- Não referenciado em nenhuma outra instrução deste arquivo (Postgres exige
--- isso pra ADD VALUE poder rodar dentro da mesma transação da migração).
-ALTER TYPE "ApplicationStatus" ADD VALUE 'EMPTY';
-
 -- CreateTable
 CREATE TABLE "ProjectDeployment" (
     "id" TEXT NOT NULL,
