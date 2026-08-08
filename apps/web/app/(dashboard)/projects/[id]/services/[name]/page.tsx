@@ -9,7 +9,7 @@ import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { ConfirmModal } from '@/components/Modal';
-import { LiveLogsModal } from '@/components/LiveLogsModal';
+import { LiveLogsPanel } from '@/components/LiveLogsPanel';
 import { AutoDeployModal } from '@/components/AutoDeployModal';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
@@ -21,7 +21,6 @@ import {
   IconShield,
   IconDisk,
   IconSettings,
-  IconTerminal,
   IconRefresh,
   IconPower,
   IconTrash,
@@ -34,7 +33,7 @@ import {
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
-type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources' | 'maintenance';
+type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources';
 
 const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
   DEPLOYING: 'info',
@@ -60,7 +59,10 @@ const RISK_TONE: Record<CatalogSecurityFinding['level'], StatusTone> = {
 /**
  * Painel de UM serviço dentro do projeto — abas equivalentes ao que existia
  * espalhado em modais (ProjectServicesModal/DomainManagerModal/
- * AppCredentialsModal) antes da reestruturação em projetos. "Implantações"
+ * AppCredentialsModal) antes da reestruturação em projetos, mais uma barra
+ * de ações sempre visível no topo (iniciar/parar, reiniciar, reimplantar,
+ * abrir, remover) em vez de escondidas dentro de uma aba — pedido explícito
+ * do usuário pra bater mais com o que ele já usava antes. "Implantações"
  * (histórico/rollback), "Redirecionamentos" e "Scripts" do EasyPanel ficam
  * pra uma fase seguinte — combinado com o usuário, não são reorganização de
  * UI, são recursos novos do zero.
@@ -72,6 +74,9 @@ export default function ServicePage() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('overview');
+  const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [redeploying, setRedeploying] = useState(false);
 
   function load() {
     apiFetch<ProjectDetail>(`/applications/${params.id}`)
@@ -98,6 +103,33 @@ export default function ServicePage() {
   }
   const deployment = project.deployments.find((d) => d.id === service.deploymentId);
   const fromGit = deployment?.sourceType === 'git';
+  const activeDomain = project.domains.find((d) => d.serviceName === service.name && d.status === 'ACTIVE');
+  const running = service.status === 'RUNNING';
+
+  async function lifecycleAction(a: 'start' | 'stop' | 'restart') {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/applications/${project!.id}/services/${encodeURIComponent(service!.name)}/${a}`, { method: 'POST' });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao executar ação');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeService() {
+    setBusy(true);
+    try {
+      await apiFetch(`/applications/${project!.id}/deployments/${service!.deploymentId}`, { method: 'DELETE' });
+      router.push(`/projects/${project!.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao remover serviço');
+      setBusy(false);
+      setConfirmRemove(false);
+    }
+  }
 
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Visão geral', icon: <IconActivity className="h-4 w-4" /> },
@@ -106,7 +138,6 @@ export default function ServicePage() {
     { key: 'domains', label: 'Domínios', icon: <IconGlobe className="h-4 w-4" /> },
     { key: 'security', label: 'Segurança', icon: <IconShield className="h-4 w-4" /> },
     { key: 'resources', label: 'Recursos', icon: <IconDisk className="h-4 w-4" /> },
-    { key: 'maintenance', label: 'Manutenção', icon: <IconSettings className="h-4 w-4" /> },
   ];
 
   return (
@@ -119,10 +150,61 @@ export default function ServicePage() {
         ]}
       />
 
-      <div className="mb-4 flex items-center gap-2">
-        <h1 className="page-title">{service.name}</h1>
-        <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h1 className="page-title">{service.name}</h1>
+          <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {running ? (
+            <button onClick={() => lifecycleAction('stop')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
+              <IconPower className="h-4 w-4" aria-hidden />
+              Parar
+            </button>
+          ) : (
+            <button onClick={() => lifecycleAction('start')} disabled={busy} className="btn-primary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
+              <IconPower className="h-4 w-4" aria-hidden />
+              Iniciar
+            </button>
+          )}
+          <button onClick={() => lifecycleAction('restart')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
+            <IconRefresh className="h-4 w-4" aria-hidden />
+            Reiniciar
+          </button>
+          {fromGit && (
+            <button onClick={() => setRedeploying(true)} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
+              <IconGithub className="h-4 w-4" aria-hidden />
+              Reimplantar
+            </button>
+          )}
+          {activeDomain && (
+            <a
+              href={`https://${activeDomain.hostname}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm"
+            >
+              <IconExternalLink className="h-4 w-4" aria-hidden />
+              Abrir
+            </a>
+          )}
+          <button
+            onClick={() => setConfirmRemove(true)}
+            aria-label="Remover serviço"
+            title="Remover serviço"
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+          >
+            <IconTrash className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div className="mb-4">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
         {TABS.map((t) => (
@@ -147,12 +229,30 @@ export default function ServicePage() {
       {tab === 'domains' && <DomainsTab project={project} service={service} onChange={load} />}
       {tab === 'security' && deployment && <SecurityTab applicationId={project.id} deploymentId={deployment.id} />}
       {tab === 'resources' && <ResourcesTab applicationId={project.id} serviceName={service.name} />}
-      {tab === 'maintenance' && (
-        <MaintenanceTab
-          project={project}
-          service={service}
-          onChanged={load}
-          onRemoved={() => router.push(`/projects/${project.id}`)}
+
+      {redeploying && (
+        <InstallLogModal
+          serverId={project.server.id}
+          op="service-redeploy-git"
+          params={{ deploymentId: service.deploymentId }}
+          title={`Reimplantando ${service.name}`}
+          onClose={() => {
+            setRedeploying(false);
+            load();
+          }}
+          onDone={load}
+        />
+      )}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remover serviço"
+          message={`Remover "${service.name}" deste projeto? Os containers e volumes desse serviço são apagados. O resto do projeto continua no ar.`}
+          confirmLabel="Remover"
+          danger
+          loading={busy}
+          onConfirm={removeService}
+          onCancel={() => setConfirmRemove(false)}
         />
       )}
     </div>
@@ -161,7 +261,6 @@ export default function ServicePage() {
 
 function OverviewTab({ project, service }: { project: ProjectDetail; service: ProjectService }) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
-  const [showLogs, setShowLogs] = useState(false);
 
   useEffect(() => {
     apiFetch<EndpointServiceInfo[]>(`/applications/${project.id}/endpoints`)
@@ -194,14 +293,7 @@ function OverviewTab({ project, service }: { project: ProjectDetail; service: Pr
         </div>
       </div>
 
-      <button onClick={() => setShowLogs(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
-        <IconTerminal className="h-4 w-4" aria-hidden />
-        Ver logs ao vivo
-      </button>
-
-      {showLogs && (
-        <LiveLogsModal serverId={project.server.id} containerId={service.containerName} title={service.name} onClose={() => setShowLogs(false)} />
-      )}
+      <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />
     </div>
   );
 }
@@ -216,7 +308,6 @@ function SourceTab({
   onChange: () => void;
 }) {
   const [showAutoDeploy, setShowAutoDeploy] = useState(false);
-  const [redeploying, setRedeploying] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -228,16 +319,10 @@ function SourceTab({
         <Row label="Autodeploy" value={deployment.autoDeploy ? 'Ativado' : 'Desativado'} />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setShowAutoDeploy(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
-          <IconSettings className="h-4 w-4" aria-hidden />
-          Configurar autodeploy
-        </button>
-        <button onClick={() => setRedeploying(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
-          <IconRefresh className="h-4 w-4" aria-hidden />
-          Reimplantar do repositório
-        </button>
-      </div>
+      <button onClick={() => setShowAutoDeploy(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+        <IconSettings className="h-4 w-4" aria-hidden />
+        Configurar autodeploy
+      </button>
 
       {showAutoDeploy && (
         <AutoDeployModal
@@ -248,20 +333,6 @@ function SourceTab({
             setShowAutoDeploy(false);
             onChange();
           }}
-        />
-      )}
-
-      {redeploying && (
-        <InstallLogModal
-          serverId={project.server.id}
-          op="service-redeploy-git"
-          params={{ deploymentId: deployment.id }}
-          title={`Reimplantando ${project.name}`}
-          onClose={() => {
-            setRedeploying(false);
-            onChange();
-          }}
-          onDone={onChange}
         />
       )}
     </div>
@@ -498,100 +569,6 @@ function ResourcesTab({ applicationId, serviceName }: { applicationId: string; s
       <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
         <MetricValue>{stats.network ?? '—'}</MetricValue>
       </MetricCard>
-    </div>
-  );
-}
-
-function MaintenanceTab({
-  project,
-  service,
-  onChanged,
-  onRemoved,
-}: {
-  project: ProjectDetail;
-  service: ProjectService;
-  onChanged: () => void;
-  onRemoved: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const running = service.status === 'RUNNING';
-
-  async function action(a: 'start' | 'stop' | 'restart') {
-    setBusy(true);
-    setError(null);
-    try {
-      await apiFetch(`/applications/${project.id}/services/${encodeURIComponent(service.name)}/${a}`, { method: 'POST' });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao executar ação');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeService() {
-    setBusy(true);
-    try {
-      await apiFetch(`/applications/${project.id}/deployments/${service.deploymentId}`, { method: 'DELETE' });
-      onRemoved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao remover serviço');
-      setBusy(false);
-      setConfirmRemove(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {error && <Alert variant="error">{error}</Alert>}
-
-      <div className="card space-y-3 p-4">
-        <p className="section-label">Ciclo de vida</p>
-        <div className="flex flex-wrap gap-2">
-          {running ? (
-            <>
-              <button onClick={() => action('restart')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-                <IconRefresh className="h-4 w-4" aria-hidden />
-                Reiniciar
-              </button>
-              <button onClick={() => action('stop')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-                <IconPower className="h-4 w-4" aria-hidden />
-                Parar
-              </button>
-            </>
-          ) : (
-            <button onClick={() => action('start')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-              <IconPower className="h-4 w-4" aria-hidden />
-              Iniciar
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="card space-y-3 border-red-200 p-4 dark:border-red-900/40">
-        <p className="section-label text-red-500">Zona de risco</p>
-        <button
-          onClick={() => setConfirmRemove(true)}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-red-500 transition hover:bg-red-500/10"
-        >
-          <IconTrash className="h-3.5 w-3.5" aria-hidden />
-          Remover este serviço do projeto
-        </button>
-      </div>
-
-      {confirmRemove && (
-        <ConfirmModal
-          title="Remover serviço"
-          message={`Remover "${service.name}" deste projeto? Os containers e volumes desse serviço são apagados. O resto do projeto continua no ar.`}
-          confirmLabel="Remover"
-          danger
-          loading={busy}
-          onConfirm={removeService}
-          onCancel={() => setConfirmRemove(false)}
-        />
-      )}
     </div>
   );
 }
