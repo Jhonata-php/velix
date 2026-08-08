@@ -351,6 +351,21 @@ validate_password() {
     [ "${#1}" -ge 8 ]
 }
 
+# COMPOSE_PARALLEL_LIMIT=1 (build/up serializados) existe pra não estourar RAM
+# em VMs pequenas — mas em servidor com folga, buildar api e web em série
+# dobra à toa o tempo de cada atualização. 4 GB é uma margem confortável pra
+# dois builds Node/webpack simultâneos sem começar a trocar pra swap; abaixo
+# disso mantém o comportamento serial de sempre.
+compose_parallel_limit() {
+    local memory_mb
+    memory_mb="$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)"
+    if [ "$memory_mb" -ge 4096 ]; then
+        echo 2
+    else
+        echo 1
+    fi
+}
+
 check_hardware() {
     section "Verificando servidor"
 
@@ -1238,7 +1253,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
 Environment=COMPOSE_PROJECT_NAME=velix
-Environment=COMPOSE_PARALLEL_LIMIT=1
+Environment=COMPOSE_PARALLEL_LIMIT=$(compose_parallel_limit)
 ExecStartPre=-${FIREWALL_SCRIPT}
 ExecStart=/usr/bin/docker compose --env-file ${ENV_FILE} up -d --remove-orphans
 ExecReload=/usr/bin/docker compose --env-file ${ENV_FILE} up -d --remove-orphans
@@ -1259,7 +1274,7 @@ deploy_velix() {
     cd "$INSTALL_DIR"
 
     export COMPOSE_PROJECT_NAME=velix
-    export COMPOSE_PARALLEL_LIMIT=1
+    export COMPOSE_PARALLEL_LIMIT="$(compose_parallel_limit)"
     export DOCKER_BUILDKIT=1
 
     # Sem isso o painel mostra "—" no commit pra sempre. Vem do checkout de
@@ -1271,7 +1286,6 @@ deploy_velix() {
     run_step "Validando Docker Compose" docker compose --env-file "$ENV_FILE" config
     run_step "Baixando imagens externas" docker compose --env-file "$ENV_FILE" pull --ignore-buildable
 
-    # Limita o paralelismo para reduzir consumo de RAM em VMs pequenas.
     run_step "Construindo aplicação" docker compose --env-file "$ENV_FILE" build --pull
 
     run_step "Iniciando containers" docker compose --env-file "$ENV_FILE" up -d --remove-orphans
