@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { formatUptime } from '@/lib/formatUptime';
 import { useInstallWizard } from '@/lib/useInstallWizard';
 import { TERMINAL_THEME } from '@/lib/terminalTheme';
 import { type DockerContainer, groupContainers, avatarColor, stripSwarmSuffix } from '@/lib/containerGroups';
@@ -19,7 +20,7 @@ import { InstallLogModal, OpsLogPanel, type OpsLogStatus } from '@/components/In
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { ServerFormModal } from '@/components/ServerFormModal';
 import { Sparkline } from '@/components/Sparkline';
-import { MetricHistoryModal } from '@/components/MetricHistoryModal';
+import { MetricHistoryPanel } from '@/components/MetricHistoryPanel';
 import { ContainerLogsModal } from '@/components/ContainerLogsModal';
 import { CloneContainerModal } from '@/components/CloneContainerModal';
 import { QuickReplicateModal } from '@/components/QuickReplicateModal';
@@ -280,7 +281,6 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const [loadHistory, setLoadHistory] = useState<number[]>([]);
   const [memHistory, setMemHistory] = useState<number[]>([]);
   const [diskHistory, setDiskHistory] = useState<number[]>([]);
-  const [expandedMetric, setExpandedMetric] = useState<'load' | 'mem' | 'disk' | null>(null);
 
   function loadRecentHistory() {
     apiFetch<{ loadAvg1: number | null; memUsedMb: number | null; memTotalMb: number | null; diskPercent: number | null }[]>(
@@ -358,14 +358,50 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
     server.metrics?.memTotalMb && server.metrics.memUsedMb != null ? (server.metrics.memUsedMb / server.metrics.memTotalMb) * 100 : null;
   const diskPercent = server.metrics?.diskPercent ? Number(server.metrics.diskPercent.replace('%', '')) : null;
 
+  const overviewActions: ActionMenuItem[] = [
+    { label: testing ? 'Testando conexão...' : 'Testar conexão', icon: <IconPlug className="h-4 w-4" />, onClick: handleTest, disabled: testing },
+    { label: lookingUp ? 'Buscando domínios...' : 'Localizar domínios', icon: <IconGlobe className="h-4 w-4" />, onClick: handleLookupDomains, disabled: lookingUp },
+    { label: 'Reiniciar servidor', icon: <IconPower className="h-4 w-4" />, onClick: () => setRebootConfirm(true), danger: true },
+  ];
+
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="section-title">Métricas</h2>
-        <button onClick={collectMetrics} disabled={collecting} className="btn-secondary px-3 py-1.5 text-xs">
-          {collecting ? 'Atualizando...' : '↻ Atualizar agora'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={collectMetrics} disabled={collecting} className="btn-secondary px-3 py-1.5 text-xs">
+            {collecting ? 'Atualizando...' : '↻ Atualizar agora'}
+          </button>
+          <ActionMenu items={overviewActions} />
+        </div>
       </div>
+
+      {result && (
+        <div className="mb-3">
+          <Alert variant={result.ok ? 'success' : 'error'}>{result.message}</Alert>
+        </div>
+      )}
+      {domainsError && (
+        <div className="mb-3">
+          <Alert variant="error">{domainsError}</Alert>
+        </div>
+      )}
+      {domains && (
+        <div className="card mb-3 p-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Domínios Cloudflare apontando pra este servidor</h3>
+          <ul className="space-y-1 text-sm">
+            {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
+            {domains.map((d) => (
+              <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                <span>{d.name}</span>
+                <span className="text-xs text-slate-400">
+                  {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <MetricCard icon={<IconServer className="h-4 w-4" />} chipClassName="bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" label="Sistema operacional">
@@ -373,14 +409,13 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </MetricCard>
 
         <MetricCard icon={<IconClock className="h-4 w-4" />} chipClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400" label="Uptime">
-          <p className="text-xl font-bold tracking-tight">{server.metrics?.uptimeText ?? '—'}</p>
+          <p className="text-xl font-bold tracking-tight">{formatUptime(server.metrics?.uptimeText)}</p>
         </MetricCard>
 
         <MetricCard
           icon={<IconActivity className="h-4 w-4" />}
           chipClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
           label="Load average"
-          onClick={() => setExpandedMetric('load')}
         >
           {server.metrics?.loadAvg ? (
             <>
@@ -396,7 +431,6 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           icon={<IconMemory className="h-4 w-4" />}
           chipClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           label="Memória"
-          onClick={() => setExpandedMetric('mem')}
         >
           {memPercent !== null ? (
             <>
@@ -417,7 +451,6 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
           icon={<IconDisk className="h-4 w-4" />}
           chipClassName="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400"
           label="Disco"
-          onClick={() => setExpandedMetric('disk')}
         >
           {diskPercent !== null ? (
             <>
@@ -435,93 +468,24 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </MetricCard>
       </div>
 
-      {expandedMetric && (
-        <MetricHistoryModal
-          serverId={server.id}
-          metric={expandedMetric}
-          label={expandedMetric === 'load' ? 'Load average' : expandedMetric === 'mem' ? 'Memória' : 'Disco'}
-          unit={expandedMetric === 'load' ? '' : '%'}
-          colorClass={
-            expandedMetric === 'load'
-              ? 'text-violet-500 dark:text-violet-400'
-              : expandedMetric === 'mem'
-                ? 'text-amber-500 dark:text-amber-400'
-                : 'text-teal-500 dark:text-teal-400'
-          }
-          onClose={() => setExpandedMetric(null)}
+      <MetricHistoryPanel serverId={server.id} />
+
+      {rebootConfirm && (
+        <ConfirmModal
+          title="Reiniciar servidor"
+          message="Tem certeza que quer reiniciar este servidor agora? Ele fica indisponível por alguns minutos até voltar."
+          confirmLabel={rebooting ? 'Enviando...' : 'Sim, reiniciar'}
+          danger
+          loading={rebooting}
+          onConfirm={handleReboot}
+          onCancel={() => setRebootConfirm(false)}
         />
       )}
-
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
-        <div className="card p-5">
-          <h2 className="section-title mb-3">Ações</h2>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={handleTest} disabled={testing} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
-              <IconPlug className="h-4 w-4" />
-              {testing ? 'Testando conexão...' : 'Testar conexão'}
-            </button>
-
-            {!rebootConfirm ? (
-              <button onClick={() => setRebootConfirm(true)} className="btn-danger px-4 py-2 text-sm">
-                Reiniciar servidor
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm dark:border-red-800">
-                <span className="text-red-600 dark:text-red-400">Confirma o reboot?</span>
-                <button onClick={handleReboot} disabled={rebooting} className="btn-danger px-3 py-1 text-xs">
-                  {rebooting ? 'Enviando...' : 'Sim, reiniciar'}
-                </button>
-                <button onClick={() => setRebootConfirm(false)} className="text-xs text-slate-500 hover:underline">
-                  Cancelar
-                </button>
-              </div>
-            )}
-          </div>
-
-          {result && (
-            <div className="mt-4">
-              <Alert variant={result.ok ? 'success' : 'error'}>{result.message}</Alert>
-            </div>
-          )}
-          {rebootMessage && (
-            <div className="mt-4">
-              <Alert variant="info">{rebootMessage}</Alert>
-            </div>
-          )}
+      {rebootMessage && (
+        <div className="mt-3">
+          <Alert variant="info">{rebootMessage}</Alert>
         </div>
-
-        <div className="card p-5">
-          <h2 className="section-title mb-2">Domínios Cloudflare</h2>
-          <p className="mb-3 text-sm text-slate-500">Localiza registros DNS que apontam para o IP público deste servidor.</p>
-          <button
-            onClick={handleLookupDomains}
-            disabled={lookingUp}
-            className="btn-secondary px-4 py-2 text-sm"
-          >
-            {lookingUp ? 'Buscando...' : 'Localizar domínios'}
-          </button>
-
-          {domainsError && (
-            <div className="mt-3">
-              <Alert variant="error">{domainsError}</Alert>
-            </div>
-          )}
-
-          {domains && (
-            <ul className="mt-3 space-y-1 text-sm">
-              {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
-              {domains.map((d) => (
-                <li key={d.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-                  <span>{d.name}</span>
-                  <span className="text-xs text-slate-400">
-                    {d.type} · {d.zoneName} {d.proxied ? '· proxy' : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
