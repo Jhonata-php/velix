@@ -41,32 +41,29 @@ export class GitHubReleaseService {
   // Token nunca sai daqui — os controllers só devolvem ReleaseInfo/erros, nunca o header/token em si.
   private readonly token = process.env.UPDATE_GITHUB_TOKEN?.trim() || null;
 
-  private cache: { channel: UpdateChannel; result: ReleaseCheckResult; expiresAt: number } | null = null;
+  // Cacheado no nível mais baixo (a resposta crua do GitHub), não em cada
+  // método derivado — `getLatestRelease` e `listReleases` já se pegaram
+  // discordando entre si porque cada um cacheava (ou não) o próprio
+  // resultado já filtrado: o card do topo (getLatestRelease, cacheado 10min)
+  // mostrava uma versão pra trás enquanto o histórico (listReleases, sem
+  // cache algum) já batia direto no GitHub e mostrava a release nova. Com o
+  // cache aqui embaixo, os dois sempre leem exatamente o mesmo snapshot.
+  private rawCache: { result: { ok: true; releases: GitHubRelease[] } | { ok: false; error: string }; expiresAt: number } | null = null;
 
   async getLatestRelease(channel: UpdateChannel, opts: { force?: boolean } = {}): Promise<ReleaseCheckResult> {
-    if (!opts.force && this.cache && this.cache.channel === channel && this.cache.expiresAt > Date.now()) {
-      return this.cache.result;
-    }
-    const result = await this.fetchLatestRelease(channel);
-    this.cache = { channel, result, expiresAt: Date.now() + CACHE_TTL_MS };
-    return result;
+    const raw = await this.fetchRaw(opts.force);
+    if (!raw.ok) return { ok: false, error: raw.error };
+
+    const release = this.pickForChannel(
+      raw.releases.filter((r) => !r.draft),
+      channel,
+    );
+    return { ok: true, release: release ? this.toReleaseInfo(release, channel) : null };
   }
 
-  /**
-   * Todas as releases publicadas, não só a mais recente.
-   *
-   * Reaproveita a mesma chamada de `getLatestRelease` — a API do GitHub já
-   * devolve as 30 últimas numa requisição só, então listar o histórico não
-   * custa nenhuma requisição a mais e não mexe no limite de taxa.
-   */
+  /** Todas as releases publicadas, não só a mais recente — mesmo `fetchRaw`
+   * cacheado de `getLatestRelease`, só filtra diferente. */
   async listReleases(channel: UpdateChannel): Promise<{ ok: true; releases: ReleaseInfo[] } | { ok: false; error: string }> {
-    const result = await this.fetchAllReleases(channel);
-    return result;
-  }
-
-  private async fetchAllReleases(
-    channel: UpdateChannel,
-  ): Promise<{ ok: true; releases: ReleaseInfo[] } | { ok: false; error: string }> {
     const raw = await this.fetchRaw();
     if (!raw.ok) return { ok: false, error: raw.error };
 
@@ -80,12 +77,24 @@ export class GitHubReleaseService {
   }
 
   /**
-   * Uma única função conversa com o GitHub. `fetchLatestRelease` e
-   * `fetchAllReleases` só filtram o resultado — antes disso a lógica de erro
-   * (404, 401, rate limit, timeout) existiria duplicada, e um tratamento
-   * corrigido num lugar e esquecido no outro é como esse tipo de bug nasce.
+   * Uma única função conversa com o GitHub. Cache aqui (não em cada chamador)
+   * é o que garante `getLatestRelease`/`listReleases` nunca discordarem entre
+   * si — e a lógica de erro (404, 401, rate limit, timeout) existe uma vez só.
    */
-  private async fetchRaw(): Promise<{ ok: true; releases: GitHubRelease[] } | { ok: false; error: string }> {
+  private async fetchRaw(force = false): Promise<{ ok: true; releases: GitHubRelease[] } | { ok: false; error: string }> {
+    if (!force && this.rawCache && this.rawCache.expiresAt > Date.now()) {
+      return this.rawCache.result;
+    }
+
+    const result = await this.requestReleases();
+    // Cacheia sucesso E erro (mesmo comportamento de antes) — um erro de rate
+    // limit/rede não deve disparar uma nova tentativa a cada request dentro
+    // da mesma janela de 10min.
+    this.rawCache = { result, expiresAt: Date.now() + CACHE_TTL_MS };
+    return result;
+  }
+
+  private async requestReleases(): Promise<{ ok: true; releases: GitHubRelease[] } | { ok: false; error: string }> {
     const url = `https://api.github.com/repos/${this.owner}/${this.repo}/releases?per_page=30`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -132,17 +141,6 @@ export class GitHubReleaseService {
     }
 
     return { ok: true, releases: (await res.json()) as GitHubRelease[] };
-  }
-
-  private async fetchLatestRelease(channel: UpdateChannel): Promise<ReleaseCheckResult> {
-    const raw = await this.fetchRaw();
-    if (!raw.ok) return { ok: false, error: raw.error };
-
-    const release = this.pickForChannel(
-      raw.releases.filter((r) => !r.draft),
-      channel,
-    );
-    return { ok: true, release: release ? this.toReleaseInfo(release, channel) : null };
   }
 
   private pickForChannel(releases: GitHubRelease[], channel: UpdateChannel): GitHubRelease | undefined {
