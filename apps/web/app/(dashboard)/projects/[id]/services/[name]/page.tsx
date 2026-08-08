@@ -707,22 +707,24 @@ function GitEnvEditor({ applicationId, deploymentId, onChange }: { applicationId
         <div className="space-y-2">
           {rows.length === 0 && <p className="text-sm text-slate-400">Nenhuma variável definida.</p>}
           {rows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                value={row.key}
-                onChange={(e) => updateRow(i, 'key', e.target.value)}
-                placeholder="CHAVE"
-                className="input h-9 flex-1 font-mono text-xs uppercase"
-              />
-              <input
-                value={row.value}
-                onChange={(e) => updateRow(i, 'value', e.target.value)}
-                placeholder="valor"
-                className="input h-9 flex-1 font-mono text-xs"
-              />
+            <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-1 gap-2">
+                <input
+                  value={row.key}
+                  onChange={(e) => updateRow(i, 'key', e.target.value)}
+                  placeholder="CHAVE"
+                  className="input h-9 flex-1 font-mono text-xs uppercase"
+                />
+                <input
+                  value={row.value}
+                  onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  placeholder="valor"
+                  className="input h-9 flex-1 font-mono text-xs"
+                />
+              </div>
               <button
                 onClick={() => removeRow(i)}
-                className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
+                className="flex shrink-0 items-center justify-center gap-1.5 self-end rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10 sm:self-auto"
                 aria-label="Remover variável"
               >
                 <IconTrash className="h-4 w-4" aria-hidden />
