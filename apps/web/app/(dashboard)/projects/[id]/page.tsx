@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { EmptyState } from '@/components/EmptyState';
@@ -12,7 +13,17 @@ import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { GitDeployWizard } from '@/components/GitDeployWizard';
-import { IconPlus, IconGithub, IconStore, IconServer, IconTrash, IconLayoutGrid } from '@/components/icons';
+import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu';
+import {
+  IconPlus,
+  IconGithub,
+  IconStore,
+  IconServer,
+  IconTrash,
+  IconLayoutGrid,
+  IconChevronRight,
+  IconClock,
+} from '@/components/icons';
 import type { ProjectDetail, ProjectService } from '@/lib/types';
 
 const PROJECT_STATUS_TONE: Record<ProjectDetail['status'], StatusTone> = {
@@ -102,35 +113,51 @@ export default function ProjectPage() {
     );
   }
 
+  const menuItems: ActionMenuItem[] = [
+    { label: 'Remover projeto', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(true), danger: true },
+  ];
+
   return (
     <div>
       <Breadcrumb items={[{ label: 'Projetos', href: '/projects' }, { label: project.name }]} />
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="page-title">{project.name}</h1>
-            <StatusBadge tone={PROJECT_STATUS_TONE[project.status]}>{PROJECT_STATUS_LABEL[project.status]}</StatusBadge>
-          </div>
-          {project.description && <p className="mt-0.5 text-xs text-slate-400">{project.description}</p>}
-          <Link
-            href={`/servers/${project.server.id}`}
-            className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-500"
-          >
-            <IconServer className="h-3.5 w-3.5" aria-hidden />
-            {project.server.isLocal ? 'este servidor' : project.server.name}
-          </Link>
-          {project.lastError && (
-            <div className="mt-2">
-              <Alert variant="error">{project.lastError}</Alert>
+      <div className="card mb-5 flex flex-wrap items-start justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-base font-semibold text-indigo-600 dark:text-indigo-400">
+            {project.name.charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="page-title">{project.name}</h1>
+              <StatusBadge tone={PROJECT_STATUS_TONE[project.status]}>{PROJECT_STATUS_LABEL[project.status]}</StatusBadge>
             </div>
-          )}
+            {project.description && <p className="mt-0.5 text-xs text-slate-400">{project.description}</p>}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+              <Link href={`/servers/${project.server.id}`} className="inline-flex items-center gap-1.5 hover:text-indigo-500">
+                <IconServer className="h-3.5 w-3.5" aria-hidden />
+                {project.server.isLocal ? 'este servidor' : project.server.name}
+              </Link>
+              <span className="inline-flex items-center gap-1.5">
+                <IconClock className="h-3.5 w-3.5" aria-hidden />
+                criado {relativeTime(project.deployedAt)}
+              </span>
+            </div>
+          </div>
         </div>
-        <button onClick={() => setShowAddChooser(true)} className="btn-primary flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-sm">
-          <IconPlus className="h-4 w-4" aria-hidden />
-          Adicionar serviço
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button onClick={() => setShowAddChooser(true)} className="btn-primary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+            <IconPlus className="h-4 w-4" aria-hidden />
+            Adicionar serviço
+          </button>
+          <ActionMenu items={menuItems} />
+        </div>
       </div>
+
+      {project.lastError && (
+        <div className="mb-4">
+          <Alert variant="error">{project.lastError}</Alert>
+        </div>
+      )}
 
       {project.services.length === 0 ? (
         <EmptyState
@@ -144,47 +171,49 @@ export default function ProjectPage() {
           }
         />
       ) : (
-        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-          {project.services.map((service) => {
-            const deployment = deploymentFor(service);
-            const fromGit = deployment?.sourceType === 'git';
-            return (
-              <Link
-                key={service.id}
-                href={`/projects/${project.id}/services/${encodeURIComponent(service.name)}`}
-                className="group flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800">
-                  {fromGit ? <IconGithub className="h-4.5 w-4.5" aria-hidden /> : <IconStore className="h-4.5 w-4.5" aria-hidden />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
-                      {service.name}
+        <>
+          <p className="section-label mb-2">
+            Serviços ({project.services.length})
+          </p>
+          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
+            {project.services.map((service) => {
+              const deployment = deploymentFor(service);
+              const fromGit = deployment?.sourceType === 'git';
+              return (
+                <Link
+                  key={service.id}
+                  href={`/projects/${project.id}/services/${encodeURIComponent(service.name)}`}
+                  className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                >
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      fromGit
+                        ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                        : 'bg-indigo-500/10 text-indigo-500'
+                    }`}
+                  >
+                    {fromGit ? <IconGithub className="h-4.5 w-4.5" aria-hidden /> : <IconStore className="h-4.5 w-4.5" aria-hidden />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
+                        {service.name}
+                      </p>
+                      <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
+                    </div>
+                    <p className="truncate text-xs text-slate-400">
+                      {fromGit
+                        ? `${deployment?.repoUrl?.replace('https://', '').replace('.git', '') ?? 'repositório'} · ${deployment?.gitRef ?? ''}`
+                        : service.image}
                     </p>
-                    <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
                   </div>
-                  <p className="truncate text-xs text-slate-400">
-                    {fromGit
-                      ? `${deployment?.repoUrl?.replace('https://', '').replace('.git', '') ?? 'repositório'} · ${deployment?.gitRef ?? ''}`
-                      : service.image}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                  <IconChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-indigo-400 dark:text-slate-600" aria-hidden />
+                </Link>
+              );
+            })}
+          </div>
+        </>
       )}
-
-      <div className="mt-8 border-t border-slate-200 pt-4 dark:border-slate-700">
-        <button
-          onClick={() => setConfirmRemove(true)}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-red-500 transition hover:bg-red-500/10"
-        >
-          <IconTrash className="h-3.5 w-3.5" aria-hidden />
-          Remover projeto
-        </button>
-      </div>
 
       {showAddChooser && (
         <Modal title="Adicionar serviço" onClose={() => setShowAddChooser(false)} maxWidth="max-w-sm">
