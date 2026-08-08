@@ -3,11 +3,14 @@ import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApplicationsService } from './applications.service';
 import { GitDeployService } from './git-deploy.service';
+import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
 
-// A implantação (`deploy`) é demorada e tem log ao vivo — só existe via o
-// canal /ops (op "app-deploy"), mesmo padrão do Traefik. Aqui ficam as ações
-// rápidas, sem stream: listar, consultar, start/stop/restart/remover.
+// A implantação de um serviço (`deployManifestIntoProject`/`GitDeployService.
+// deploy`) é demorada e tem log ao vivo — só existe via o canal /ops (op
+// "service-deploy"/"service-deploy-git"), mesmo padrão do Traefik. Aqui ficam
+// as ações rápidas, sem stream: criar projeto vazio, listar, consultar,
+// start/stop/restart/remover.
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ApplicationsController {
@@ -15,6 +18,12 @@ export class ApplicationsController {
     private readonly applications: ApplicationsService,
     private readonly gitDeploy: GitDeployService,
   ) {}
+
+  @Post('applications')
+  @MinRole('operator')
+  createProject(@Body() dto: CreateProjectDto) {
+    return this.applications.createProject(dto);
+  }
 
   @Get('applications')
   listAll() {
@@ -41,6 +50,11 @@ export class ApplicationsController {
     return this.applications.getServices(appId);
   }
 
+  @Get('applications/:appId/services/:name/stats')
+  getServiceStats(@Param('appId') appId: string, @Param('name') name: string) {
+    return this.applications.getServiceStats(appId, name);
+  }
+
   @Post('applications/:appId/services/:name/start')
   @MinRole('operator')
   startService(@Param('appId') appId: string, @Param('name') name: string) {
@@ -59,6 +73,15 @@ export class ApplicationsController {
     return this.applications.serviceAction(appId, name, 'restart');
   }
 
+  /** Remove UMA implantação do projeto (ex.: tirar um serviço avulso), mantendo
+   * o resto no ar — diferente do DELETE em `/applications/:appId`, que apaga
+   * o projeto inteiro. */
+  @Delete('applications/:appId/deployments/:deploymentId')
+  @MinRole('operator')
+  removeService(@Param('appId') appId: string, @Param('deploymentId') deploymentId: string) {
+    return this.applications.removeService(appId, deploymentId);
+  }
+
   @Post('applications/:appId/domains')
   @MinRole('operator')
   createDomain(@Param('appId') appId: string, @Body() dto: CreateApplicationDomainDto) {
@@ -71,21 +94,26 @@ export class ApplicationsController {
   }
 
   /** Configuração de autodeploy — a URL do webhook só é devolvida aqui, para
-   * um usuário autenticado, nunca na listagem geral de aplicações. */
-  @Get('applications/:appId/auto-deploy')
-  getAutoDeploy(@Param('appId') appId: string) {
-    return this.gitDeploy.getAutoDeploy(appId);
+   * um usuário autenticado, nunca na listagem geral de projetos. */
+  @Get('applications/:appId/deployments/:deploymentId/auto-deploy')
+  getAutoDeploy(@Param('deploymentId') deploymentId: string) {
+    return this.gitDeploy.getAutoDeploy(deploymentId);
   }
 
-  @Patch('applications/:appId/auto-deploy')
+  @Patch('applications/:appId/deployments/:deploymentId/auto-deploy')
   @MinRole('operator')
-  setAutoDeploy(@Param('appId') appId: string, @Body('enabled') enabled: boolean) {
-    return this.gitDeploy.setAutoDeploy(appId, !!enabled);
+  setAutoDeploy(@Param('deploymentId') deploymentId: string, @Body('enabled') enabled: boolean) {
+    return this.gitDeploy.setAutoDeploy(deploymentId, !!enabled);
   }
 
-  @Get('applications/:appId/credentials')
-  getCredentials(@Param('appId') appId: string) {
-    return this.applications.getCredentials(appId);
+  @Get('applications/:appId/deployments/:deploymentId/credentials')
+  getCredentials(@Param('deploymentId') deploymentId: string) {
+    return this.applications.getCredentials(deploymentId);
+  }
+
+  @Get('applications/:appId/deployments/:deploymentId/security')
+  getSecurityRisks(@Param('deploymentId') deploymentId: string) {
+    return this.applications.getSecurityRisks(deploymentId);
   }
 
   @Post('applications/:appId/start')

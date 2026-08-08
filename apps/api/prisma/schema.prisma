@@ -249,6 +249,8 @@ model Domain {
 }
 
 enum ApplicationStatus {
+  /// Projeto recém-criado, ainda sem nenhum serviço implantado dentro dele.
+  EMPTY
   DEPLOYING
   RUNNING
   STOPPED
@@ -263,11 +265,12 @@ enum ApplicationEnvironment {
   LAB
 }
 
-// Aplicação implantada pelo Velix a partir de um manifesto do catálogo (fase
-// atual: só o catálogo oficial embutido no código — ver apps/api/src/catalog).
-// `composeRendered` é o compose efetivamente aplicado, guardado pra permitir
-// diff/rollback quando essa feature existir; não há tabela de histórico ainda
-// porque nada além da versão atual precisa dela por ora.
+// Projeto do Velix: um diretório com UM docker-compose.yml no servidor
+// (`docker compose -p <slug>`), que pode reunir serviços implantados de
+// origens diferentes — cada implantação (manifesto do catálogo ou repositório
+// Git) vira uma linha em `ProjectDeployment`; o compose gravado no servidor é
+// o merge de todas elas (ver `mergeComposeFragments`). Nasce vazio
+// (status EMPTY) e ganha serviços conforme o usuário implanta dentro dele.
 model Application {
   id               String            @id @default(uuid())
   serverId         String
@@ -277,10 +280,56 @@ model Application {
   description      String?
   environment      ApplicationEnvironment @default(PRODUCTION)
   tags             String[]          @default([])
+  status           ApplicationStatus @default(EMPTY)
+  // Compose efetivamente aplicado no servidor — merge de todas as
+  // `ProjectDeployment` do projeto. Vazio enquanto o projeto não tem nenhum
+  // serviço. Guardado (e não só regenerado on-the-fly) pra permitir
+  // diff/rollback quando essa feature existir.
+  composeRendered  String            @default("")
+  containerNames   String[]          @default([])
+  lastError        String?
+  deployedAt       DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  domains          Domain[]
+  services         ProjectService[]
+  deployments      ProjectDeployment[]
+
+  @@index([serverId])
+}
+
+/// Uma implantação — de UM manifesto do catálogo ou de UM repositório Git —
+/// dentro de um projeto. Um projeto pode ter várias (ex.: seu app via Git +
+/// um Postgres avulso do catálogo, lado a lado no mesmo `Application`).
+model ProjectDeployment {
+  id               String      @id @default(uuid())
+  applicationId    String
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   /// "catalog" (manifesto curado) ou "git" (repositório do usuário). O motor de
   /// implantação é o mesmo dali pra frente — muda só como a imagem nasce:
   /// puxada de um registro ou construída no servidor a partir do código.
-  sourceType       String            @default("catalog")
+  sourceType       String      @default("catalog")
+  /// Só para sourceType="catalog".
+  manifestSlug     String?
+  manifestVersion  String?
+  // Nomes dos serviços opcionais do manifesto que o usuário escolheu incluir —
+  // os obrigatórios não precisam estar aqui (sempre implícitos). Junto de
+  // manifestSlug, é o que permite reconfigurar o compose ao adicionar um
+  // serviço novo depois do deploy inicial.
+  selectedServices String[]    @default([])
+  // Compose renderizado só desta implantação (não o do projeto inteiro) —
+  // guardado pra `removeService`/`addService` conseguirem recompor o merge
+  // sem precisar re-renderizar todas as outras implantações do projeto a
+  // partir do manifesto delas de novo.
+  composeRendered  String      @default("")
+  // Segredos gerados no deploy (ex.: senha de banco), cifrados como um blob JSON —
+  // mesmo padrão AES-256-GCM já usado pra credenciais SSH/Cloudflare.
+  secretsEnc       String?
+  // Valores de `{{var:...}}` resolvidos no deploy (não sensíveis — texto puro).
+  // Reaproveitado ao adicionar um serviço depois, senão o compose recalculado
+  // voltaria os valores pro padrão do manifesto e recriaria os containers já
+  // no ar com uma configuração diferente da que o usuário escolheu.
+  variablesJson    String?
   /// Só para sourceType="git". A URL fica em claro (não é segredo); o token de
   /// acesso, quando existe, é cifrado à parte.
   repoUrl          String?
@@ -294,39 +343,19 @@ model Application {
   /// conta salva, o token vem de `gitAccount`.
   repoTokenEnc     String?
   gitAccountId     String?
-  gitAccount       GitAccount?       @relation(fields: [gitAccountId], references: [id], onDelete: SetNull)
+  gitAccount       GitAccount? @relation(fields: [gitAccountId], references: [id], onDelete: SetNull)
   /// Reimplantar sozinho quando chegar um push na branch acompanhada.
-  autoDeploy       Boolean           @default(false)
+  autoDeploy       Boolean     @default(false)
   /// Segredo do webhook — é ele que autentica a chamada vinda da forja, já que
-  /// não há sessão de usuário nesse caminho. Único por aplicação: vazar um não
-  /// dá acesso a redeployar as outras.
-  webhookSecret    String?           @unique
-  manifestSlug     String
-  manifestVersion  String
-  status           ApplicationStatus @default(DEPLOYING)
-  composeRendered  String
-  containerNames   String[]          @default([])
-  // Nomes dos serviços opcionais do manifesto que o usuário escolheu incluir —
-  // os obrigatórios não precisam estar aqui (sempre implícitos). Junto de
-  // manifestSlug, é o que permite reconfigurar o compose ao adicionar um
-  // serviço novo depois do deploy inicial.
-  selectedServices String[]          @default([])
-  // Segredos gerados no deploy (ex.: senha de banco), cifrados como um blob JSON —
-  // mesmo padrão AES-256-GCM já usado pra credenciais SSH/Cloudflare.
-  secretsEnc       String?
-  // Valores de `{{var:...}}` resolvidos no deploy (não sensíveis — texto puro).
-  // Reaproveitado ao adicionar um serviço depois, senão o compose recalculado
-  // voltaria os valores pro padrão do manifesto e recriaria os containers já
-  // no ar com uma configuração diferente da que o usuário escolheu.
-  variablesJson    String?
-  lastError        String?
-  deployedAt       DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  /// não há sessão de usuário nesse caminho. Único por implantação: vazar um
+  /// não dá acesso a redeployar as outras.
+  webhookSecret    String?     @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  domains          Domain[]
   services         ProjectService[]
 
-  @@index([serverId])
+  @@index([applicationId])
 }
 
 /// Conta de forja Git salva em Configurações, para não digitar o mesmo token a
@@ -344,7 +373,7 @@ model GitAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  applications Application[]
+  deployments ProjectDeployment[]
 }
 
 /// Destino de notificação. O `config` é cifrado porque carrega URL de webhook
@@ -432,6 +461,11 @@ model ProjectService {
   id              String                @id @default(uuid())
   applicationId   String
   application     Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  // De qual implantação (manifesto ou repo Git) este container veio — decide
+  // que abas mostrar na tela do serviço (ex.: "Fonte" só existe pra Git) e
+  // permite achar o manifesto certo pra "adicionar serviço opcional".
+  deploymentId    String
+  deployment      ProjectDeployment     @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
   // Nome do serviço dentro do compose (ex.: "app", "db", "onlyoffice") — igual
   // ao `name` declarado no VelixManifestService de origem.
   name            String
@@ -444,6 +478,7 @@ model ProjectService {
 
   @@unique([applicationId, name])
   @@index([applicationId])
+  @@index([deploymentId])
 }
 
 // ponytail: um espelho por servidor de origem (1 destino) — cobre o caso

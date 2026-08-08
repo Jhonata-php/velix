@@ -1,7 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches, MinLength, ValidateNested } from 'class-validator';
-
-const APPLICATION_ENVIRONMENTS = ['PRODUCTION', 'STAGING', 'DEVELOPMENT', 'LAB'] as const;
+import { IsArray, IsBoolean, IsOptional, IsString, Matches, ValidateNested } from 'class-validator';
 
 class DeployDomainDto {
   @IsString()
@@ -15,26 +13,12 @@ class DeployDomainDto {
   createDnsRecord?: boolean;
 }
 
-export class DeployApplicationDto {
+/** Implanta UM manifesto do catálogo como um serviço novo dentro de um
+ * projeto já existente — nome/descrição/ambiente/tags são do projeto
+ * (`CreateProjectDto`), não daqui. */
+export class DeployServiceDto {
   @IsString()
   manifestSlug!: string;
-
-  @IsString()
-  @MinLength(2)
-  name!: string;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @IsOptional()
-  @IsIn(APPLICATION_ENVIRONMENTS)
-  environment?: (typeof APPLICATION_ENVIRONMENTS)[number];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  tags?: string[];
 
   @IsOptional()
   @ValidateNested()

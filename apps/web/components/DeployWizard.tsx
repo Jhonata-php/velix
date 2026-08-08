@@ -23,7 +23,18 @@ const ENVIRONMENTS: { value: 'PRODUCTION' | 'STAGING' | 'DEVELOPMENT' | 'LAB'; l
   { value: 'LAB', label: 'Laboratório' },
 ];
 
-const STEPS = ['Informações', 'Servidor', 'Componentes', 'Variáveis', 'Armazenamento', 'Domínio', 'Revisão', 'Implantação'] as const;
+type StepKey = 'info' | 'server' | 'components' | 'variables' | 'storage' | 'domain' | 'review' | 'deploy';
+
+const ALL_STEPS: { key: StepKey; label: string }[] = [
+  { key: 'info', label: 'Informações' },
+  { key: 'server', label: 'Servidor' },
+  { key: 'components', label: 'Componentes' },
+  { key: 'variables', label: 'Variáveis' },
+  { key: 'storage', label: 'Armazenamento' },
+  { key: 'domain', label: 'Domínio' },
+  { key: 'review', label: 'Revisão' },
+  { key: 'deploy', label: 'Implantação' },
+];
 
 /** Obrigatórios + opcionais escolhidos, com dependências resolvidas em cascata —
  * espelha `resolveIncludedServices` do backend (catalog.util.ts) pra mostrar no
@@ -51,12 +62,23 @@ function resolveIncludedServiceNames(manifest: CatalogApplicationDetail, selecte
 interface Props {
   manifest: CatalogApplicationDetail;
   preselectedServerId?: string;
+  /** Quando informado, o serviço entra NESTE projeto já existente — pula as
+   * etapas "Informações" (nome/ambiente/tags já são do projeto) e "Servidor"
+   * (já é o servidor do projeto, fixo). Sem isso, o assistente cria um projeto
+   * novo automaticamente com os dados da etapa "Informações". */
+  applicationId?: string;
+  projectServerId?: string;
   onClose: () => void;
 }
 
-export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) {
+export function DeployWizard({ manifest, preselectedServerId, applicationId, projectServerId, onClose }: Props) {
   const router = useRouter();
+  const visibleSteps = useMemo(
+    () => (applicationId ? ALL_STEPS.filter((s) => s.key !== 'info' && s.key !== 'server') : ALL_STEPS),
+    [applicationId],
+  );
   const [step, setStep] = useState(0);
+  const currentKey = visibleSteps[step]?.key;
 
   // Trilha de etapas: barra de rolagem escondida, arraste horizontal no lugar.
   const stepsRef = useRef<HTMLDivElement>(null);
@@ -68,9 +90,9 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
   const [environment, setEnvironment] = useState<(typeof ENVIRONMENTS)[number]['value']>('PRODUCTION');
   const [tagsInput, setTagsInput] = useState('');
 
-  // 2. Servidor
+  // 2. Servidor — fixo (o do projeto) quando `applicationId` é passado.
   const [servers, setServers] = useState<ServerSummary[] | null>(null);
-  const [serverId, setServerId] = useState(preselectedServerId ?? '');
+  const [serverId, setServerId] = useState(projectServerId ?? preselectedServerId ?? '');
 
   function reloadServers() {
     apiFetch<ServerSummary[]>('/servers').then(setServers);
@@ -79,12 +101,12 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
   useEffect(() => {
     apiFetch<ServerSummary[]>('/servers').then((list) => {
       setServers(list);
-      if (!preselectedServerId) {
+      if (!preselectedServerId && !projectServerId) {
         const recommended = list.find((s) => s.status === 'ONLINE' && s.dockerInstalled);
         if (recommended) setServerId(recommended.id);
       }
     });
-  }, [preselectedServerId]);
+  }, [preselectedServerId, projectServerId]);
 
   const selectedServer = servers?.find((s) => s.id === serverId) ?? null;
 
@@ -107,7 +129,12 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
 
   // 8. Implantação
   const [deploying, setDeploying] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; applicationId?: string; domain?: { hostname: string } | null } | null>(null);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    applicationId?: string;
+    deploymentId?: string;
+    domain?: { hostname: string } | null;
+  } | null>(null);
 
   const allVolumes = includedServices.flatMap((s) => s.volumes.map((v) => ({ ...v, service: s.name })));
   const tags = tagsInput
@@ -115,40 +142,44 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
     .map((t) => t.trim())
     .filter(Boolean);
 
-  const stepValid: boolean[] = [
-    name.trim().length >= 2,
-    !!selectedServer && selectedServer.dockerInstalled,
-    true,
-    allVariables.every((v) => !v.required || (variables[v.key] ?? '').trim().length > 0),
-    true,
-    !wantsDomain || HOSTNAME_PATTERN.test(hostname.trim()),
-    true,
-    true,
-  ];
+  const validByKey: Record<StepKey, boolean> = {
+    info: name.trim().length >= 2,
+    server: !!selectedServer && selectedServer.dockerInstalled,
+    components: true,
+    variables: allVariables.every((v) => !v.required || (variables[v.key] ?? '').trim().length > 0),
+    storage: true,
+    domain: !wantsDomain || HOSTNAME_PATTERN.test(hostname.trim()),
+    review: true,
+    deploy: true,
+  };
+  const stepValid: boolean[] = visibleSteps.map((s) => validByKey[s.key]);
 
   function goNext() {
     if (!stepValid[step]) return;
-    if (step === 6) {
-      setStep(7);
+    if (currentKey === 'review') {
+      setStep((s) => s + 1);
       setDeploying(true);
       return;
     }
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    setStep((s) => Math.min(s + 1, visibleSteps.length - 1));
   }
 
   function goBack() {
     setStep((s) => Math.max(s - 1, 0));
   }
 
-  const deployParams = {
+  const serviceParams = {
     manifestSlug: manifest.slug,
+    variables,
+    selectedServices,
+    ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord } } : {}),
+  };
+  const projectInfo = {
+    serverId,
     name: name.trim(),
     description: description.trim() || undefined,
     environment,
     tags,
-    variables,
-    selectedServices,
-    ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord } } : {}),
   };
 
   return (
@@ -159,7 +190,7 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
             <AppIcon icon={manifest.icon} name={manifest.name} size="sm" />
             <div>
               <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Implantar {manifest.name}</h2>
-              <p className="text-xs text-slate-400">Etapa {step + 1} de {STEPS.length} — {STEPS[step]}</p>
+              <p className="text-xs text-slate-400">Etapa {step + 1} de {visibleSteps.length} — {visibleSteps[step]?.label}</p>
             </div>
           </div>
           <button onClick={onClose} disabled={deploying && !result} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
@@ -184,8 +215,8 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
           onPointerCancel={() => { dragRef.current = null; }}
           className="no-scrollbar flex cursor-grab select-none items-center gap-1 overflow-x-auto border-b border-slate-200 px-5 py-2.5 active:cursor-grabbing dark:border-slate-700"
         >
-          {STEPS.map((label, i) => (
-            <div key={label} className="flex items-center gap-1">
+          {visibleSteps.map(({ key, label }, i) => (
+            <div key={key} className="flex items-center gap-1">
               <span
                 className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
                   i < step
@@ -198,13 +229,13 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
                 {i < step ? <IconCheck className="h-3 w-3" /> : i + 1}
               </span>
               <span className={`whitespace-nowrap text-xs ${i === step ? 'font-medium text-slate-800 dark:text-slate-100' : 'text-slate-400'}`}>{label}</span>
-              {i < STEPS.length - 1 && <span className="mx-1.5 h-px w-4 bg-slate-200 dark:bg-slate-700" />}
+              {i < visibleSteps.length - 1 && <span className="mx-1.5 h-px w-4 bg-slate-200 dark:bg-slate-700" />}
             </div>
           ))}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {step === 0 && (
+          {currentKey === 'info' && (
             <InformationsStep
               manifest={manifest}
               name={name}
@@ -217,8 +248,8 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               setTagsInput={setTagsInput}
             />
           )}
-          {step === 1 && <ServerStep servers={servers} serverId={serverId} setServerId={setServerId} />}
-          {step === 2 && (
+          {currentKey === 'server' && <ServerStep servers={servers} serverId={serverId} setServerId={setServerId} />}
+          {currentKey === 'components' && (
             <ComponentsStep
               manifest={manifest}
               selectedServices={selectedServices}
@@ -226,9 +257,11 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               includedServiceNames={includedServiceNames}
             />
           )}
-          {step === 3 && <VariablesStep allVariables={allVariables} variables={variables} setVariables={setVariables} secretKeys={manifest.secretKeys} />}
-          {step === 4 && <StorageStep volumes={allVolumes} />}
-          {step === 5 && (
+          {currentKey === 'variables' && (
+            <VariablesStep allVariables={allVariables} variables={variables} setVariables={setVariables} secretKeys={manifest.secretKeys} />
+          )}
+          {currentKey === 'storage' && <StorageStep volumes={allVolumes} />}
+          {currentKey === 'domain' && (
             <DomainStep
               manifest={manifest}
               wantsDomain={wantsDomain}
@@ -242,9 +275,10 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               onTraefikInstalled={reloadServers}
             />
           )}
-          {step === 6 && (
+          {currentKey === 'review' && (
             <ReviewStep
               manifest={manifest}
+              applicationId={applicationId}
               name={name}
               description={description}
               environment={environment}
@@ -258,12 +292,19 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               hostname={hostname}
             />
           )}
-          {step === 7 && selectedServer && (
-            <DeployStep serverId={selectedServer.id} params={deployParams} onResult={setResult} appName={name.trim() || manifest.name} />
+          {currentKey === 'deploy' && serverId && (
+            <DeployStep
+              applicationId={applicationId}
+              serverId={serverId}
+              serviceParams={serviceParams}
+              projectInfo={projectInfo}
+              onResult={setResult}
+              appName={name.trim() || manifest.name}
+            />
           )}
         </div>
 
-        {step < 7 && (
+        {currentKey !== 'deploy' && (
           <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3.5 dark:border-slate-700">
             <button
               onClick={goBack}
@@ -273,18 +314,18 @@ export function DeployWizard({ manifest, preselectedServerId, onClose }: Props) 
               Voltar
             </button>
             <button onClick={goNext} disabled={!stepValid[step]} className="btn-primary px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
-              {step === 6 ? 'Implantar' : 'Próximo'}
+              {currentKey === 'review' ? 'Implantar' : 'Próximo'}
             </button>
           </div>
         )}
 
-        {step === 7 && result && (
+        {currentKey === 'deploy' && result && (
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3.5 dark:border-slate-700">
             <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
               Fechar
             </button>
-            {result.ok && selectedServer && (
-              <button onClick={() => router.push(`/servers/${selectedServer.id}?tab=applications`)} className="btn-primary px-4 py-2 text-sm">
+            {result.ok && result.applicationId && (
+              <button onClick={() => router.push(`/projects/${result.applicationId}`)} className="btn-primary px-4 py-2 text-sm">
                 Ver projeto
               </button>
             )}
@@ -751,6 +792,7 @@ function DomainStep({
 
 function ReviewStep({
   manifest,
+  applicationId,
   name,
   description,
   environment,
@@ -764,6 +806,7 @@ function ReviewStep({
   hostname,
 }: {
   manifest: CatalogApplicationDetail;
+  applicationId?: string;
   name: string;
   description: string;
   environment: string;
@@ -779,12 +822,16 @@ function ReviewStep({
   const envLabel = ENVIRONMENTS.find((e) => e.value === environment)?.label ?? environment;
   return (
     <div className="mx-auto max-w-2xl space-y-4 text-sm">
-      <Section title="Aplicação">
+      <Section title="Serviço">
         <Row label="Template" value={`${manifest.name} v${manifest.version}`} />
-        <Row label="Nome do projeto" value={name} />
-        {description && <Row label="Descrição" value={description} />}
-        <Row label="Ambiente" value={envLabel} />
-        {tags.length > 0 && <Row label="Tags" value={tags.join(', ')} />}
+        {!applicationId && (
+          <>
+            <Row label="Nome do projeto" value={name} />
+            {description && <Row label="Descrição" value={description} />}
+            <Row label="Ambiente" value={envLabel} />
+            {tags.length > 0 && <Row label="Tags" value={tags.join(', ')} />}
+          </>
+        )}
       </Section>
 
       <Section title="Servidor">
@@ -875,31 +922,63 @@ const CATALOG_STAGES: ProgressStage[] = [
   { label: 'Verificando', match: /Aguardando|Associando dom/i },
 ];
 
+interface DeployResult {
+  ok: boolean;
+  applicationId?: string;
+  deploymentId?: string;
+  domain?: { hostname: string } | null;
+}
+
 function DeployStep({
+  applicationId,
   serverId,
-  params,
+  serviceParams,
+  projectInfo,
   onResult,
   appName,
 }: {
+  applicationId?: string;
   serverId: string;
-  params: Record<string, unknown>;
-  onResult: (r: { ok: boolean; applicationId?: string; domain?: { hostname: string } | null }) => void;
+  serviceParams: Record<string, unknown>;
+  projectInfo: { serverId: string; name: string; description?: string; environment: string; tags: string[] };
+  onResult: (r: DeployResult) => void;
   appName: string;
 }) {
+  // Sem `applicationId`: veio direto da Biblioteca, sem projeto — cria um
+  // projeto novo com os dados da etapa "Informações" antes de implantar o
+  // serviço nele. Rápido (sem SSH), por isso fica fora do log de implantação.
+  const [resolvedAppId, setResolvedAppId] = useState<string | null>(applicationId ?? null);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (applicationId || resolvedAppId) return;
+    apiFetch<{ id: string }>('/applications', { method: 'POST', body: JSON.stringify(projectInfo) })
+      .then((app) => setResolvedAppId(app.id))
+      .catch((e) => setCreateError(e instanceof Error ? e.message : 'Falha ao criar o projeto'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [status, setStatus] = useState<OpsLogStatus>('connecting');
-  const [done, setDone] = useState<{ ok: boolean; applicationId?: string; domain?: { hostname: string } | null } | null>(null);
+  const [done, setDone] = useState<DeployResult | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [lastLine, setLastLine] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
 
   // Segredos gerados no deploy (senha de admin, root do banco) só existem
-  // depois que a aplicação foi criada — buscar antes devolveria vazio.
+  // depois que o serviço foi criado — buscar antes devolveria vazio.
   useEffect(() => {
-    if (!done?.ok || !done.applicationId) return;
-    apiFetch<Record<string, string>>(`/applications/${done.applicationId}/credentials`)
+    if (!done?.ok || !done.applicationId || !done.deploymentId) return;
+    apiFetch<Record<string, string>>(`/applications/${done.applicationId}/deployments/${done.deploymentId}/credentials`)
       .then((c) => setCredentials(Object.keys(c).length ? c : null))
       .catch(() => {});
   }, [done]);
+
+  if (createError) {
+    return <Alert variant="error">{createError}</Alert>;
+  }
+  if (!resolvedAppId) {
+    return <p className="text-sm text-slate-400">Criando o projeto...</p>;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -951,14 +1030,15 @@ function DeployStep({
         >
           <OpsLogPanel
             serverId={serverId}
-            op="app-deploy"
-            params={params}
+            op="service-deploy"
+            params={{ applicationId: resolvedAppId, ...serviceParams }}
             onStatusChange={setStatus}
             onLine={setLastLine}
             onDone={(ok, res) => {
-              const r = {
+              const r: DeployResult = {
                 ok,
-                applicationId: (res as { applicationId?: string })?.applicationId,
+                applicationId: (res as { applicationId?: string })?.applicationId ?? resolvedAppId,
+                deploymentId: (res as { deploymentId?: string })?.deploymentId,
                 domain: (res as { domain?: { hostname: string } | null })?.domain,
               };
               setDone(r);
@@ -1019,7 +1099,7 @@ function CredentialsBox({ credentials }: { credentials: Record<string, string> }
       </div>
 
       <p className="mt-2 text-[11px] text-amber-700/80 dark:text-amber-400/70">
-        Ficam disponíveis também na aba Aplicações do servidor, em Credenciais.
+        Ficam disponíveis também na aba Ambiente do serviço, dentro do projeto.
       </p>
     </div>
   );

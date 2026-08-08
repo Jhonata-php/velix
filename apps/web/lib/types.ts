@@ -96,6 +96,8 @@ export interface CatalogManifestService {
 
 export interface ProjectService {
   id: string;
+  applicationId: string;
+  deploymentId: string;
   name: string;
   image: string;
   containerName: string;
@@ -103,6 +105,62 @@ export interface ProjectService {
   status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR';
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectDeployment {
+  id: string;
+  applicationId: string;
+  sourceType: string;
+  manifestSlug: string | null;
+  manifestVersion: string | null;
+  selectedServices: string[];
+  repoUrl: string | null;
+  gitRef: string | null;
+  buildMethod: string | null;
+  dockerfilePath: string | null;
+  gitAccountId: string | null;
+  autoDeploy: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDomain {
+  id: string;
+  hostname: string;
+  status: string;
+  serviceName: string | null;
+}
+
+export interface EndpointPort {
+  port: number;
+  protocol: string;
+  recommended: boolean;
+  source: 'template' | 'container';
+}
+
+export interface EndpointServiceInfo {
+  serviceName: string;
+  containerName: string;
+  image: string;
+  running: boolean;
+  ports: EndpointPort[];
+}
+
+export interface ProjectDetail {
+  id: string;
+  serverId: string;
+  server: { id: string; name: string; isLocal: boolean };
+  name: string;
+  slug: string;
+  description: string | null;
+  environment: 'PRODUCTION' | 'STAGING' | 'DEVELOPMENT' | 'LAB';
+  tags: string[];
+  status: 'EMPTY' | 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
+  lastError: string | null;
+  deployedAt: string;
+  domains: ProjectDomain[];
+  deployments: ProjectDeployment[];
+  services: ProjectService[];
 }
 
 export interface CatalogSecurityFinding {

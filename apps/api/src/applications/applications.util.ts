@@ -21,6 +21,19 @@ export function appDir(slug: string): string {
   return `${APPS_ROOT}/${slug}`;
 }
 
+/** Nome de serviço único dentro de um projeto (ex.: derivado do nome do
+ * repositório Git) — dois repositórios implantados no mesmo projeto não podem
+ * virar os dois "app". Mesmo padrão de desambiguação de `uniqueSlug`. */
+export function uniqueServiceName(base: string, existingNames: string[]): string {
+  const clean = slugify(base);
+  if (!existingNames.includes(clean)) return clean;
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${clean}-${i}`;
+    if (!existingNames.includes(candidate)) return candidate;
+  }
+  return `${clean}-${Date.now()}`;
+}
+
 /** Todos os containers esperados aparecem "Up" na saída de
  * `docker ps --format '{{.Names}}|{{.Status}}'`? */
 export function allContainersUp(psOutput: string, expectedNames: string[]): boolean {
@@ -70,4 +83,59 @@ export function parseExposedPorts(dockerInspectOutput: string): { port: number; 
 export function isValidContainerRef(value: string): boolean {
   if (!value || value.length > 128) return false;
   return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
+}
+
+interface ComposeFragment {
+  servicesPart: string;
+  volumeLines: string[];
+}
+
+/** `renderCompose`/`renderGitCompose` sempre produzem o mesmo formato
+ * determinístico (`services:\n<blocos>\n\n[volumes:\n<linhas>\n\n]networks:\n
+ * velix-proxy:\n external: true\n`) — extrai as partes sem precisar de um
+ * parser de YAML de verdade. */
+// Só remove linhas em branco nas pontas — nunca espaços, porque a indentação
+// da primeira linha (`  nome-do-serviço:`) faz parte do YAML.
+function trimBlankLines(text: string): string {
+  return text.replace(/^\n+/, '').replace(/\s+$/, '');
+}
+
+function parseComposeFragment(compose: string): ComposeFragment {
+  const body = compose.replace(/^services:\n/, '');
+  const volumesIdx = body.indexOf('\nvolumes:\n');
+  if (volumesIdx === -1) {
+    const networksIdx = body.indexOf('\nnetworks:\n');
+    const servicesPart = trimBlankLines(networksIdx === -1 ? body : body.slice(0, networksIdx));
+    return { servicesPart, volumeLines: [] };
+  }
+  const servicesPart = trimBlankLines(body.slice(0, volumesIdx));
+  const afterVolumes = body.slice(volumesIdx + '\nvolumes:\n'.length);
+  const volumesEndIdx = afterVolumes.indexOf('\nnetworks:\n');
+  const volumesBody = volumesEndIdx === -1 ? afterVolumes : afterVolumes.slice(0, volumesEndIdx);
+  const volumeLines = volumesBody
+    .split('\n')
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim().length > 0);
+  return { servicesPart, volumeLines };
+}
+
+/**
+ * Um projeto pode reunir serviços de implantações diferentes (manifestos do
+ * catálogo distintos, ou catálogo + Git) — mas o servidor só entende UM
+ * `docker-compose.yml` por projeto (`docker compose -p <slug> up -d`). Junta
+ * os composes já renderizados de cada implantação num compose só: um
+ * `services:` com os blocos de todas, um `volumes:` deduplicado (dois
+ * manifestos usando por acaso o mesmo nome de volume geram uma linha só,
+ * igual ao comportamento já existente dentro de um manifesto), e um único
+ * `networks: velix-proxy: external: true` no fim.
+ */
+export function mergeComposeFragments(composes: string[]): string {
+  const fragments = composes.filter((c) => c.trim().length > 0).map(parseComposeFragment);
+  if (fragments.length === 0) return '';
+
+  const servicesBlock = fragments.map((f) => f.servicesPart).join('\n\n');
+  const volumeNames = Array.from(new Set(fragments.flatMap((f) => f.volumeLines)));
+  const volumesBlock = volumeNames.length > 0 ? `\nvolumes:\n${volumeNames.join('\n')}\n` : '';
+
+  return `services:\n${servicesBlock}\n${volumesBlock}\nnetworks:\n  velix-proxy:\n    external: true\n`;
 }

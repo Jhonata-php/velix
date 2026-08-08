@@ -6,7 +6,7 @@ import { ServersService } from '../servers/servers.service';
 import { DatabaseService } from '../database/database.service';
 import { TraefikService } from '../traefik/traefik.service';
 import { ApplicationsService } from '../applications/applications.service';
-import { DeployApplicationDto } from '../applications/dto/deploy-application.dto';
+import { DeployServiceDto } from '../applications/dto/deploy-service.dto';
 import { GitDeployService, DeployFromGitInput } from '../applications/git-deploy.service';
 
 type StartMessage =
@@ -17,11 +17,11 @@ type StartMessage =
   | { type: 'start'; op: 'traefik-install'; params?: { acmeEmail?: string } }
   | { type: 'start'; op: 'traefik-uninstall' }
   | { type: 'start'; op: 'server-prepare'; params?: { acmeEmail?: string } }
-  | { type: 'start'; op: 'app-deploy'; params: DeployApplicationDto }
-  | { type: 'start'; op: 'git-deploy'; params: DeployFromGitInput }
-  | { type: 'start'; op: 'git-redeploy'; params: { applicationId: string } }
+  | { type: 'start'; op: 'service-deploy'; params: { applicationId: string } & DeployServiceDto }
+  | { type: 'start'; op: 'service-deploy-git'; params: { applicationId: string } & DeployFromGitInput }
+  | { type: 'start'; op: 'service-redeploy-git'; params: { deploymentId: string } }
   | { type: 'start'; op: 'container-logs'; params: { containerId: string } }
-  | { type: 'start'; op: 'service-add'; params: { applicationId: string; serviceName: string } }
+  | { type: 'start'; op: 'service-add'; params: { deploymentId: string; serviceName: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
       type: 'start';
@@ -173,17 +173,19 @@ async function handleConnection(
         result = await deps.traefik.uninstallTraefik(serverId, onLog);
       } else if (msg.op === 'server-prepare') {
         result = await deps.traefik.prepareServer(serverId, msg.params ?? {}, onLog);
-      } else if (msg.op === 'app-deploy') {
-        result = await deps.applications.deploy(serverId, msg.params, onLog);
-      } else if (msg.op === 'git-deploy') {
-        result = await deps.gitDeploy.deploy(serverId, msg.params, onLog);
-      } else if (msg.op === 'git-redeploy') {
-        result = await deps.gitDeploy.redeploy(msg.params.applicationId, onLog);
+      } else if (msg.op === 'service-deploy') {
+        const { applicationId, ...dto } = msg.params;
+        result = await deps.applications.deployManifestIntoProject(applicationId, dto, onLog);
+      } else if (msg.op === 'service-deploy-git') {
+        const { applicationId, ...dto } = msg.params;
+        result = await deps.gitDeploy.deploy(applicationId, dto, onLog);
+      } else if (msg.op === 'service-redeploy-git') {
+        result = await deps.gitDeploy.redeploy(msg.params.deploymentId, onLog);
       } else if (msg.op === 'container-logs') {
         // Fica aberto até o usuário fechar a aba — não tem "concluído".
         result = await deps.servers.streamContainerLogs(serverId, msg.params.containerId, onLog, ws);
       } else if (msg.op === 'service-add') {
-        result = await deps.applications.addService(msg.params.applicationId, msg.params.serviceName, onLog);
+        result = await deps.applications.addService(msg.params.deploymentId, msg.params.serviceName, onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
       } else if (msg.op === 'mysql-install') {

@@ -6,9 +6,9 @@ import { GitDeployService } from './git-deploy.service';
  * Recebe o aviso de push da forja e reimplanta.
  *
  * Sem JwtAuthGuard de propósito: quem chama é o GitHub, não um usuário logado.
- * A autenticação é o segredo no caminho da URL — único por aplicação, gerado
- * com aleatoriedade criptográfica, e nunca reaproveitado entre aplicações, pra
- * que vazar a URL de uma não permita disparar as outras.
+ * A autenticação é o segredo no caminho da URL — único por implantação, gerado
+ * com aleatoriedade criptográfica, e nunca reaproveitado entre implantações,
+ * pra que vazar a URL de uma não permita disparar as outras.
  *
  * A resposta é sempre 202 e imediata: a forja tem timeout curto (10s no
  * GitHub) e a implantação leva minutos. Segurá-la até o fim faria o GitHub
@@ -35,8 +35,8 @@ export class WebhooksController {
 
     if (!secret || secret.length < 16) return generic;
 
-    const app = await this.prisma.application.findUnique({ where: { webhookSecret: secret } });
-    if (!app || !app.autoDeploy || app.sourceType !== 'git') return generic;
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { webhookSecret: secret } });
+    if (!deployment || !deployment.autoDeploy || deployment.sourceType !== 'git') return generic;
 
     // ping é o teste que o GitHub manda ao criar o webhook — confirmar sem
     // reimplantar deixa o usuário validar a configuração sem efeito colateral.
@@ -44,13 +44,13 @@ export class WebhooksController {
 
     // Push em outra branch não interessa: acompanhar "main" e reconstruir a
     // cada push em qualquer branch geraria implantação a cada trabalho em curso.
-    if (payload?.ref && app.gitRef) {
+    if (payload?.ref && deployment.gitRef) {
       const pushedBranch = payload.ref.replace(/^refs\/heads\//, '');
-      if (pushedBranch !== app.gitRef) return generic;
+      if (pushedBranch !== deployment.gitRef) return generic;
     }
 
     // Dispara e devolve na hora — ver o comentário da classe.
-    void this.gitDeploy.redeploy(app.id).catch(() => {});
+    void this.gitDeploy.redeploy(deployment.id).catch(() => {});
     return generic;
   }
 }

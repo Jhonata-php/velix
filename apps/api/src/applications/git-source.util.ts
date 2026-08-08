@@ -89,6 +89,10 @@ export function redactToken(line: string, token?: string): string {
 
 export interface RenderGitComposeOptions {
   slug: string;
+  /** Nome do serviço dentro do compose — igual ao `name` de um serviço do
+   * catálogo. Precisa ser único dentro do projeto: dois repositórios
+   * implantados no mesmo projeto não podem virar os dois "app". */
+  serviceName: string;
   image: string;
   port: number;
   env: Record<string, string>;
@@ -103,10 +107,10 @@ export interface RenderGitComposeOptions {
  * manifesto — aqui não há manifesto nenhum.
  */
 export function renderGitCompose(opts: RenderGitComposeOptions): string {
-  const container = `${opts.slug}_app`;
+  const container = `${opts.slug}_${opts.serviceName}`;
   const lines = [
     'services:',
-    '  app:',
+    `  ${opts.serviceName}:`,
     `    image: ${opts.image}`,
     `    container_name: ${container}`,
     '    restart: unless-stopped',

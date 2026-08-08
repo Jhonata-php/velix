@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import type { ServerSummary } from '@/lib/types';
 import { Alert } from './Alert';
@@ -9,7 +9,15 @@ import { OpsLogPanel } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
 import { IconX, IconGithub, IconServer, IconCheck } from './icons';
 
-const STEPS = ['Repositório', 'Build', 'Servidor', 'Configuração', 'Implantação'] as const;
+type StepKey = 'repo' | 'build' | 'server' | 'config' | 'deploy';
+
+const ALL_STEPS: { key: StepKey; label: string }[] = [
+  { key: 'repo', label: 'Repositório' },
+  { key: 'build', label: 'Build' },
+  { key: 'server', label: 'Servidor' },
+  { key: 'config', label: 'Configuração' },
+  { key: 'deploy', label: 'Implantação' },
+];
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
 const ALLOWED_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org'];
@@ -54,6 +62,11 @@ interface GitAccount {
 }
 
 interface Props {
+  /** Quando informado, o serviço entra NESTE projeto já existente — pula a
+   * etapa "Servidor" (já é o do projeto, fixo). Sem isso, cria um projeto
+   * novo automaticamente com o nome digitado na etapa "Configuração". */
+  applicationId?: string;
+  projectServerId?: string;
   onClose: () => void;
   onDeployed: () => void;
 }
@@ -65,8 +78,10 @@ interface Props {
  * servidor; ele nunca volta em nenhuma resposta da API, então não há como
  * exibi-lo de volta aqui — por isso o campo fica vazio ao reeditar.
  */
-export function GitDeployWizard({ onClose, onDeployed }: Props) {
+export function GitDeployWizard({ applicationId, projectServerId, onClose, onDeployed }: Props) {
+  const visibleSteps = useMemo(() => (applicationId ? ALL_STEPS.filter((s) => s.key !== 'server') : ALL_STEPS), [applicationId]);
   const [step, setStep] = useState(0);
+  const currentKey = visibleSteps[step]?.key;
 
   const [repoUrl, setRepoUrl] = useState('');
   const [gitRef, setGitRef] = useState('main');
@@ -80,7 +95,7 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
   const [dockerfilePath, setDockerfilePath] = useState('Dockerfile');
 
   const [servers, setServers] = useState<ServerSummary[] | null>(null);
-  const [serverId, setServerId] = useState('');
+  const [serverId, setServerId] = useState(projectServerId ?? '');
 
   const [name, setName] = useState('');
   const [port, setPort] = useState(3000);
@@ -91,6 +106,8 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
   const [showLog, setShowLog] = useState(false);
   const [lastLine, setLastLine] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [resolvedAppId, setResolvedAppId] = useState<string | null>(applicationId ?? null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<GitAccount[]>('/git-accounts')
@@ -101,10 +118,12 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
       .catch(() => {});
     apiFetch<ServerSummary[]>('/servers').then((list) => {
       setServers(list);
-      const recommended = list.find((s) => s.dockerInstalled);
-      if (recommended) setServerId(recommended.id);
+      if (!projectServerId) {
+        const recommended = list.find((s) => s.dockerInstalled);
+        if (recommended) setServerId(recommended.id);
+      }
     });
-  }, []);
+  }, [projectServerId]);
 
   // Nome sugerido a partir do repositório, mas só enquanto o usuário não digitou
   // o dele — sobrescrever o que ele escreveu seria pior que não sugerir nada.
@@ -127,16 +146,16 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
       .filter(([k]) => k),
   );
 
-  const stepValid = [
-    repoUrlValid(repoUrl) && gitRef.trim().length > 0 && (!isPrivate || !!gitAccountId || token.trim().length > 0),
-    buildMethod === 'nixpacks' || dockerfilePath.trim().length > 0,
-    !!selectedServer?.dockerInstalled,
-    name.trim().length >= 2 && port > 0 && port <= 65535 && (!wantsDomain || HOSTNAME_PATTERN.test(hostname.trim())),
-    true,
-  ];
+  const validByKey: Record<StepKey, boolean> = {
+    repo: repoUrlValid(repoUrl) && gitRef.trim().length > 0 && (!isPrivate || !!gitAccountId || token.trim().length > 0),
+    build: buildMethod === 'nixpacks' || dockerfilePath.trim().length > 0,
+    server: !!selectedServer?.dockerInstalled,
+    config: name.trim().length >= 2 && port > 0 && port <= 65535 && (!wantsDomain || HOSTNAME_PATTERN.test(hostname.trim())),
+    deploy: true,
+  };
+  const stepValid = visibleSteps.map((s) => validByKey[s.key]);
 
   const params = {
-    name: name.trim(),
     repoUrl: repoUrl.trim(),
     gitRef: gitRef.trim(),
     buildMethod,
@@ -149,7 +168,20 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
     ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord: true } } : {}),
   };
 
-  const running = step === 4 && !result;
+  // Sem `applicationId`: cria o projeto (nome desta etapa) antes de implantar
+  // o serviço nele — mesmo padrão do DeployWizard do catálogo.
+  useEffect(() => {
+    if (applicationId || resolvedAppId || currentKey !== 'deploy') return;
+    apiFetch<{ id: string }>('/applications', {
+      method: 'POST',
+      body: JSON.stringify({ serverId, name: name.trim() }),
+    })
+      .then((app) => setResolvedAppId(app.id))
+      .catch((e) => setCreateError(e instanceof Error ? e.message : 'Falha ao criar o projeto'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentKey]);
+
+  const running = currentKey === 'deploy' && !result;
 
   return (
     <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-md">
@@ -162,7 +194,7 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
             <div>
               <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Implantar do repositório</h2>
               <p className="text-xs text-slate-400">
-                Etapa {step + 1} de {STEPS.length} — {STEPS[step]}
+                Etapa {step + 1} de {visibleSteps.length} — {visibleSteps[step]?.label}
               </p>
             </div>
           </div>
@@ -174,7 +206,7 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {step === 0 && (
+          {currentKey === 'repo' && (
             <div className="mx-auto max-w-xl space-y-4">
               <Field label="URL do repositório">
                 <input
@@ -238,7 +270,7 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
             </div>
           )}
 
-          {step === 1 && (
+          {currentKey === 'build' && (
             <div className="mx-auto max-w-xl space-y-3">
               <BuildOption
                 selected={buildMethod === 'dockerfile'}
@@ -262,7 +294,7 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
             </div>
           )}
 
-          {step === 2 && (
+          {currentKey === 'server' && (
             <div className="mx-auto max-w-xl space-y-2">
               {(servers ?? []).map((s) => (
                 <button
@@ -289,9 +321,9 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
             </div>
           )}
 
-          {step === 3 && (
+          {currentKey === 'config' && (
             <div className="mx-auto max-w-xl space-y-4">
-              <Field label="Nome da aplicação">
+              <Field label={applicationId ? 'Nome do serviço' : 'Nome do projeto'}>
                 <input
                   value={name}
                   onChange={(e) => {
@@ -336,7 +368,9 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
             </div>
           )}
 
-          {step === 4 && serverId && (
+          {currentKey === 'deploy' && createError && <Alert variant="error">{createError}</Alert>}
+          {currentKey === 'deploy' && !createError && !resolvedAppId && <p className="text-sm text-slate-400">Criando o projeto...</p>}
+          {currentKey === 'deploy' && serverId && resolvedAppId && (
             <>
               <DeployProgress
                 stages={GIT_STAGES}
@@ -368,8 +402,8 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
                 <TerminalWindow title="Implantação" bodyClassName="flex h-[36vh] p-3">
                   <OpsLogPanel
                     serverId={serverId}
-                    op="git-deploy"
-                    params={params}
+                    op="service-deploy-git"
+                    params={{ applicationId: resolvedAppId, ...params }}
                     onLine={setLastLine}
                     onDone={(ok, res) => setResult({ ok, error: (res as { error?: string })?.error })}
                   />
@@ -382,15 +416,15 @@ export function GitDeployWizard({ onClose, onDeployed }: Props) {
         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3.5 dark:border-slate-700">
           <button
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0 || step === 4}
+            disabled={step === 0 || currentKey === 'deploy'}
             className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-slate-800"
           >
             Voltar
           </button>
 
-          {step < 4 ? (
+          {currentKey !== 'deploy' ? (
             <button onClick={() => setStep((s) => s + 1)} disabled={!stepValid[step]} className="btn-primary px-5 py-2 text-sm disabled:opacity-50">
-              {step === 3 ? 'Implantar' : 'Próximo'}
+              {visibleSteps[step + 1]?.key === 'deploy' ? 'Implantar' : 'Próximo'}
             </button>
           ) : (
             result && (

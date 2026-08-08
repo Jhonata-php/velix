@@ -17,7 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
   settings: 'Configurações',
   databases: 'Banco de dados',
   library: 'Loja de Aplicativos',
-  applications: 'Aplicações',
+  projects: 'Projetos',
   updates: 'Atualizações',
 };
 

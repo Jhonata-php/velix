@@ -7,7 +7,7 @@ import { GitAccountsService } from '../git-accounts/git-accounts.service';
 import { randomBytes } from 'crypto';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
 import { PROXY_NETWORK } from '../traefik/traefik.util';
-import { appDir, allContainersUp, slugify } from './applications.util';
+import { appDir, allContainersUp, uniqueServiceName, mergeComposeFragments } from './applications.util';
 import {
   validateRepoUrl,
   validateGitRef,
@@ -23,10 +23,6 @@ type LogFn = (line: string) => void;
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
 
 export interface DeployFromGitInput {
-  name: string;
-  description?: string;
-  environment?: 'PRODUCTION' | 'STAGING' | 'DEVELOPMENT' | 'LAB';
-  tags?: string[];
   repoUrl: string;
   gitRef?: string;
   buildMethod: BuildMethod;
@@ -42,11 +38,13 @@ export interface DeployFromGitInput {
 }
 
 /**
- * Implantação a partir do código do usuário, em vez de um manifesto curado.
+ * Implantação a partir do código do usuário, em vez de um manifesto curado,
+ * dentro de um projeto já existente.
  *
  * A diferença mora só no começo: em vez de puxar uma imagem de registro, o
  * servidor clona o repositório e constrói a imagem ali mesmo. Do compose em
- * diante o caminho é o mesmo do catálogo — inclusive Traefik e domínio.
+ * diante o caminho é o mesmo do catálogo — inclusive Traefik, domínio e o
+ * merge com as outras implantações do projeto (`mergeComposeFragments`).
  *
  * Construir código arbitrário é uma superfície diferente da do catálogo: um
  * Dockerfile roda o que quiser durante o build, com o Docker do servidor de
@@ -65,14 +63,17 @@ export class GitDeployService {
     private readonly gitAccounts: GitAccountsService,
   ) {}
 
-  private async uniqueSlug(name: string) {
-    const base = slugify(name);
-    for (let i = 0; i < 6; i++) {
-      const candidate = i === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
-      const exists = await this.prisma.application.findUnique({ where: { slug: candidate } });
-      if (!exists) return candidate;
-    }
-    throw new BadRequestException('Não foi possível gerar um identificador único — tente outro nome.');
+  private async getApplication(applicationId: string) {
+    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
+    if (!app) throw new NotFoundException('Projeto não encontrado');
+    return app;
+  }
+
+  private async mergedComposeExcluding(applicationId: string, excludeDeploymentId?: string) {
+    const deployments = await this.prisma.projectDeployment.findMany({
+      where: { applicationId, ...(excludeDeploymentId ? { id: { not: excludeDeploymentId } } : {}) },
+    });
+    return mergeComposeFragments(deployments.map((d) => d.composeRendered));
   }
 
   private async waitForContainer(options: SshConnectOptions, name: string, onLog?: LogFn, attempts = 20, delayMs = 3000) {
@@ -102,13 +103,11 @@ export class GitDeployService {
     if (!install.ok) throw new Error('Falha ao instalar o Nixpacks no servidor');
   }
 
-  async deploy(serverId: string, dto: DeployFromGitInput, onLog?: LogFn) {
-    const { server, options } = await this.servers.getServerWithConnectOptions(serverId);
+  async deploy(applicationId: string, dto: DeployFromGitInput, onLog?: LogFn) {
+    const app = await this.getApplication(applicationId);
+    const { server, options } = await this.servers.getServerWithConnectOptions(app.serverId);
     if (!server.dockerInstalled) {
-      throw new BadRequestException('Instale o Docker neste servidor antes de implantar aplicações');
-    }
-    if (!dto.name?.trim() || dto.name.trim().length < 2) {
-      throw new BadRequestException('Informe um nome válido para a aplicação');
+      throw new BadRequestException('Instale o Docker neste servidor antes de implantar serviços');
     }
 
     const repo = validateRepoUrl(dto.repoUrl ?? '');
@@ -127,7 +126,7 @@ export class GitDeployService {
 
     const port = Number(dto.port);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new BadRequestException('Informe a porta que a aplicação escuta dentro do container');
+      throw new BadRequestException('Informe a porta que o serviço escuta dentro do container');
     }
 
     if (dto.domain) {
@@ -143,28 +142,28 @@ export class GitDeployService {
     // é ela que ele espera que seja usada.
     const token = dto.gitAccountId ? await this.gitAccounts.resolveToken(dto.gitAccountId) : dto.token;
 
-    const slug = await this.uniqueSlug(dto.name);
+    const slug = app.slug;
     const dir = appDir(slug);
     const repoDir = `${dir}/repo`;
-    const image = `velix/${slug}:latest`;
-    const container = `${slug}_app`;
+    const existingNames = (await this.prisma.projectService.findMany({ where: { applicationId }, select: { name: true } })).map(
+      (s) => s.name,
+    );
+    const repoBase = repo.url.replace(/\.git$/, '').split('/').filter(Boolean).pop() || 'app';
+    const serviceName = uniqueServiceName(repoBase, existingNames);
+    const image = `velix/${slug}-${serviceName}:latest`;
+    const container = `${slug}_${serviceName}`;
     const volumes = dto.volumes ?? [];
     const env = dto.env ?? {};
 
-    const compose = renderGitCompose({ slug, image, port, env, volumes, proxyNetwork: PROXY_NETWORK });
+    const deploymentCompose = renderGitCompose({ slug, serviceName, image, port, env, volumes, proxyNetwork: PROXY_NETWORK });
 
     // Toda linha de log passa por aqui: o token vai embutido na URL de clone e
     // o git costuma ecoá-la em mensagens de erro.
     const log: LogFn | undefined = onLog && ((line: string) => onLog(redactToken(line, token)));
 
-    const application = await this.prisma.application.create({
+    const deployment = await this.prisma.projectDeployment.create({
       data: {
-        serverId,
-        name: dto.name.trim(),
-        slug,
-        description: dto.description,
-        environment: dto.environment ?? 'PRODUCTION',
-        tags: dto.tags ?? [],
+        applicationId,
         sourceType: 'git',
         repoUrl: repo.url,
         gitRef,
@@ -177,17 +176,15 @@ export class GitDeployService {
         // ser impossível de adivinhar. Gerado sempre — ligar o autodeploy depois
         // não deve exigir reimplantar.
         webhookSecret: randomBytes(24).toString('base64url'),
-        // Um repositório não tem manifesto; o slug identifica a origem e a
-        // "versão" é o ref pedido. Mantém as telas existentes funcionando sem
-        // colunas nulas espalhadas.
-        manifestSlug: 'git',
-        manifestVersion: gitRef,
-        status: 'DEPLOYING',
-        composeRendered: compose,
-        containerNames: [container],
-        services: { create: [{ name: 'app', image, containerName: container, required: true, status: 'DEPLOYING' }] },
+        composeRendered: deploymentCompose,
+        services: {
+          create: [{ applicationId, name: serviceName, image, containerName: container, required: true, status: 'DEPLOYING' }],
+        },
       },
     });
+
+    const mergedCompose = await this.mergedComposeExcluding(applicationId);
+    await this.prisma.application.update({ where: { id: applicationId }, data: { status: 'DEPLOYING', composeRendered: mergedCompose } });
 
     try {
       log?.(`Preparando ${dir}...\n`);
@@ -236,7 +233,7 @@ export class GitDeployService {
       }
 
       log?.('Gravando docker-compose.yml...\n');
-      const write = await this.ssh.writeRemoteFile(options, `${dir}/docker-compose.yml`, compose, '644');
+      const write = await this.ssh.writeRemoteFile(options, `${dir}/docker-compose.yml`, mergedCompose, '644');
       if (!write.ok) throw new Error(write.message);
 
       log?.(`Garantindo rede ${PROXY_NETWORK}...\n`);
@@ -253,94 +250,98 @@ export class GitDeployService {
 
       log?.('Aguardando o container ficar de pé...\n');
       const running = await this.waitForContainer(options, container, log);
-      if (!running) throw new Error('O container não ficou de pé a tempo — confira o log da aplicação.');
+      if (!running) throw new Error('O container não ficou de pé a tempo — confira o log do serviço.');
 
       let domain = null;
       if (dto.domain) {
         log?.(`Associando domínio ${dto.domain.hostname}...\n`);
         // createApplicationDomain (e não createDomain): a rota aponta pro nome
-        // do container na rede do proxy, não pra uma porta solta no host — a
-        // aplicação não publica porta nenhuma, só se expõe na rede interna.
-        domain = await this.traefik.createApplicationDomain(serverId, application.id, {
+        // do container na rede do proxy, não pra uma porta solta no host — o
+        // serviço não publica porta nenhuma, só se expõe na rede interna.
+        domain = await this.traefik.createApplicationDomain(app.serverId, applicationId, {
           hostname: dto.domain.hostname,
-          serviceName: 'app',
+          serviceName,
           containerName: container,
           containerPort: port,
           createDnsRecord: dto.domain.createDnsRecord,
         });
       }
 
-      await this.prisma.application.update({ where: { id: application.id }, data: { status: 'RUNNING', lastError: null } });
-      await this.prisma.projectService.updateMany({ where: { applicationId: application.id }, data: { status: 'RUNNING' } });
+      await this.prisma.application.update({
+        where: { id: applicationId },
+        data: { status: 'RUNNING', containerNames: [...app.containerNames, container], lastError: null },
+      });
+      await this.prisma.projectService.updateMany({ where: { deploymentId: deployment.id }, data: { status: 'RUNNING' } });
 
-      log?.('Aplicação implantada com sucesso.\n');
-      return { ok: true, applicationId: application.id, domain };
+      log?.('Serviço implantado com sucesso.\n');
+      return { ok: true, applicationId, deploymentId: deployment.id, domain };
     } catch (err) {
       const message = redactToken(err instanceof Error ? err.message : 'Falha na implantação', token);
-      await this.prisma.application.update({
-        where: { id: application.id },
-        data: { status: 'ERROR', lastError: message.slice(0, 500) },
-      });
-      await this.prisma.projectService.updateMany({ where: { applicationId: application.id }, data: { status: 'ERROR' } });
-      return { ok: false, applicationId: application.id, error: message };
+      await this.prisma.application.update({ where: { id: applicationId }, data: { status: 'ERROR', lastError: message.slice(0, 500) } });
+      await this.prisma.projectService.updateMany({ where: { deploymentId: deployment.id }, data: { status: 'ERROR' } });
+      return { ok: false, applicationId, deploymentId: deployment.id, error: message };
     }
   }
 
   /** Estado do autodeploy + a URL que o usuário cola na forja. */
-  async getAutoDeploy(applicationId: string) {
-    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
-    if (!app) throw new NotFoundException('Aplicação não encontrada');
-    if (app.sourceType !== 'git') throw new BadRequestException('Esta aplicação não veio de um repositório');
+  async getAutoDeploy(deploymentId: string) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'git') throw new BadRequestException('Este serviço não veio de um repositório');
 
     // A base vem do WEB_ORIGIN porque é o endereço por onde a forja alcança o
     // painel — o container não sabe sozinho como é visto de fora.
     const base = (process.env.WEB_ORIGIN ?? '').replace(/\/$/, '');
     return {
-      enabled: app.autoDeploy,
-      gitRef: app.gitRef,
-      webhookUrl: app.webhookSecret ? `${base}/api/webhooks/git/${app.webhookSecret}` : null,
+      enabled: deployment.autoDeploy,
+      gitRef: deployment.gitRef,
+      webhookUrl: deployment.webhookSecret ? `${base}/api/webhooks/git/${deployment.webhookSecret}` : null,
     };
   }
 
-  async setAutoDeploy(applicationId: string, enabled: boolean) {
-    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
-    if (!app) throw new NotFoundException('Aplicação não encontrada');
-    if (app.sourceType !== 'git') throw new BadRequestException('Esta aplicação não veio de um repositório');
+  async setAutoDeploy(deploymentId: string, enabled: boolean) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'git') throw new BadRequestException('Este serviço não veio de um repositório');
 
-    // Aplicações criadas antes deste recurso não têm segredo — gerar aqui evita
-    // obrigar a reimplantar só pra ligar o autodeploy.
-    const webhookSecret = app.webhookSecret ?? randomBytes(24).toString('base64url');
-    await this.prisma.application.update({ where: { id: app.id }, data: { autoDeploy: enabled, webhookSecret } });
-    return this.getAutoDeploy(applicationId);
+    // Implantações criadas antes deste recurso não têm segredo — gerar aqui
+    // evita obrigar a reimplantar só pra ligar o autodeploy.
+    const webhookSecret = deployment.webhookSecret ?? randomBytes(24).toString('base64url');
+    await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { autoDeploy: enabled, webhookSecret } });
+    return this.getAutoDeploy(deploymentId);
   }
 
   /**
-   * Reconstrói a partir do mesmo repositório e ref. É o substituto do webhook,
-   * que ainda não existe: quem decide quando puxar código novo é o usuário.
+   * Reconstrói a partir do mesmo repositório e ref. É o substituto do webhook
+   * quando o usuário decide quando puxar código novo, e é também o que o
+   * webhook chama quando chega um push.
    */
-  async redeploy(applicationId: string, onLog?: LogFn) {
-    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
-    if (!app) throw new NotFoundException('Aplicação não encontrada');
-    if (app.sourceType !== 'git' || !app.repoUrl) {
-      throw new BadRequestException('Esta aplicação não veio de um repositório');
+  async redeploy(deploymentId: string, onLog?: LogFn) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'git' || !deployment.repoUrl) {
+      throw new BadRequestException('Este serviço não veio de um repositório');
     }
+    const app = await this.getApplication(deployment.applicationId);
+    const service = await this.prisma.projectService.findFirst({ where: { deploymentId } });
+    if (!service) throw new NotFoundException('Container deste serviço não encontrado');
 
     const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
     const dir = appDir(app.slug);
     const repoDir = `${dir}/repo`;
-    const image = `velix/${app.slug}:latest`;
-    const container = `${app.slug}_app`;
-    const token = app.gitAccountId
-      ? await this.gitAccounts.resolveToken(app.gitAccountId)
-      : app.repoTokenEnc
-        ? decryptCredential(app.repoTokenEnc)
+    const image = service.image;
+    const container = service.containerName;
+    const token = deployment.gitAccountId
+      ? await this.gitAccounts.resolveToken(deployment.gitAccountId)
+      : deployment.repoTokenEnc
+        ? decryptCredential(deployment.repoTokenEnc)
         : undefined;
     const log: LogFn | undefined = onLog && ((line: string) => onLog(redactToken(line, token)));
 
     await this.prisma.application.update({ where: { id: app.id }, data: { status: 'DEPLOYING' } });
 
     try {
-      const ref = app.gitRef ?? 'main';
+      const ref = deployment.gitRef ?? 'main';
       log?.(`Buscando a versão mais recente de ${ref}...\n`);
       // Reset em vez de pull: o diretório é uma cópia descartável do repositório,
       // não um espaço de trabalho — mesma lógica já usada no autoatualizador.
@@ -354,16 +355,16 @@ export class GitDeployService {
 
       log?.('Reconstruindo a imagem...\n');
       const buildCmd =
-        app.buildMethod === 'nixpacks'
+        deployment.buildMethod === 'nixpacks'
           ? `cd ${repoDir} && sudo nixpacks build . --name ${image}`
-          : `cd ${repoDir} && sudo docker build -f ${app.dockerfilePath ?? 'Dockerfile'} -t ${image} .`;
+          : `cd ${repoDir} && sudo docker build -f ${deployment.dockerfilePath ?? 'Dockerfile'} -t ${image} .`;
       const build = await this.ssh.runCommand(options, buildCmd, 1_800_000, log && ((chunk) => log(chunk)));
       if (!build.ok) throw new Error('Falha ao reconstruir a imagem.');
 
       log?.('Recriando o container...\n');
       const up = await this.ssh.runCommand(
         options,
-        `cd ${dir} && sudo docker compose -p ${app.slug} up -d --force-recreate`,
+        `cd ${dir} && sudo docker compose -p ${app.slug} up -d --force-recreate ${service.name}`,
         600_000,
         log && ((chunk) => log(chunk)),
       );
@@ -377,10 +378,7 @@ export class GitDeployService {
       return { ok: true, applicationId: app.id };
     } catch (err) {
       const message = redactToken(err instanceof Error ? err.message : 'Falha ao reimplantar', token);
-      await this.prisma.application.update({
-        where: { id: app.id },
-        data: { status: 'ERROR', lastError: message.slice(0, 500) },
-      });
+      await this.prisma.application.update({ where: { id: app.id }, data: { status: 'ERROR', lastError: message.slice(0, 500) } });
       return { ok: false, applicationId: app.id, error: message };
     }
   }

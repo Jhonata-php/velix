@@ -27,7 +27,7 @@ const GROUPS = [
     items: [
       { href: '/servers', label: 'Servidores', description: 'Cadastro e monitoramento', icon: IconServer },
       { href: '/library', label: 'Loja', description: 'Catálogo de aplicativos', icon: IconStore },
-      { href: '/applications', label: 'Aplicações', description: 'O que está implantado', icon: IconLayoutGrid },
+      { href: '/projects', label: 'Projetos', description: 'O que está implantado', icon: IconLayoutGrid },
     ],
   },
   {

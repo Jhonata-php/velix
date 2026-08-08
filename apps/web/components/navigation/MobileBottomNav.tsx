@@ -9,7 +9,7 @@ const ITEMS = [
   { href: '/dashboard', label: 'Início', icon: IconDashboard },
   { href: '/servers', label: 'Servidores', icon: IconServer },
   { href: '/library', label: 'Loja', icon: IconStore },
-  { href: '/applications', label: 'Apps', icon: IconLayoutGrid },
+  { href: '/projects', label: 'Projetos', icon: IconLayoutGrid },
   { href: '/updates', label: 'Atualizações', icon: IconDownload },
 ] as const;
 

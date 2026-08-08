@@ -66,9 +66,10 @@ export class GitAccountsService {
     const account = await this.prisma.gitAccount.findUnique({ where: { id } });
     if (!account) throw new NotFoundException('Conta não encontrada');
 
-    // Aplicações que usavam esta conta continuam existindo (onDelete: SetNull);
-    // elas só param de conseguir clonar de novo. Avisar é melhor que impedir.
-    const inUse = await this.prisma.application.count({ where: { gitAccountId: id } });
+    // Implantações que usavam esta conta continuam existindo (onDelete:
+    // SetNull); elas só param de conseguir clonar de novo. Avisar é melhor
+    // que impedir.
+    const inUse = await this.prisma.projectDeployment.count({ where: { gitAccountId: id } });
     await this.prisma.gitAccount.delete({ where: { id } });
     return { ok: true, applicationsAffected: inUse };
   }

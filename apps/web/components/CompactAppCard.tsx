@@ -38,7 +38,7 @@ export function CompactAppCard({ app, serverId, onOpenDetail, onInstall, install
     e.stopPropagation();
     if (installed) {
       if (installed.hostname) window.open(`https://${installed.hostname}`, '_blank', 'noreferrer');
-      else router.push(`/servers/${installed.serverId}?tab=applications`);
+      else router.push(`/projects/${installed.applicationId}`);
     } else if (onInstall) {
       onInstall(app.slug);
     } else {

@@ -138,19 +138,25 @@ export class CatalogService {
       include: {
         server: { select: { id: true, name: true } },
         domains: { where: { status: 'ACTIVE' }, take: 1 },
+        deployments: { select: { manifestSlug: true } },
       },
     });
     const map = new Map<string, CatalogInstallInfo[]>();
     for (const app of apps) {
-      const list = map.get(app.manifestSlug) ?? [];
-      list.push({
-        serverId: app.serverId,
-        serverName: app.server.name,
-        applicationId: app.id,
-        status: app.status,
-        hostname: app.domains[0]?.hostname ?? null,
-      });
-      map.set(app.manifestSlug, list);
+      // Um projeto pode ter várias implantações de manifestos diferentes — cada
+      // uma conta pra "instalado" só no manifesto que ela de fato é.
+      for (const deployment of app.deployments) {
+        if (!deployment.manifestSlug) continue;
+        const list = map.get(deployment.manifestSlug) ?? [];
+        list.push({
+          serverId: app.serverId,
+          serverName: app.server.name,
+          applicationId: app.id,
+          status: app.status,
+          hostname: app.domains[0]?.hostname ?? null,
+        });
+        map.set(deployment.manifestSlug, list);
+      }
     }
     return map;
   }

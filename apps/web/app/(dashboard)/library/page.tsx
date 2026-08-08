@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { CatalogApplicationSummary } from '@/lib/types';
 import { CATEGORY_LABEL } from '@/lib/catalogCategories';
@@ -37,10 +37,25 @@ export default function LibraryPage() {
   const [gitWizard, setGitWizard] = useState(false);
   const wizard = useInstallWizard();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('project');
+  const [project, setProject] = useState<{ id: string; serverId: string; name: string } | null>(null);
 
   useEffect(() => {
     apiFetch<CatalogApplicationSummary[]>('/catalog/applications').then(setApps);
   }, []);
+
+  // Chegando de dentro de um projeto (`/library?project=<id>`): o app
+  // escolhido entra NESSE projeto em vez de criar um novo.
+  useEffect(() => {
+    if (!projectId) {
+      setProject(null);
+      return;
+    }
+    apiFetch<{ id: string; serverId: string; name: string }>(`/applications/${projectId}`)
+      .then(setProject)
+      .catch(() => setProject(null));
+  }, [projectId]);
 
   const categories = useMemo(() => Array.from(new Set((apps ?? []).map((a) => a.category))).sort(), [apps]);
 
@@ -64,10 +79,13 @@ export default function LibraryPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="page-title">Loja de Aplicativos</h1>
+          <h1 className="page-title">{project ? `Adicionar serviço a ${project.name}` : 'Loja de Aplicativos'}</h1>
         <p className="text-xs text-slate-400">
-          {apps ? `${apps.length} aplicativo${apps.length === 1 ? '' : 's'} no catálogo do Velix` : 'Catálogo do Velix'} — implante com um assistente
-          guiado, com variáveis, volumes, domínio e SSL configurados automaticamente.
+          {project
+            ? 'Escolha um aplicativo do catálogo para implantar dentro deste projeto.'
+            : apps
+              ? `${apps.length} aplicativo${apps.length === 1 ? '' : 's'} no catálogo do Velix — implante com um assistente guiado, com variáveis, volumes, domínio e SSL configurados automaticamente.`
+              : 'Catálogo do Velix'}
           </p>
         </div>
         <button onClick={() => setGitWizard(true)} className="btn-secondary flex shrink-0 items-center gap-2 px-3.5 py-2 text-sm">
@@ -161,22 +179,31 @@ export default function LibraryPage() {
           }}
           onOpenInstalled={(info) => {
             if (info.hostname) window.open(`https://${info.hostname}`, '_blank', 'noreferrer');
-            else router.push(`/servers/${info.serverId}?tab=applications`);
+            else router.push(`/projects/${info.applicationId}`);
           }}
         />
       )}
 
       {gitWizard && (
         <GitDeployWizard
+          applicationId={project?.id}
+          projectServerId={project?.serverId}
           onClose={() => setGitWizard(false)}
           onDeployed={() => {
             setGitWizard(false);
-            router.push('/applications');
+            router.push(project ? `/projects/${project.id}` : '/projects');
           }}
         />
       )}
 
-      {wizard.target && <DeployWizard manifest={wizard.target} onClose={wizard.close} />}
+      {wizard.target && (
+        <DeployWizard
+          manifest={wizard.target}
+          applicationId={project?.id}
+          projectServerId={project?.serverId}
+          onClose={wizard.close}
+        />
+      )}
     </div>
   );
 }

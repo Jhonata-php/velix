@@ -20,26 +20,38 @@ interface AutoDeployState {
  * aparece aqui, para um usuário já autenticado — nunca na listagem geral de
  * aplicações, que é carregada em tela aberta.
  */
-export function AutoDeployModal({ applicationId, appName, onClose }: { applicationId: string; appName: string; onClose: () => void }) {
+export function AutoDeployModal({
+  applicationId,
+  deploymentId,
+  appName,
+  onClose,
+}: {
+  applicationId: string;
+  deploymentId: string;
+  appName: string;
+  onClose: () => void;
+}) {
   const [state, setState] = useState<AutoDeployState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    apiFetch<AutoDeployState>(`/applications/${applicationId}/auto-deploy`)
+    apiFetch<AutoDeployState>(`/applications/${applicationId}/deployments/${deploymentId}/auto-deploy`)
       .then(setState)
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
-  }, [applicationId]);
+  }, [applicationId, deploymentId]);
 
   async function toggle(enabled: boolean) {
     setSaving(true);
     setError(null);
     try {
-      setState(await apiFetch<AutoDeployState>(`/applications/${applicationId}/auto-deploy`, {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled }),
-      }));
+      setState(
+        await apiFetch<AutoDeployState>(`/applications/${applicationId}/deployments/${deploymentId}/auto-deploy`, {
+          method: 'PATCH',
+          body: JSON.stringify({ enabled }),
+        }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao salvar');
     } finally {

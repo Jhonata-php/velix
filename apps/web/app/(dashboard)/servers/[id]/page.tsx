@@ -8,12 +8,13 @@ import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { useInstallWizard } from '@/lib/useInstallWizard';
 import { TERMINAL_THEME } from '@/lib/terminalTheme';
 import { type DockerContainer, groupContainers, avatarColor, stripSwarmSuffix } from '@/lib/containerGroups';
-import type { DatabaseInstanceSummary, CatalogApplicationSummary, CatalogApplicationDetail, ProjectService } from '@/lib/types';
+import type { DatabaseInstanceSummary, CatalogApplicationSummary, CatalogApplicationDetail } from '@/lib/types';
 import { Bar } from '@/components/Bar';
 import { Alert } from '@/components/Alert';
 import { AppIcon } from '@/components/AppIcon';
 import { CompactAppCard } from '@/components/CompactAppCard';
 import { DeployWizard } from '@/components/DeployWizard';
+import { CreateProjectModal } from '@/components/CreateProjectModal';
 import { InstallLogModal, OpsLogPanel, type OpsLogStatus } from '@/components/InstallLogModal';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { ServerFormModal } from '@/components/ServerFormModal';
@@ -114,7 +115,7 @@ const NAV_GROUPS: ContextNavGroup[] = [
     label: 'Plataforma',
     items: [
       { key: 'docker', label: 'Docker', icon: <IconBox /> },
-      { key: 'applications', label: 'Aplicações', icon: <IconLayoutGrid /> },
+      { key: 'applications', label: 'Projetos', icon: <IconLayoutGrid /> },
       { key: 'library', label: 'Biblioteca', icon: <IconStore /> },
       { key: 'proxy', label: 'Proxy e domínios', icon: <IconGlobe /> },
       { key: 'databases', label: 'Bancos', icon: <IconDisk /> },
@@ -864,7 +865,7 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
               return (
                 <Link
                   key={g.key}
-                  href={`/servers/${server.id}/projects/${encodeURIComponent(g.key)}`}
+                  href={`/servers/${server.id}/docker-groups/${encodeURIComponent(g.key)}`}
                   className="row-hover group flex items-center gap-4 px-4 py-3"
                 >
                   <span className={`icon-chip shrink-0 text-sm font-semibold ${avatarColor(g.key)}`}>{g.key.slice(0, 2).toUpperCase()}</span>
@@ -1090,49 +1091,19 @@ interface ApplicationDomain {
   lastError: string | null;
 }
 
-interface ApplicationRow {
+interface ProjectRow {
   id: string;
   name: string;
   slug: string;
-  manifestSlug: string;
-  manifestVersion: string;
-  status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
-  containerNames: string[];
+  status: 'EMPTY' | 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR' | 'REMOVING';
   lastError: string | null;
   deployedAt: string;
   domains: ApplicationDomain[];
+  deployments: { sourceType: string; manifestSlug: string | null }[];
 }
 
-interface EndpointPort {
-  port: number;
-  protocol: string;
-  recommended: boolean;
-  source: 'template' | 'container';
-}
-
-interface EndpointServiceInfo {
-  serviceName: string;
-  containerName: string;
-  image: string;
-  running: boolean;
-  ports: EndpointPort[];
-}
-
-interface DnsCheckResult {
-  state: 'NOT_CONFIGURED' | 'CORRECT' | 'INCORRECT';
-  records: string[];
-  expectedIp: string | null;
-}
-
-interface CertificateInfo {
-  state: 'ACTIVE' | 'EXPIRING' | 'NOT_FOUND' | 'ERROR';
-  issuer?: string;
-  validTo?: string;
-  daysRemaining?: number;
-  error?: string;
-}
-
-const APP_STATUS_TONE: Record<ApplicationRow['status'], StatusTone> = {
+const APP_STATUS_TONE: Record<ProjectRow['status'], StatusTone> = {
+  EMPTY: 'neutral',
   DEPLOYING: 'info',
   RUNNING: 'success',
   STOPPED: 'neutral',
@@ -1140,7 +1111,8 @@ const APP_STATUS_TONE: Record<ApplicationRow['status'], StatusTone> = {
   REMOVING: 'warning',
 };
 
-const APP_STATUS_LABEL: Record<ApplicationRow['status'], string> = {
+const APP_STATUS_LABEL: Record<ProjectRow['status'], string> = {
+  EMPTY: 'Vazio',
   DEPLOYING: 'Implantando',
   RUNNING: 'Ativo',
   STOPPED: 'Parado',
@@ -1149,35 +1121,21 @@ const APP_STATUS_LABEL: Record<ApplicationRow['status'], string> = {
 };
 
 function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibrary?: () => void }) {
-  const [apps, setApps] = useState<ApplicationRow[] | null>(null);
+  const router = useRouter();
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<ApplicationRow | null>(null);
-  const [domainsFor, setDomainsFor] = useState<ApplicationRow | null>(null);
-  const [credentialsFor, setCredentialsFor] = useState<ApplicationRow | null>(null);
-  const [servicesFor, setServicesFor] = useState<ApplicationRow | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<ProjectRow | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   function load() {
-    apiFetch<ApplicationRow[]>(`/servers/${server.id}/applications`)
-      .then(setApps)
+    apiFetch<ProjectRow[]>(`/servers/${server.id}/applications`)
+      .then(setProjects)
       .catch((e) => setError(e.message));
   }
 
   useEffect(load, [server.id]);
   useAutoRefresh(load, 15_000);
-
-  async function handleAction(app: ApplicationRow, action: 'start' | 'stop' | 'restart') {
-    setBusy(app.id);
-    setError(null);
-    try {
-      await apiFetch(`/applications/${app.id}/${action}`, { method: 'POST' });
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao executar ação');
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function handleRemoveConfirmed() {
     if (!confirmRemove) return;
@@ -1187,7 +1145,7 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
       setConfirmRemove(null);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover aplicação');
+      setError(err instanceof Error ? err.message : 'Falha ao remover projeto');
     } finally {
       setBusy(null);
     }
@@ -1195,7 +1153,15 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
 
   return (
     <div>
-      <ModuleHeader title="Aplicações" description="Aplicações implantadas pelo Velix neste servidor" />
+      <ModuleHeader
+        title="Projetos"
+        description="Projetos implantados pelo Velix neste servidor"
+        actions={
+          <button onClick={() => setShowCreate(true)} className="btn-primary px-3.5 py-2 text-sm">
+            Novo projeto
+          </button>
+        }
+      />
 
       {error && (
         <div className="mb-3">
@@ -1203,67 +1169,63 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
         </div>
       )}
 
-      {apps === null ? (
+      {projects === null ? (
         <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
           <SkeletonRow />
           <SkeletonRow />
         </div>
-      ) : apps.length === 0 ? (
+      ) : projects.length === 0 ? (
         <EmptyState
           icon={<IconLayoutGrid className="h-5 w-5" />}
-          title="Nenhuma aplicação implantada ainda"
-          description="Implante uma aplicação a partir da Biblioteca."
+          title="Nenhum projeto ainda"
+          description="Crie um projeto e implante um serviço nele — do catálogo (Biblioteca) ou do seu próprio repositório."
           action={
-            onGoToLibrary ? (
-              <button onClick={onGoToLibrary} className="btn-primary px-3.5 py-2 text-sm">
-                Ir para Biblioteca
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowCreate(true)} className="btn-primary px-3.5 py-2 text-sm">
+                Novo projeto
               </button>
-            ) : undefined
+              {onGoToLibrary && (
+                <button onClick={onGoToLibrary} className="btn-secondary px-3.5 py-2 text-sm">
+                  Ir para Biblioteca
+                </button>
+              )}
+            </div>
           }
         />
       ) : (
         <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-          {apps.map((app) => {
-            const busyNow = busy === app.id;
-            const running = app.status === 'RUNNING';
-            const primaryDomain = app.domains[0];
+          {projects.map((project) => {
+            const busyNow = busy === project.id;
+            const primaryDomain = project.domains[0];
             const actionItems: ActionMenuItem[] = [
-              { label: 'Ver serviços', icon: <IconLayers className="h-4 w-4" />, onClick: () => setServicesFor(app) },
-              { label: 'Gerenciar domínios', icon: <IconGlobe className="h-4 w-4" />, onClick: () => setDomainsFor(app) },
-              { label: 'Ver credenciais', icon: <IconKey className="h-4 w-4" />, onClick: () => setCredentialsFor(app) },
-              ...(running
-                ? [
-                    { label: 'Reiniciar', icon: <IconRefresh className="h-4 w-4" />, onClick: () => handleAction(app, 'restart'), disabled: busyNow },
-                    { label: 'Parar', icon: <IconPower className="h-4 w-4" />, onClick: () => handleAction(app, 'stop'), disabled: busyNow },
-                  ]
-                : [{ label: 'Iniciar', icon: <IconPower className="h-4 w-4" />, onClick: () => handleAction(app, 'start'), disabled: busyNow }]),
-              { label: 'Remover aplicação', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(app), danger: true, disabled: busyNow },
+              { label: 'Abrir projeto', icon: <IconLayoutGrid className="h-4 w-4" />, onClick: () => router.push(`/projects/${project.id}`) },
+              { label: 'Remover projeto', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(project), danger: true, disabled: busyNow },
             ];
             return (
-              <div key={app.id} className="row-hover flex items-center gap-3 px-4 py-3">
-                <AppIcon icon={`/app-icons/${app.manifestSlug}.svg`} name={app.name} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{app.name}</p>
-                    <StatusBadge tone={APP_STATUS_TONE[app.status]}>{APP_STATUS_LABEL[app.status]}</StatusBadge>
+              <div key={project.id} className="row-hover flex items-center gap-3 px-4 py-3">
+                <button
+                  onClick={() => router.push(`/projects/${project.id}`)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                    {project.name.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</p>
+                      <StatusBadge tone={APP_STATUS_TONE[project.status]}>{APP_STATUS_LABEL[project.status]}</StatusBadge>
+                    </div>
+                    <p className="truncate text-xs text-slate-400">
+                      {project.deployments.length} serviço{project.deployments.length === 1 ? '' : 's'}
+                      {project.lastError ? ` · ${project.lastError}` : ''}
+                    </p>
                   </div>
-                  <p className="truncate text-xs text-slate-400">
-                    {app.manifestSlug} v{app.manifestVersion} · {app.containerNames.length} serviço{app.containerNames.length === 1 ? '' : 's'}
-                    {app.lastError ? ` · ${app.lastError}` : ''}
-                  </p>
-                </div>
-                <div className="hidden shrink-0 sm:block">
-                  {primaryDomain ? (
-                    <button onClick={() => setDomainsFor(app)} className="flex items-center gap-1.5 text-xs">
-                      <StatusBadge tone={DOMAIN_TONE[primaryDomain.status]}>{primaryDomain.hostname}</StatusBadge>
-                      {app.domains.length > 1 && <span className="text-slate-400">+{app.domains.length - 1}</span>}
-                    </button>
-                  ) : (
-                    <button onClick={() => setDomainsFor(app)} className="btn-ghost px-2.5 py-1.5 text-xs">
-                      Adicionar domínio
-                    </button>
-                  )}
-                </div>
+                </button>
+                {primaryDomain && (
+                  <div className="hidden shrink-0 sm:block">
+                    <StatusBadge tone={DOMAIN_TONE[primaryDomain.status]}>{primaryDomain.hostname}</StatusBadge>
+                  </div>
+                )}
                 {primaryDomain && primaryDomain.status === 'ACTIVE' && (
                   <a
                     href={`https://${primaryDomain.hostname}`}
@@ -1283,8 +1245,8 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
 
       {confirmRemove && (
         <ConfirmModal
-          title="Remover aplicação"
-          message={`Remover "${confirmRemove.name}"? Os containers e volumes desta aplicação são apagados. Essa ação não pode ser desfeita.`}
+          title="Remover projeto"
+          message={`Remover "${confirmRemove.name}"? Todos os containers e volumes dos serviços deste projeto são apagados. Essa ação não pode ser desfeita.`}
           confirmLabel="Remover"
           danger
           loading={busy === confirmRemove.id}
@@ -1293,545 +1255,14 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
         />
       )}
 
-      {domainsFor && (
-        <DomainManagerModal
-          app={domainsFor}
-          onClose={() => setDomainsFor(null)}
-          onChange={load}
-        />
-      )}
-
-      {credentialsFor && <AppCredentialsModal app={credentialsFor} onClose={() => setCredentialsFor(null)} />}
-
-      {servicesFor && (
-        <ProjectServicesModal
-          app={servicesFor}
-          serverId={server.id}
-          onClose={() => {
-            setServicesFor(null);
-            load();
-          }}
+      {showCreate && (
+        <CreateProjectModal
+          defaultServerId={server.id}
+          onClose={() => setShowCreate(false)}
+          onCreated={(id) => router.push(`/projects/${id}`)}
         />
       )}
     </div>
-  );
-}
-
-const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
-  DEPLOYING: 'info',
-  RUNNING: 'success',
-  STOPPED: 'neutral',
-  ERROR: 'danger',
-};
-const SERVICE_STATUS_LABEL: Record<ProjectService['status'], string> = {
-  DEPLOYING: 'Implantando',
-  RUNNING: 'Ativo',
-  STOPPED: 'Parado',
-  ERROR: 'Erro',
-};
-
-/** Painel do projeto — cada serviço (container) do projeto com ciclo de vida
- * próprio, e o fluxo real de "Adicionar serviço" pra componentes opcionais do
- * template (ex.: OnlyOffice num Nextcloud já implantado). */
-function ProjectServicesModal({ app, serverId, onClose }: { app: ApplicationRow; serverId: string; onClose: () => void }) {
-  const [services, setServices] = useState<ProjectService[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [picker, setPicker] = useState<CatalogApplicationDetail['services'] | null>(null);
-  const [addingService, setAddingService] = useState<string | null>(null);
-  const [addStatus, setAddStatus] = useState<OpsLogStatus>('connecting');
-
-  function load() {
-    apiFetch<ProjectService[]>(`/applications/${app.id}/services`)
-      .then(setServices)
-      .catch((e) => setError(e.message));
-  }
-  useEffect(load, [app.id]);
-
-  async function handleAction(name: string, action: 'start' | 'stop' | 'restart') {
-    setBusy(name);
-    setError(null);
-    try {
-      await apiFetch(`/applications/${app.id}/services/${name}/${action}`, { method: 'POST' });
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao executar ação');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function openPicker() {
-    setError(null);
-    try {
-      const detail = await apiFetch<CatalogApplicationDetail>(`/catalog/applications/${app.manifestSlug}`);
-      const alreadyAdded = new Set((services ?? []).map((s) => s.name));
-      setPicker(detail.services.filter((s) => s.optional && !alreadyAdded.has(s.name)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar componentes disponíveis');
-    }
-  }
-
-  if (addingService) {
-    const canClose = addStatus === 'done-ok' || addStatus === 'done-error';
-    return (
-      <Modal title={`Adicionando ${addingService}`} onClose={canClose ? () => { setAddingService(null); setPicker(null); load(); } : undefined} closeDisabled={!canClose}>
-        <div className="h-[45vh]">
-          <TerminalWindow
-            title="Adicionar serviço"
-            statusSlot={<StatusBadge tone={addStatus === 'done-ok' ? 'success' : addStatus === 'done-error' ? 'danger' : 'warning'}>{addStatus}</StatusBadge>}
-            bodyClassName="flex h-full p-3"
-          >
-            <OpsLogPanel
-              serverId={serverId}
-              op="service-add"
-              params={{ applicationId: app.id, serviceName: addingService }}
-              onStatusChange={setAddStatus}
-              onDone={() => undefined}
-            />
-          </TerminalWindow>
-        </div>
-      </Modal>
-    );
-  }
-
-  if (picker) {
-    return (
-      <Modal title="Adicionar serviço" onClose={() => setPicker(null)}>
-        {picker.length === 0 ? (
-          <p className="text-sm text-slate-400">Todos os componentes opcionais deste template já foram adicionados.</p>
-        ) : (
-          <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-            {picker.map((s) => (
-              <div key={s.name} className="flex items-center justify-between gap-3 p-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{s.name}</p>
-                  <p className="truncate text-xs text-slate-400">{s.image}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setAddingService(s.name);
-                    setAddStatus('connecting');
-                  }}
-                  className="btn-primary shrink-0 px-3 py-1.5 text-xs"
-                >
-                  Adicionar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal title={`Serviços — ${app.name}`} onClose={onClose} maxWidth="max-w-xl">
-      {error && (
-        <div className="mb-3">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      )}
-
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-slate-400">{services?.length ?? 0} serviço{(services?.length ?? 0) === 1 ? '' : 's'} neste projeto</p>
-        <button onClick={openPicker} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
-          <IconPlus className="h-3.5 w-3.5" />
-          Adicionar serviço
-        </button>
-      </div>
-
-      {services === null ? (
-        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-          <SkeletonRow />
-          <SkeletonRow />
-        </div>
-      ) : (
-        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-          {services.map((s) => {
-            const busyNow = busy === s.name;
-            const running = s.status === 'RUNNING';
-            return (
-              <div key={s.id} className="flex items-center gap-3 p-3.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{s.name}</p>
-                    <span className={`badge text-[10px] ${s.required ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-500/10 text-slate-500'}`}>
-                      {s.required ? 'obrigatório' : 'opcional'}
-                    </span>
-                    <StatusBadge tone={SERVICE_STATUS_TONE[s.status]}>{SERVICE_STATUS_LABEL[s.status]}</StatusBadge>
-                  </div>
-                  <p className="truncate text-xs text-slate-400">{s.image}</p>
-                </div>
-                <div className="flex shrink-0 gap-1.5">
-                  {running ? (
-                    <>
-                      <button onClick={() => handleAction(s.name, 'restart')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
-                        Reiniciar
-                      </button>
-                      <button onClick={() => handleAction(s.name, 'stop')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
-                        Parar
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => handleAction(s.name, 'start')} disabled={busyNow} className="btn-secondary px-2.5 py-1 text-xs">
-                      Iniciar
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-const DNS_STATE_LABEL: Record<DnsCheckResult['state'], string> = {
-  NOT_CONFIGURED: 'DNS não configurado',
-  CORRECT: 'DNS correto',
-  INCORRECT: 'DNS incorreto',
-};
-const DNS_STATE_TONE: Record<DnsCheckResult['state'], StatusTone> = {
-  NOT_CONFIGURED: 'neutral',
-  CORRECT: 'success',
-  INCORRECT: 'danger',
-};
-const CERT_STATE_LABEL: Record<CertificateInfo['state'], string> = {
-  ACTIVE: 'Certificado ativo',
-  EXPIRING: 'Certificado expirando',
-  NOT_FOUND: 'Certificado ainda não emitido',
-  ERROR: 'Falha ao ler certificado',
-};
-const CERT_STATE_TONE: Record<CertificateInfo['state'], StatusTone> = {
-  ACTIVE: 'success',
-  EXPIRING: 'warning',
-  NOT_FOUND: 'neutral',
-  ERROR: 'danger',
-};
-
-/** Gerencia os domínios de uma aplicação: listar, testar DNS/SSL de verdade,
- * adicionar (com seletor de serviço + porta interna detectados de verdade),
- * editar e remover — sem nunca tocar no container da aplicação. */
-function DomainManagerModal({ app, onClose, onChange }: { app: ApplicationRow; onClose: () => void; onChange: () => void }) {
-  const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
-  const [domains, setDomains] = useState<ApplicationDomain[]>(app.domains);
-  const [form, setForm] = useState<'new' | ApplicationDomain | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<ApplicationDomain | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [checks, setChecks] = useState<Record<string, { dns?: DnsCheckResult; cert?: CertificateInfo; loading?: boolean }>>({});
-
-  useEffect(() => {
-    apiFetch<EndpointServiceInfo[]>(`/applications/${app.id}/endpoints`)
-      .then(setEndpoints)
-      .catch((e) => setError(e.message));
-  }, [app.id]);
-
-  function reload() {
-    apiFetch<ApplicationRow>(`/applications/${app.id}`).then((a) => setDomains(a.domains));
-    onChange();
-  }
-
-  async function handleTest(domain: ApplicationDomain) {
-    setChecks((c) => ({ ...c, [domain.id]: { ...c[domain.id], loading: true } }));
-    try {
-      const [dns, cert] = await Promise.all([
-        apiFetch<DnsCheckResult>(`/domains/${domain.id}/dns`),
-        apiFetch<CertificateInfo>(`/domains/${domain.id}/certificate`),
-      ]);
-      setChecks((c) => ({ ...c, [domain.id]: { dns, cert, loading: false } }));
-    } catch {
-      setChecks((c) => ({ ...c, [domain.id]: { loading: false } }));
-    }
-  }
-
-  async function handleRemoveConfirmed() {
-    if (!confirmRemove) return;
-    setBusy(confirmRemove.id);
-    try {
-      await apiFetch(`/domains/${confirmRemove.id}`, { method: 'DELETE' });
-      setConfirmRemove(null);
-      reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover domínio');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <Modal title={`Domínios — ${app.name}`} onClose={onClose} maxWidth="max-w-xl">
-      {error && (
-        <div className="mb-3">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      )}
-
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-slate-400">{domains.length} domínio{domains.length === 1 ? '' : 's'} associado{domains.length === 1 ? '' : 's'}</p>
-        <button onClick={() => setForm('new')} disabled={!endpoints} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
-          <IconPlus className="h-3.5 w-3.5" />
-          Adicionar domínio
-        </button>
-      </div>
-
-      {domains.length === 0 ? (
-        <EmptyState icon={<IconGlobe className="h-5 w-5" />} title="Nenhum domínio associado" />
-      ) : (
-        <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
-          {domains.map((d) => {
-            const check = checks[d.id];
-            return (
-              <div key={d.id} className="p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
-                  <StatusBadge tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</StatusBadge>
-                </div>
-                <p className="mt-0.5 truncate text-xs text-slate-400">
-                  → {d.serviceName ?? '—'}:{d.targetPort}
-                  {d.lastError ? ` · ${d.lastError}` : ''}
-                </p>
-
-                {check?.dns && check?.cert && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <StatusBadge tone={DNS_STATE_TONE[check.dns.state]}>{DNS_STATE_LABEL[check.dns.state]}</StatusBadge>
-                    <StatusBadge tone={CERT_STATE_TONE[check.cert.state]}>
-                      {CERT_STATE_LABEL[check.cert.state]}
-                      {check.cert.daysRemaining != null ? ` (${check.cert.daysRemaining}d)` : ''}
-                    </StatusBadge>
-                  </div>
-                )}
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button onClick={() => handleTest(d)} disabled={check?.loading} className="btn-secondary px-2.5 py-1 text-xs">
-                    {check?.loading ? 'Testando...' : 'Testar DNS e SSL'}
-                  </button>
-                  <button onClick={() => setForm(d)} className="btn-secondary px-2.5 py-1 text-xs">
-                    Editar
-                  </button>
-                  <a href={`https://${d.hostname}`} target="_blank" rel="noreferrer" className="btn-ghost px-2.5 py-1 text-xs">
-                    Abrir
-                  </a>
-                  <button
-                    onClick={() => setConfirmRemove(d)}
-                    disabled={busy === d.id}
-                    className="rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                  >
-                    Remover
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {form && endpoints && (
-        <DomainForm
-          app={app}
-          endpoints={endpoints}
-          editing={form === 'new' ? null : form}
-          onClose={() => setForm(null)}
-          onSaved={() => {
-            setForm(null);
-            reload();
-          }}
-        />
-      )}
-
-      {confirmRemove && (
-        <ConfirmModal
-          title="Remover domínio"
-          message={`Remover "${confirmRemove.hostname}"? A rota é apagada do Traefik. A aplicação continua rodando normalmente.`}
-          confirmLabel="Remover"
-          danger
-          loading={busy === confirmRemove.id}
-          onConfirm={handleRemoveConfirmed}
-          onCancel={() => setConfirmRemove(null)}
-        />
-      )}
-    </Modal>
-  );
-}
-
-function DomainForm({
-  app,
-  endpoints,
-  editing,
-  onClose,
-  onSaved,
-}: {
-  app: ApplicationRow;
-  endpoints: EndpointServiceInfo[];
-  editing: ApplicationDomain | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [serviceName, setServiceName] = useState(editing?.serviceName ?? endpoints[0]?.serviceName ?? '');
-  const selectedService = endpoints.find((e) => e.serviceName === serviceName);
-  const [port, setPort] = useState<number>(editing?.targetPort ?? selectedService?.ports[0]?.port ?? 0);
-  const [hostname, setHostname] = useState(editing?.hostname ?? '');
-  const [createDnsRecord, setCreateDnsRecord] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function handleServiceChange(name: string) {
-    setServiceName(name);
-    const svc = endpoints.find((e) => e.serviceName === name);
-    setPort(svc?.ports[0]?.port ?? 0);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      if (editing) {
-        await apiFetch(`/applications/${app.id}/domains/${editing.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ hostname: editing.hostname, serviceName, port, createDnsRecord }),
-        });
-      } else {
-        await apiFetch(`/applications/${app.id}/domains`, {
-          method: 'POST',
-          body: JSON.stringify({ hostname, serviceName, port, createDnsRecord }),
-        });
-      }
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar domínio');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title={editing ? 'Editar domínio' : 'Adicionar domínio'} onClose={onClose} closeDisabled={saving}>
-      <form onSubmit={handleSubmit}>
-        {editing ? (
-          <p className="mb-3 text-sm text-slate-500">
-            Domínio: <span className="font-medium text-slate-700 dark:text-slate-200">{editing.hostname}</span>
-          </p>
-        ) : (
-          <label className="mb-3 block text-sm">
-            <span className="mb-1 block font-medium">Domínio</span>
-            <input required placeholder="app.seudominio.com" value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" />
-          </label>
-        )}
-
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block font-medium">Serviço</span>
-          <select value={serviceName} onChange={(e) => handleServiceChange(e.target.value)} className="input">
-            {endpoints.map((svc) => (
-              <option key={svc.serviceName} value={svc.serviceName}>
-                {svc.serviceName} — {svc.image}
-                {!svc.running ? ' (parado)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block font-medium">Porta interna</span>
-          {selectedService && selectedService.ports.length > 0 ? (
-            <select value={port} onChange={(e) => setPort(Number(e.target.value))} className="input">
-              {selectedService.ports.map((p) => (
-                <option key={p.port} value={p.port}>
-                  {p.port}/{p.protocol}
-                  {p.recommended ? ' — recomendada' : ''}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              required
-              type="number"
-              min={1}
-              max={65535}
-              placeholder="Nenhuma porta detectada — informe manualmente"
-              value={port || ''}
-              onChange={(e) => setPort(Number(e.target.value))}
-              className="input"
-            />
-          )}
-        </label>
-
-        {!editing && (
-          <label className="mb-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
-            Criar registro DNS na Cloudflare automaticamente
-          </label>
-        )}
-
-        {error && (
-          <div className="mb-3">
-            <Alert variant="error">{error}</Alert>
-          </div>
-        )}
-
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800">
-            Cancelar
-          </button>
-          <button type="submit" disabled={saving || !port} className="btn-primary px-4 py-2 text-sm">
-            {saving ? 'Salvando...' : editing ? 'Salvar alterações' : 'Adicionar domínio'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function AppCredentialsModal({ app, onClose }: { app: ApplicationRow; onClose: () => void }) {
-  const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<Record<string, string>>(`/applications/${app.id}/credentials`)
-      .then(setCredentials)
-      .catch((e) => setError(e.message));
-  }, [app.id]);
-
-  function copy(key: string, value: string) {
-    navigator.clipboard.writeText(value);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1500);
-  }
-
-  const entries = credentials ? Object.entries(credentials) : [];
-
-  return (
-    <Modal title={`Credenciais — ${app.name}`} onClose={onClose}>
-      {error && <Alert variant="error">{error}</Alert>}
-      {!credentials && !error && <p className="text-sm text-slate-400">Carregando...</p>}
-      {credentials && entries.length === 0 && <p className="text-sm text-slate-400">Esta aplicação não gerou segredos.</p>}
-      {entries.length > 0 && (
-        <div>
-          <div className="mb-3 flex justify-end">
-            <button onClick={() => setRevealed((v) => !v)} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
-              {revealed ? 'Ocultar valores' : 'Mostrar valores'}
-            </button>
-          </div>
-          <div className="space-y-2">
-            {entries.map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-                <div className="min-w-0">
-                  <p className="text-xs text-slate-500">{key}</p>
-                  <p className="truncate font-mono text-sm">{revealed ? value : '••••••••••••'}</p>
-                </div>
-                <button onClick={() => copy(key, value)} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                  {copiedKey === key ? 'Copiado!' : 'Copiar'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </Modal>
   );
 }
 

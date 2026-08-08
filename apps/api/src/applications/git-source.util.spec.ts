@@ -83,6 +83,7 @@ assert.equal(redactToken('sem token aqui'), 'sem token aqui');
 
 const compose = renderGitCompose({
   slug: 'meuapp',
+  serviceName: 'app',
   image: 'velix/meuapp:latest',
   port: 3000,
   env: { NODE_ENV: 'production' },
@@ -99,6 +100,7 @@ assert.ok(compose.includes('external: true'));
 // valor com aspa simples não pode encerrar a string e injetar YAML
 const injected = renderGitCompose({
   slug: 'x',
+  serviceName: 'app',
   image: 'i',
   port: 80,
   env: { EVIL: "a'\nprivileged: true" },
