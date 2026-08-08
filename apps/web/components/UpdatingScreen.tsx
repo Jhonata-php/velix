@@ -68,6 +68,15 @@ export function UpdatingScreen({ fromVersion, toVersion, onDismiss }: Props) {
   const [phrase, setPhrase] = useState(0);
   const startedAt = useRef(Date.now());
 
+  // Trava o scroll da página por trás — a tela já é bloqueante de propósito
+  // (ver comentário da função), então a página atrás não pode se mexer.
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 

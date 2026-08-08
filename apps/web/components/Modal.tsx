@@ -13,6 +13,15 @@ interface Props {
 }
 
 export function Modal({ title, onClose, closeDisabled, maxWidth = 'max-w-md', children }: Props) {
+  // Trava o scroll da página por trás — sem isso dá pra rolar o conteúdo atrás
+  // do overlay (mais perceptível no touch, com o bounce elástico do iOS).
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   useEffect(() => {
     if (!onClose || closeDisabled) return;
     function onKeyDown(e: KeyboardEvent) {
