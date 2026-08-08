@@ -33,6 +33,19 @@ export class GitAccountsController {
     return this.githubApp.startManifest(label);
   }
 
+  /** Repositórios/branches da instalação — alimenta o seletor do assistente
+   * de implantar do repositório, no lugar de colar a URL à mão. Só contas
+   * conectadas via "Conectar com GitHub" (ver GitHubAppService.getGitHubAppAccount). */
+  @Get(':id/repos')
+  listRepos(@Param('id') id: string) {
+    return this.githubApp.listRepositories(id);
+  }
+
+  @Get(':id/repos/:owner/:repo/branches')
+  listBranches(@Param('id') id: string, @Param('owner') owner: string, @Param('repo') repo: string) {
+    return this.githubApp.listBranches(id, owner, repo);
+  }
+
   @Delete(':id')
   @MinRole('admin')
   remove(@Param('id') id: string) {

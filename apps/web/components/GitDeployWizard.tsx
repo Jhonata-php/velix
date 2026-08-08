@@ -58,7 +58,14 @@ interface GitAccount {
   id: string;
   label: string;
   host: string;
-  tokenHint: string;
+  authMethod: string;
+  tokenHint: string | null;
+}
+
+interface GitHubRepoOption {
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
 }
 
 interface Props {
@@ -90,6 +97,52 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
   const [accounts, setAccounts] = useState<GitAccount[]>([]);
   const [gitAccountId, setGitAccountId] = useState('');
   const [autoDeploy, setAutoDeploy] = useState(true);
+
+  // Contas conectadas via "Conectar com GitHub" conseguem listar os próprios
+  // repositórios — troca "cole a URL" por "escolha da lista", só pra elas.
+  const githubAppAccounts = useMemo(() => accounts.filter((a) => a.authMethod === 'github_app'), [accounts]);
+  const [pickerMode, setPickerMode] = useState<'list' | 'manual'>('manual');
+  const [repos, setRepos] = useState<GitHubRepoOption[] | null>(null);
+  const [reposError, setReposError] = useState<string | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState('');
+  const [branches, setBranches] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (githubAppAccounts.length > 0 && pickerMode === 'manual' && !repoUrl.trim()) setPickerMode('list');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubAppAccounts.length]);
+
+  // No modo lista, a conta selecionada precisa ser uma conta GitHub App —
+  // o fetch inicial de /git-accounts pode ter marcado uma conta de token
+  // como padrão (a primeira da lista, seja lá qual for).
+  useEffect(() => {
+    if (pickerMode !== 'list' || githubAppAccounts.length === 0) return;
+    if (!githubAppAccounts.some((a) => a.id === gitAccountId)) setGitAccountId(githubAppAccounts[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerMode, githubAppAccounts]);
+
+  useEffect(() => {
+    if (pickerMode !== 'list' || !gitAccountId) return;
+    setRepos(null);
+    setReposError(null);
+    setSelectedRepo('');
+    apiFetch<GitHubRepoOption[]>(`/git-accounts/${gitAccountId}/repos`)
+      .then(setRepos)
+      .catch((e) => setReposError(e instanceof Error ? e.message : 'Falha ao listar repositórios'));
+  }, [pickerMode, gitAccountId]);
+
+  useEffect(() => {
+    if (pickerMode !== 'list' || !selectedRepo) return;
+    const repo = repos?.find((r) => r.fullName === selectedRepo);
+    const [owner, name] = selectedRepo.split('/');
+    setRepoUrl(`https://github.com/${selectedRepo}.git`);
+    if (repo) setGitRef(repo.defaultBranch);
+    setBranches(null);
+    apiFetch<string[]>(`/git-accounts/${gitAccountId}/repos/${owner}/${name}/branches`)
+      .then(setBranches)
+      .catch(() => setBranches(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerMode, selectedRepo]);
 
   const [buildMethod, setBuildMethod] = useState<'dockerfile' | 'nixpacks'>('dockerfile');
   const [dockerfilePath, setDockerfilePath] = useState('Dockerfile');
@@ -146,8 +199,13 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
       .filter(([k]) => k),
   );
 
+  const usingAccountForClone = pickerMode === 'list' || isPrivate;
+
   const validByKey: Record<StepKey, boolean> = {
-    repo: repoUrlValid(repoUrl) && gitRef.trim().length > 0 && (!isPrivate || !!gitAccountId || token.trim().length > 0),
+    repo:
+      repoUrlValid(repoUrl) &&
+      gitRef.trim().length > 0 &&
+      (pickerMode === 'list' ? !!selectedRepo : !isPrivate || !!gitAccountId || token.trim().length > 0),
     build: buildMethod === 'nixpacks' || dockerfilePath.trim().length > 0,
     server: !!selectedServer?.dockerInstalled,
     config: name.trim().length >= 2 && port > 0 && port <= 65535 && (!wantsDomain || HOSTNAME_PATTERN.test(hostname.trim())),
@@ -160,8 +218,8 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
     gitRef: gitRef.trim(),
     buildMethod,
     ...(buildMethod === 'dockerfile' ? { dockerfilePath: dockerfilePath.trim() } : {}),
-    ...(isPrivate && gitAccountId ? { gitAccountId } : {}),
-    ...(isPrivate && !gitAccountId && token.trim() ? { token: token.trim() } : {}),
+    ...(usingAccountForClone && gitAccountId ? { gitAccountId } : {}),
+    ...(!usingAccountForClone && isPrivate && !gitAccountId && token.trim() ? { token: token.trim() } : {}),
     autoDeploy,
     port,
     env,
@@ -208,53 +266,127 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
         <div className="flex-1 overflow-y-auto p-5">
           {currentKey === 'repo' && (
             <div className="mx-auto max-w-xl space-y-4">
-              <Field label="URL do repositório">
-                <input
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/usuario/projeto"
-                  className="input"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">
-                  Aceitos: {ALLOWED_HOSTS.join(', ')}. Só https — outros esquemas são recusados por segurança.
-                </span>
-              </Field>
-              {repoUrl.trim() && !repoUrlValid(repoUrl) && <Alert variant="error">URL inválida. Use o formato https://github.com/usuario/projeto</Alert>}
+              {githubAppAccounts.length > 0 && (
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+                  <button
+                    onClick={() => setPickerMode('list')}
+                    className={`tab-pill flex-1 ${pickerMode === 'list' ? 'tab-pill-active' : ''}`}
+                  >
+                    Escolher da lista
+                  </button>
+                  <button
+                    onClick={() => setPickerMode('manual')}
+                    className={`tab-pill flex-1 ${pickerMode === 'manual' ? 'tab-pill-active' : ''}`}
+                  >
+                    Colar URL manualmente
+                  </button>
+                </div>
+              )}
 
-              <Field label="Branch, tag ou commit">
-                <input value={gitRef} onChange={(e) => setGitRef(e.target.value)} placeholder="main" className="input" />
-              </Field>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-                <span className="font-medium text-slate-700 dark:text-slate-200">O repositório é privado</span>
-              </label>
-
-              {isPrivate && (
-                <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                  {accounts.length > 0 && (
+              {pickerMode === 'list' && githubAppAccounts.length > 0 ? (
+                <>
+                  {githubAppAccounts.length > 1 && (
                     <Field label="Conta">
                       <select value={gitAccountId} onChange={(e) => setGitAccountId(e.target.value)} className="input">
-                        {accounts.map((a) => (
+                        {githubAppAccounts.map((a) => (
                           <option key={a.id} value={a.id}>
-                            {a.label} ({a.host} · ····{a.tokenHint})
+                            {a.label}
                           </option>
                         ))}
-                        <option value="">Usar outro token desta vez</option>
                       </select>
                     </Field>
                   )}
 
-                  {(!accounts.length || !gitAccountId) && (
-                    <Field label="Token de acesso">
-                      <input type="password" value={token} onChange={(e) => setToken(e.target.value)} className="input" placeholder="ghp_..." />
-                      <span className="mt-1 block text-[11px] text-slate-400">
-                        Guardado cifrado no Velix e usado só para clonar. Nunca volta em nenhuma resposta da API e é
-                        removido dos logs. Salve a conta em Configurações para reaproveitar em outras implantações.
-                      </span>
+                  <Field label="Repositório">
+                    {reposError ? (
+                      <Alert variant="error">{reposError}</Alert>
+                    ) : repos === null ? (
+                      <p className="text-sm text-slate-400">Carregando repositórios...</p>
+                    ) : repos.length === 0 ? (
+                      <p className="text-sm text-slate-400">
+                        Nenhum repositório liberado pra essa conta — instale o App em mais repositórios em
+                        github.com/settings/installations.
+                      </p>
+                    ) : (
+                      <select value={selectedRepo} onChange={(e) => setSelectedRepo(e.target.value)} className="input">
+                        <option value="">Selecione...</option>
+                        {repos.map((r) => (
+                          <option key={r.fullName} value={r.fullName}>
+                            {r.fullName} {r.private ? '(privado)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </Field>
+
+                  {selectedRepo && (
+                    <Field label="Branch, tag ou commit">
+                      {branches === null ? (
+                        <p className="text-sm text-slate-400">Carregando branches...</p>
+                      ) : (
+                        <select value={gitRef} onChange={(e) => setGitRef(e.target.value)} className="input">
+                          {branches.map((b) => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </Field>
                   )}
-                </div>
+                </>
+              ) : (
+                <>
+                  <Field label="URL do repositório">
+                    <input
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                      placeholder="https://github.com/usuario/projeto"
+                      className="input"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      Aceitos: {ALLOWED_HOSTS.join(', ')}. Só https — outros esquemas são recusados por segurança.
+                    </span>
+                  </Field>
+                  {repoUrl.trim() && !repoUrlValid(repoUrl) && <Alert variant="error">URL inválida. Use o formato https://github.com/usuario/projeto</Alert>}
+
+                  <Field label="Branch, tag ou commit">
+                    <input value={gitRef} onChange={(e) => setGitRef(e.target.value)} placeholder="main" className="input" />
+                  </Field>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+                    <span className="font-medium text-slate-700 dark:text-slate-200">O repositório é privado</span>
+                  </label>
+
+                  {isPrivate && (
+                    <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                      {accounts.length > 0 && (
+                        <Field label="Conta">
+                          <select value={gitAccountId} onChange={(e) => setGitAccountId(e.target.value)} className="input">
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.label} ({a.host}
+                                {a.authMethod === 'github_app' ? ' · App' : ` · ····${a.tokenHint}`})
+                              </option>
+                            ))}
+                            <option value="">Usar outro token desta vez</option>
+                          </select>
+                        </Field>
+                      )}
+
+                      {(!accounts.length || !gitAccountId) && (
+                        <Field label="Token de acesso">
+                          <input type="password" value={token} onChange={(e) => setToken(e.target.value)} className="input" placeholder="ghp_..." />
+                          <span className="mt-1 block text-[11px] text-slate-400">
+                            Guardado cifrado no Velix e usado só para clonar. Nunca volta em nenhuma resposta da API e é
+                            removido dos logs. Salve a conta em Configurações para reaproveitar em outras implantações.
+                          </span>
+                        </Field>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
 
               <label className="flex items-start gap-2 text-sm">

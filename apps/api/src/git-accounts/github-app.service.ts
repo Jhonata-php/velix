@@ -25,6 +25,16 @@ interface InstallationTokenResponse {
   token: string;
 }
 
+interface GitHubRepo {
+  full_name: string;
+  private: boolean;
+  default_branch: string;
+}
+
+interface GitHubBranch {
+  name: string;
+}
+
 const GITHUB_API = 'https://api.github.com';
 
 /**
@@ -153,6 +163,43 @@ export class GitHubAppService {
     }
     const data = (await res.json()) as InstallationTokenResponse;
     return data.token;
+  }
+
+  /** Repositórios que a instalação enxerga — pra trocar "cole a URL" por
+   * "escolha da lista" no assistente de implantar do repositório. */
+  async listRepositories(accountId: string): Promise<{ fullName: string; private: boolean; defaultBranch: string }[]> {
+    const account = await this.getGitHubAppAccount(accountId);
+    const token = await this.resolveInstallationToken(account);
+
+    const res = await fetch(`${GITHUB_API}/installation/repositories?per_page=100`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw new BadGatewayException('Falha ao listar repositórios da instalação do GitHub.');
+    const data = (await res.json()) as { repositories: GitHubRepo[] };
+    return data.repositories.map((r) => ({ fullName: r.full_name, private: r.private, defaultBranch: r.default_branch }));
+  }
+
+  /** Branches de UM repositório dentro da instalação — `owner/repo` já
+   * validado no controller (mesmo formato aceito por validateRepoUrl). */
+  async listBranches(accountId: string, owner: string, repo: string): Promise<string[]> {
+    const account = await this.getGitHubAppAccount(accountId);
+    const token = await this.resolveInstallationToken(account);
+
+    const res = await fetch(`${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches?per_page=100`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw new BadGatewayException('Falha ao listar branches do repositório.');
+    const data = (await res.json()) as GitHubBranch[];
+    return data.map((b) => b.name);
+  }
+
+  private async getGitHubAppAccount(accountId: string) {
+    const account = await this.prisma.gitAccount.findUnique({ where: { id: accountId } });
+    if (!account) throw new NotFoundException('Conta do GitHub não encontrada');
+    if (account.authMethod !== 'github_app') {
+      throw new BadRequestException('Listar repositórios só está disponível para contas conectadas via "Conectar com GitHub"');
+    }
+    return account;
   }
 
   private async verifyState(state: string, expectedPurpose: string): Promise<any> {
