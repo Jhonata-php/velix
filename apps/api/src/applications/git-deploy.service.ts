@@ -15,6 +15,8 @@ import {
   cloneUrlWithToken,
   redactToken,
   renderGitCompose,
+  validateEnvKey,
+  parseGitComposeMeta,
   type BuildMethod,
 } from './git-source.util';
 
@@ -177,6 +179,7 @@ export class GitDeployService {
         // não deve exigir reimplantar.
         webhookSecret: randomBytes(24).toString('base64url'),
         composeRendered: deploymentCompose,
+        variablesJson: Object.keys(env).length > 0 ? JSON.stringify(env) : null,
         services: {
           create: [{ applicationId, name: serviceName, image, containerName: container, required: true, status: 'DEPLOYING' }],
         },
@@ -312,10 +315,65 @@ export class GitDeployService {
   }
 
   /**
+   * Troca as variáveis de ambiente de um serviço vindo de repositório. Não
+   * reconstrói a imagem (nada do código mudou) — só reescreve o compose com o
+   * `environment:` novo e recria o container, uma chamada síncrona rápida
+   * (mesmo padrão de `ApplicationsService.setPublishedPort`, sem passar pelo
+   * canal /ops). Porta e volumes são extraídos de volta do compose já salvo
+   * (`parseGitComposeMeta`), porque hoje só existem ali, não em coluna própria.
+   */
+  async updateEnv(deploymentId: string, env: Record<string, string>) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'git') {
+      throw new BadRequestException('Este serviço não veio de um repositório');
+    }
+    const app = await this.getApplication(deployment.applicationId);
+    const service = await this.prisma.projectService.findFirst({ where: { deploymentId } });
+    if (!service) throw new NotFoundException('Container deste serviço não encontrado');
+
+    for (const key of Object.keys(env)) {
+      if (!validateEnvKey(key)) throw new BadRequestException(`Nome de variável inválido: "${key}"`);
+    }
+
+    const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
+    const dir = appDir(app.slug);
+    const { port, volumes } = parseGitComposeMeta(deployment.composeRendered, app.slug);
+
+    const deploymentCompose = renderGitCompose({
+      slug: app.slug,
+      serviceName: service.name,
+      image: service.image,
+      port,
+      env,
+      volumes,
+      proxyNetwork: PROXY_NETWORK,
+    });
+
+    await this.prisma.projectDeployment.update({
+      where: { id: deploymentId },
+      data: { composeRendered: deploymentCompose, variablesJson: Object.keys(env).length > 0 ? JSON.stringify(env) : null },
+    });
+
+    const mergedCompose = await this.mergedComposeExcluding(app.id);
+
+    const write = await this.ssh.writeRemoteFile(options, `${dir}/docker-compose.yml`, mergedCompose, '644');
+    if (!write.ok) throw new BadRequestException(write.message);
+
+    const up = await this.ssh.runCommand(options, `cd ${dir} && sudo docker compose -p ${app.slug} up -d --force-recreate ${service.name}`, 120_000);
+    if (!up.ok) throw new BadRequestException(up.stdout + up.stderr || 'Falha ao recriar o container');
+
+    await this.prisma.application.update({ where: { id: app.id }, data: { composeRendered: mergedCompose } });
+
+    return { ok: true, env };
+  }
+
+  /**
    * Reconstrói a partir do mesmo repositório e ref. É o substituto do webhook
    * quando o usuário decide quando puxar código novo, e é também o que o
    * webhook chama quando chega um push.
    */
+
   async redeploy(deploymentId: string, onLog?: LogFn) {
     const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
     if (!deployment) throw new NotFoundException('Implantação não encontrada');

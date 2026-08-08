@@ -130,6 +130,7 @@ export interface ProjectDomain {
   hostname: string;
   status: string;
   serviceName: string | null;
+  targetPort: number;
 }
 
 export interface EndpointPort {

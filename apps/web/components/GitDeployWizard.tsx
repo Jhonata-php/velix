@@ -7,7 +7,7 @@ import { Alert } from './Alert';
 import { DeployProgress, type ProgressStage } from './DeployProgress';
 import { OpsLogPanel } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
-import { IconX, IconGithub, IconServer, IconCheck } from './icons';
+import { IconX, IconGithub, IconServer, IconCheck, IconRefresh } from './icons';
 
 type StepKey = 'repo' | 'build' | 'server' | 'config' | 'deploy';
 
@@ -43,6 +43,17 @@ function repoName(raw: string) {
   } catch {
     return '';
   }
+}
+
+/** Rótulo curto e legível pra sugestão de domínio aleatório — não precisa ser
+ * criptograficamente forte, só improvável de colidir com outro subdomínio já
+ * usado na mesma zona. */
+function randomDomainLabel(base: string): string {
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'app'}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** Etapas reconhecidas na saída real do processo — ver DeployProgress. */
@@ -155,6 +166,7 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
   const [envText, setEnvText] = useState('');
   const [wantsDomain, setWantsDomain] = useState(false);
   const [hostname, setHostname] = useState('');
+  const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
 
   const [showLog, setShowLog] = useState(false);
   const [lastLine, setLastLine] = useState<string | null>(null);
@@ -176,6 +188,11 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
         if (recommended) setServerId(recommended.id);
       }
     });
+    // Sem conta Cloudflare conectada, a API devolve 404 — sem problema, só
+    // significa que o botão de gerar domínio aleatório fica escondido.
+    apiFetch<{ id: string; name: string }[]>('/cloudflare/zones')
+      .then(setZones)
+      .catch(() => {});
   }, [projectServerId]);
 
   // Nome sugerido a partir do repositório, mas só enquanto o usuário não digitou
@@ -492,7 +509,20 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
                   </label>
                   {wantsDomain && (
                     <Field label="Domínio">
-                      <input value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" placeholder="app.seudominio.com" />
+                      <div className="flex gap-2">
+                        <input value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" placeholder="app.seudominio.com" />
+                        {zones.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setHostname(`${randomDomainLabel(name || repoName(repoUrl))}.${zones[0].name}`)}
+                            title={`Gerar domínio aleatório em ${zones[0].name}`}
+                            className="btn-secondary flex shrink-0 items-center gap-1.5 px-3 text-sm"
+                          >
+                            <IconRefresh className="h-4 w-4" aria-hidden />
+                            Aleatório
+                          </button>
+                        )}
+                      </div>
                     </Field>
                   )}
                 </>

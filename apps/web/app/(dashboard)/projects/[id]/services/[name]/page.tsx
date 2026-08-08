@@ -34,8 +34,9 @@ import {
   IconTerminal,
   IconPlug,
   IconFileText,
+  IconPencil,
 } from '@/components/icons';
-import type { ProjectDetail, ProjectService, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
+import type { ProjectDetail, ProjectService, ProjectDomain, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
 type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources' | 'terminal';
 
@@ -251,7 +252,9 @@ export default function ServicePage() {
 
       {tab === 'overview' && <OverviewTab project={project} service={service} onChange={load} />}
       {tab === 'source' && deployment && <SourceTab project={project} deployment={deployment} onChange={load} />}
-      {tab === 'environment' && deployment && <EnvironmentTab applicationId={project.id} deploymentId={deployment.id} />}
+      {tab === 'environment' && deployment && (
+        <EnvironmentTab applicationId={project.id} deploymentId={deployment.id} sourceType={deployment.sourceType} onChange={load} />
+      )}
       {tab === 'domains' && <DomainsTab project={project} service={service} onChange={load} />}
       {tab === 'security' && deployment && <SecurityTab applicationId={project.id} deploymentId={deployment.id} />}
       {tab === 'resources' && <ResourcesTab applicationId={project.id} serviceName={service.name} />}
@@ -515,7 +518,17 @@ function SourceTab({
   );
 }
 
-function EnvironmentTab({ applicationId, deploymentId }: { applicationId: string; deploymentId: string }) {
+function EnvironmentTab({
+  applicationId,
+  deploymentId,
+  sourceType,
+  onChange,
+}: {
+  applicationId: string;
+  deploymentId: string;
+  sourceType: string;
+  onChange: () => void;
+}) {
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -534,15 +547,17 @@ function EnvironmentTab({ applicationId, deploymentId }: { applicationId: string
   }
 
   const entries = credentials ? Object.entries(credentials) : [];
+  const isGit = sourceType === 'git';
 
   return (
-    <div>
+    <div className="space-y-4">
       {error && <Alert variant="error">{error}</Alert>}
       {!credentials && !error && <Skeleton className="h-24" />}
-      {credentials && entries.length === 0 && <p className="text-sm text-slate-400">Este serviço não gerou segredos.</p>}
-      {entries.length > 0 && (
-        <div>
-          <div className="mb-3 flex justify-end">
+
+      {credentials && entries.length > 0 && (
+        <div className="card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="section-label">Segredos gerados</p>
             <button onClick={() => setRevealed((v) => !v)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400">
               {revealed ? <IconEyeOff className="h-3.5 w-3.5" /> : <IconEye className="h-3.5 w-3.5" />}
               {revealed ? 'Ocultar valores' : 'Mostrar valores'}
@@ -567,6 +582,180 @@ function EnvironmentTab({ applicationId, deploymentId }: { applicationId: string
           </div>
         </div>
       )}
+
+      {credentials && isGit && <GitEnvEditor applicationId={applicationId} deploymentId={deploymentId} onChange={onChange} />}
+
+      {credentials && !isGit && entries.length === 0 && <p className="text-sm text-slate-400">Este serviço não gerou segredos.</p>}
+    </div>
+  );
+}
+
+type EnvMode = 'list' | 'bulk';
+
+function envToBulkText(env: Record<string, string>): string {
+  return Object.entries(env)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n');
+}
+
+function bulkTextToEnv(text: string): Record<string, string> {
+  return Object.fromEntries(
+    text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => {
+        const i = l.indexOf('=');
+        return i === -1 ? [l, ''] : [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+      })
+      .filter(([k]) => k),
+  );
+}
+
+/** Variáveis de ambiente de um serviço implantado a partir de repositório —
+ * duas formas de editar a mesma lista: uma a uma (menos erro pra poucas
+ * variáveis) ou tudo de uma vez em texto CHAVE=valor (mais rápido pra colar
+ * um .env inteiro). Salvar recria o container sem reconstruir a imagem. */
+function GitEnvEditor({ applicationId, deploymentId, onChange }: { applicationId: string; deploymentId: string; onChange: () => void }) {
+  const [env, setEnv] = useState<Record<string, string> | null>(null);
+  const [rows, setRows] = useState<{ key: string; value: string }[]>([]);
+  const [bulkText, setBulkText] = useState('');
+  const [mode, setMode] = useState<EnvMode>('list');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    apiFetch<Record<string, string>>(`/applications/${applicationId}/deployments/${deploymentId}/env`)
+      .then((data) => {
+        setEnv(data);
+        setRows(Object.entries(data).map(([key, value]) => ({ key, value })));
+        setBulkText(envToBulkText(data));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
+  }, [applicationId, deploymentId]);
+
+  function switchMode(next: EnvMode) {
+    if (next === mode) return;
+    if (next === 'bulk') {
+      setBulkText(envToBulkText(Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]))));
+    } else {
+      setRows(Object.entries(bulkTextToEnv(bulkText)).map(([key, value]) => ({ key, value })));
+    }
+    setMode(next);
+  }
+
+  function updateRow(i: number, field: 'key' | 'value', v: string) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: v } : r)));
+  }
+
+  function removeRow(i: number) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function save() {
+    const finalEnv =
+      mode === 'bulk' ? bulkTextToEnv(bulkText) : Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]));
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await apiFetch(`/applications/${applicationId}/deployments/${deploymentId}/env`, {
+        method: 'PATCH',
+        body: JSON.stringify({ env: finalEnv }),
+      });
+      setEnv(finalEnv);
+      setRows(Object.entries(finalEnv).map(([key, value]) => ({ key, value })));
+      setBulkText(envToBulkText(finalEnv));
+      setSaved(true);
+      onChange();
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!env) return <Skeleton className="h-24" />;
+
+  return (
+    <div className="card space-y-3 p-4">
+      <div className="flex items-center justify-between">
+        <p className="section-label">Variáveis de ambiente</p>
+        <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 text-xs dark:border-slate-700">
+          <button
+            onClick={() => switchMode('list')}
+            className={`rounded-md px-2.5 py-1 font-medium transition ${
+              mode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Uma a uma
+          </button>
+          <button
+            onClick={() => switchMode('bulk')}
+            className={`rounded-md px-2.5 py-1 font-medium transition ${
+              mode === 'bulk' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Editar tudo
+          </button>
+        </div>
+      </div>
+
+      {mode === 'list' ? (
+        <div className="space-y-2">
+          {rows.length === 0 && <p className="text-sm text-slate-400">Nenhuma variável definida.</p>}
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                value={row.key}
+                onChange={(e) => updateRow(i, 'key', e.target.value)}
+                placeholder="CHAVE"
+                className="input h-9 flex-1 font-mono text-xs uppercase"
+              />
+              <input
+                value={row.value}
+                onChange={(e) => updateRow(i, 'value', e.target.value)}
+                placeholder="valor"
+                className="input h-9 flex-1 font-mono text-xs"
+              />
+              <button
+                onClick={() => removeRow(i)}
+                className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
+                aria-label="Remover variável"
+              >
+                <IconTrash className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => setRows((prev) => [...prev, { key: '', value: '' }])}
+            className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            <IconPlus className="h-3.5 w-3.5" aria-hidden />
+            Adicionar variável
+          </button>
+        </div>
+      ) : (
+        <textarea
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+          placeholder={'CHAVE=valor\nOUTRA_CHAVE=outro valor'}
+          rows={8}
+          className="input font-mono text-xs"
+        />
+      )}
+
+      {error && <Alert variant="error">{error}</Alert>}
+
+      <div className="flex items-center justify-end gap-2">
+        {saved && <span className="text-xs text-green-600 dark:text-green-400">Salvo — container recriado.</span>}
+        <button onClick={save} disabled={saving} className="btn-primary px-3.5 py-2 text-sm disabled:opacity-50">
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      <p className="text-[11px] text-slate-400">Salvar recria o container com as novas variáveis — a imagem não é reconstruída.</p>
     </div>
   );
 }
@@ -576,6 +765,23 @@ const DOMAIN_TONE: Record<string, StatusTone> = {
   PENDING: 'info',
   ERROR: 'danger',
 };
+
+interface CloudflareZoneOption {
+  id: string;
+  name: string;
+  status: string;
+}
+
+/** Rótulo curto e legível pra sugestão de domínio aleatório — não precisa ser
+ * criptograficamente forte, só improvável de colidir com outro subdomínio já
+ * usado na mesma zona. */
+function randomDomainLabel(base: string): string {
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'app'}-${Math.random().toString(36).slice(2, 6)}`;
+}
 
 function DomainsTab({
   project,
@@ -587,12 +793,14 @@ function DomainsTab({
   onChange: () => void;
 }) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [zones, setZones] = useState<CloudflareZoneOption[]>([]);
+  const [formTarget, setFormTarget] = useState<'new' | ProjectDomain | null>(null);
   const [hostname, setHostname] = useState('');
   const [port, setPort] = useState<number | null>(null);
   const [createDnsRecord, setCreateDnsRecord] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<EndpointServiceInfo[]>(`/applications/${project.id}/endpoints`)
@@ -603,27 +811,73 @@ function DomainsTab({
         if (recommended) setPort(recommended.port);
       })
       .catch(() => {});
+    // Sem conta Cloudflare conectada, a API devolve 404 — sem problema, só
+    // significa que o botão de gerar domínio aleatório fica escondido.
+    apiFetch<CloudflareZoneOption[]>('/cloudflare/zones')
+      .then(setZones)
+      .catch(() => {});
   }, [project.id, service.name]);
 
   const domains = project.domains.filter((d) => d.serviceName === service.name);
   const endpoint = endpoints?.find((e) => e.serviceName === service.name);
+  const isEditing = formTarget !== null && formTarget !== 'new';
 
-  async function create() {
+  function openAdd() {
+    setError(null);
+    setHostname('');
+    const recommended = endpoint?.ports.find((p) => p.recommended) ?? endpoint?.ports[0];
+    setPort(recommended?.port ?? null);
+    setCreateDnsRecord(true);
+    setFormTarget('new');
+  }
+
+  function openEdit(domain: ProjectDomain) {
+    setError(null);
+    setHostname(domain.hostname);
+    setPort(domain.targetPort);
+    setFormTarget(domain);
+  }
+
+  function generateRandom() {
+    if (zones.length === 0) return;
+    setHostname(`${randomDomainLabel(service.name)}.${zones[0].name}`);
+  }
+
+  async function submit() {
     if (!hostname.trim() || !port) return;
     setSaving(true);
     setError(null);
     try {
-      await apiFetch(`/applications/${project.id}/domains`, {
-        method: 'POST',
-        body: JSON.stringify({ hostname: hostname.trim(), serviceName: service.name, port, createDnsRecord }),
-      });
-      setShowForm(false);
-      setHostname('');
+      if (formTarget && formTarget !== 'new') {
+        await apiFetch(`/applications/${project.id}/domains/${formTarget.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ hostname: formTarget.hostname, serviceName: service.name, port }),
+        });
+      } else {
+        await apiFetch(`/applications/${project.id}/domains`, {
+          method: 'POST',
+          body: JSON.stringify({ hostname: hostname.trim(), serviceName: service.name, port, createDnsRecord }),
+        });
+      }
+      setFormTarget(null);
       onChange();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao criar domínio');
+      setError(e instanceof Error ? e.message : 'Falha ao salvar domínio');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function remove(domainId: string) {
+    setRemovingId(domainId);
+    setError(null);
+    try {
+      await apiFetch(`/traefik/domains/${domainId}`, { method: 'DELETE' });
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao remover domínio');
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -635,29 +889,82 @@ function DomainsTab({
         <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
           {domains.map((d) => (
             <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.hostname}</StatusBadge>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <IconGlobe className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{d.hostname}</p>
+                  <p className="text-xs text-slate-400">porta {d.targetPort}</p>
+                </div>
+                <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</StatusBadge>
               </div>
-              {d.status === 'ACTIVE' && (
-                <a href={`https://${d.hostname}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-indigo-500 hover:underline">
-                  Abrir <IconExternalLink className="h-3 w-3" aria-hidden />
-                </a>
-              )}
+              <div className="flex shrink-0 items-center gap-1">
+                {d.status === 'ACTIVE' && (
+                  <a
+                    href={`https://${d.hostname}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"
+                    aria-label="Abrir domínio"
+                  >
+                    <IconExternalLink className="h-4 w-4" aria-hidden />
+                  </a>
+                )}
+                <button
+                  onClick={() => openEdit(d)}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"
+                  aria-label="Editar domínio"
+                >
+                  <IconPencil className="h-4 w-4" aria-hidden />
+                </button>
+                <button
+                  onClick={() => remove(d.id)}
+                  disabled={removingId === d.id}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-500/10"
+                  aria-label="Remover domínio"
+                >
+                  <IconTrash className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+      {formTarget === null ? (
+        <button onClick={openAdd} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
           <IconPlus className="h-4 w-4" aria-hidden />
           Adicionar domínio
         </button>
       ) : (
         <div className="card space-y-3 p-4">
+          <p className="section-label">{isEditing ? 'Editar domínio' : 'Novo domínio'}</p>
           <label className="block text-sm">
             <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Domínio</span>
-            <input value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="app.seudominio.com" className="input" />
+            <div className="flex gap-2">
+              <input
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                placeholder="app.seudominio.com"
+                disabled={isEditing}
+                className="input disabled:opacity-60"
+              />
+              {!isEditing && zones.length > 0 && (
+                <button
+                  type="button"
+                  onClick={generateRandom}
+                  title={`Gerar domínio aleatório em ${zones[0].name}`}
+                  className="btn-secondary flex shrink-0 items-center gap-1.5 px-3 text-sm"
+                >
+                  <IconRefresh className="h-4 w-4" aria-hidden />
+                  Aleatório
+                </button>
+              )}
+            </div>
+            {isEditing && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                O nome do domínio não pode ser trocado por aqui — remova e crie um novo se precisar de outro.
+              </p>
+            )}
           </label>
           {endpoint && endpoint.ports.length > 1 && (
             <label className="block text-sm">
@@ -671,17 +978,19 @@ function DomainsTab({
               </select>
             </label>
           )}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
-            Criar registro DNS na Cloudflare automaticamente
-          </label>
+          {!isEditing && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
+              Criar registro DNS na Cloudflare automaticamente
+            </label>
+          )}
           {error && <Alert variant="error">{error}</Alert>}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="btn-secondary px-3.5 py-2 text-sm">
+            <button onClick={() => setFormTarget(null)} className="btn-secondary px-3.5 py-2 text-sm">
               Cancelar
             </button>
-            <button onClick={create} disabled={saving || !hostname.trim() || !port} className="btn-primary px-3.5 py-2 text-sm disabled:opacity-50">
-              {saving ? 'Criando...' : 'Criar'}
+            <button onClick={submit} disabled={saving || !hostname.trim() || !port} className="btn-primary px-3.5 py-2 text-sm disabled:opacity-50">
+              {saving ? 'Salvando...' : isEditing ? 'Salvar' : 'Criar'}
             </button>
           </div>
         </div>

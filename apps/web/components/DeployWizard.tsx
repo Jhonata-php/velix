@@ -10,11 +10,22 @@ import { Alert } from './Alert';
 import { StatusBadge } from './StatusBadge';
 import { OpsLogPanel, type OpsLogStatus } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
-import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff } from './icons';
+import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff, IconRefresh } from './icons';
 import { NetworkPulse } from './NetworkPulse';
 import { DeployProgress, type ProgressStage } from './DeployProgress';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+/** Rótulo curto e legível pra sugestão de domínio aleatório — não precisa ser
+ * criptograficamente forte, só improvável de colidir com outro subdomínio já
+ * usado na mesma zona. */
+function randomDomainLabel(base: string): string {
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'app'}-${Math.random().toString(36).slice(2, 6)}`;
+}
 
 const ENVIRONMENTS: { value: 'PRODUCTION' | 'STAGING' | 'DEVELOPMENT' | 'LAB'; label: string }[] = [
   { value: 'PRODUCTION', label: 'Produção' },
@@ -98,6 +109,8 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
     apiFetch<ServerSummary[]>('/servers').then(setServers);
   }
 
+  const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
+
   useEffect(() => {
     apiFetch<ServerSummary[]>('/servers').then((list) => {
       setServers(list);
@@ -106,6 +119,11 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
         if (recommended) setServerId(recommended.id);
       }
     });
+    // Sem conta Cloudflare conectada, a API devolve 404 — sem problema, só
+    // significa que o botão de gerar domínio aleatório fica escondido.
+    apiFetch<{ id: string; name: string }[]>('/cloudflare/zones')
+      .then(setZones)
+      .catch(() => {});
   }, [preselectedServerId, projectServerId]);
 
   const selectedServer = servers?.find((s) => s.id === serverId) ?? null;
@@ -273,6 +291,7 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
               traefikInstalled={!!selectedServer?.traefikInstalled}
               serverId={selectedServer?.id ?? ''}
               onTraefikInstalled={reloadServers}
+              zones={zones}
             />
           )}
           {currentKey === 'review' && (
@@ -638,6 +657,7 @@ function DomainStep({
   traefikInstalled,
   serverId,
   onTraefikInstalled,
+  zones,
 }: {
   manifest: CatalogApplicationDetail;
   wantsDomain: boolean;
@@ -649,6 +669,7 @@ function DomainStep({
   traefikInstalled: boolean;
   serverId: string;
   onTraefikInstalled: () => void;
+  zones: { id: string; name: string }[];
 }) {
   const [acmeEmail, setAcmeEmail] = useState('');
   const [installing, setInstalling] = useState(false);
@@ -777,7 +798,20 @@ function DomainStep({
             </div>
             <label className="block text-sm">
               <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Domínio</span>
-              <input required placeholder="app.seudominio.com" value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" />
+              <div className="flex gap-2">
+                <input required placeholder="app.seudominio.com" value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" />
+                {zones.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setHostname(`${randomDomainLabel(manifest.slug)}.${zones[0].name}`)}
+                    title={`Gerar domínio aleatório em ${zones[0].name}`}
+                    className="btn-secondary flex shrink-0 items-center gap-1.5 px-3 text-sm"
+                  >
+                    <IconRefresh className="h-4 w-4" aria-hidden />
+                    Aleatório
+                  </button>
+                )}
+              </div>
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />

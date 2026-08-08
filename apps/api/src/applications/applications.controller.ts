@@ -118,6 +118,17 @@ export class ApplicationsController {
     return this.applications.getCredentials(deploymentId);
   }
 
+  @Get('applications/:appId/deployments/:deploymentId/env')
+  getEnv(@Param('deploymentId') deploymentId: string) {
+    return this.applications.getEnv(deploymentId);
+  }
+
+  @Patch('applications/:appId/deployments/:deploymentId/env')
+  @MinRole('operator')
+  updateEnv(@Param('deploymentId') deploymentId: string, @Body('env') env: Record<string, string>) {
+    return this.gitDeploy.updateEnv(deploymentId, env ?? {});
+  }
+
   @Get('applications/:appId/deployments/:deploymentId/security')
   getSecurityRisks(@Param('deploymentId') deploymentId: string) {
     return this.applications.getSecurityRisks(deploymentId);

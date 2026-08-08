@@ -413,6 +413,17 @@ export class ApplicationsService {
     return JSON.parse(decryptCredential(deployment.secretsEnc));
   }
 
+  /** Variáveis de ambiente não sensíveis de uma implantação vinda de
+   * repositório — editáveis pelo usuário depois do deploy inicial (ver
+   * `GitDeployService.updateEnv`). Implantações do catálogo não usam isto
+   * aqui (as variáveis delas vêm do manifesto, editadas de outro jeito). */
+  async getEnv(deploymentId: string): Promise<Record<string, string>> {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (!deployment.variablesJson) return {};
+    return JSON.parse(deployment.variablesJson);
+  }
+
   /** Riscos de segurança do manifesto de uma implantação — calculados a partir
    * do mesmo manifesto usado no deploy, não de nada guardado à parte. */
   async getSecurityRisks(deploymentId: string) {

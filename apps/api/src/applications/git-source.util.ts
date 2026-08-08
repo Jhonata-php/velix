@@ -143,3 +143,30 @@ export function renderGitCompose(opts: RenderGitComposeOptions): string {
 
   return lines.join('\n') + '\n';
 }
+
+/** Nome de variável de ambiente válido (aceito por shell e Docker). */
+export function validateEnvKey(key: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
+}
+
+/**
+ * Extrai porta e volumes de volta de um compose gerado por `renderGitCompose` —
+ * é o que permite reeditar só as variáveis de ambiente sem esquecer o resto do
+ * serviço, já que hoje porta e volumes só existem dentro do texto do compose
+ * (nada disso fica em coluna própria do banco). Só entende o formato que a
+ * própria função acima escreve — não é um parser de YAML genérico.
+ */
+export function parseGitComposeMeta(compose: string, slug: string): { port: number; volumes: { name: string; containerPath: string }[] } {
+  const portMatch = compose.match(/\n {4}expose:\n {6}- "(\d+)"/);
+  const port = portMatch ? Number(portMatch[1]) : 0;
+
+  const escapedSlug = slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const volumeLineRe = new RegExp(`^ {6}- ${escapedSlug}_([^:]+):(.+)$`);
+  const volumes: { name: string; containerPath: string }[] = [];
+  for (const line of compose.split('\n')) {
+    const m = line.match(volumeLineRe);
+    if (m) volumes.push({ name: m[1], containerPath: m[2] });
+  }
+
+  return { port, volumes };
+}

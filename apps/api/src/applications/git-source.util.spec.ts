@@ -10,6 +10,8 @@ import {
   cloneUrlWithToken,
   redactToken,
   renderGitCompose,
+  validateEnvKey,
+  parseGitComposeMeta,
 } from './git-source.util';
 
 // --- URL do repositório -----------------------------------------------------
@@ -108,5 +110,33 @@ const injected = renderGitCompose({
   proxyNetwork: 'n',
 });
 assert.ok(!/^\s*privileged: true$/m.test(injected), 'valor de env conseguiu injetar chave no compose');
+
+// --- nome de variável de ambiente -------------------------------------------
+
+assert.equal(validateEnvKey('NODE_ENV'), true);
+assert.equal(validateEnvKey('_PRIVATE'), true);
+assert.equal(validateEnvKey('a1'), true);
+assert.equal(validateEnvKey('1NODE'), false); // não pode começar com número
+assert.equal(validateEnvKey('NODE-ENV'), false); // hífen não é aceito em shell
+assert.equal(validateEnvKey(''), false);
+assert.equal(validateEnvKey('NODE ENV'), false);
+
+// --- extrair porta/volumes de volta do compose (round-trip com renderGitCompose) --
+
+const meta = parseGitComposeMeta(compose, 'meuapp');
+assert.equal(meta.port, 3000);
+assert.deepEqual(meta.volumes, [{ name: 'data', containerPath: '/data' }]);
+
+// sem volumes: lista vazia, não quebra
+const noVolumesCompose = renderGitCompose({
+  slug: 'x',
+  serviceName: 'app',
+  image: 'i',
+  port: 8080,
+  env: {},
+  volumes: [],
+  proxyNetwork: 'n',
+});
+assert.deepEqual(parseGitComposeMeta(noVolumesCompose, 'x'), { port: 8080, volumes: [] });
 
 console.log('git-source.util self-check OK');
