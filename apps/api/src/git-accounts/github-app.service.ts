@@ -144,7 +144,17 @@ export class GitHubAppService {
     }
     const credentials = JSON.parse(decryptCredential(account.credentialsEnc)) as StoredCredentials;
 
-    const appJwt = await this.jwt.signAsync(
+    // `this.jwt` (injetado) tem `secret: JWT_SECRET` fixado no módulo, e o
+    // JwtService do @nestjs/jwt prioriza `this.options.secret` sobre
+    // `options.privateKey` em QUALQUER chamada dessa instância (ver
+    // getSecretKey em node_modules/@nestjs/jwt/dist/jwt.service.js) — ou
+    // seja, um `signAsync({..., privateKey: ...})` nele silenciosamente
+    // assina com o JWT_SECRET do painel em vez da chave do GitHub App, e o
+    // `jsonwebtoken` por baixo rejeita na hora ("secretOrPrivateKey must be
+    // an asymmetric key when using RS256") — end pointe caía com 500. Uma
+    // instância nova, sem `secret` nenhum no options, deixa `privateKey`
+    // passar de verdade.
+    const appJwt = await new JwtService({}).signAsync(
       {},
       {
         algorithm: 'RS256',
