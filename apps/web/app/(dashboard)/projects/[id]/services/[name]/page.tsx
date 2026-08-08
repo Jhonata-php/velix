@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { ConfirmModal } from '@/components/Modal';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
+import { WebTerminal } from '@/components/WebTerminal';
 import { AutoDeployModal } from '@/components/AutoDeployModal';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
@@ -30,10 +31,20 @@ import {
   IconCheck,
   IconEye,
   IconEyeOff,
+  IconTerminal,
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
-type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources';
+type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources' | 'terminal';
+
+/** Mesma heurística de `apps/api/src/terminal/container-shell.util.ts` (não
+ * dá pra reaproveitar entre front e back) — só decide se mostra o botão
+ * extra "Console do banco"; a decisão de verdade é sempre refeita no
+ * backend antes de abrir o shell. */
+function looksLikeDatabase(image: string): boolean {
+  const img = image.toLowerCase();
+  return ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'].some((needle) => img.includes(needle));
+}
 
 const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
   DEPLOYING: 'info',
@@ -138,6 +149,7 @@ export default function ServicePage() {
     { key: 'domains', label: 'Domínios', icon: <IconGlobe className="h-4 w-4" /> },
     { key: 'security', label: 'Segurança', icon: <IconShield className="h-4 w-4" /> },
     { key: 'resources', label: 'Recursos', icon: <IconDisk className="h-4 w-4" /> },
+    { key: 'terminal', label: 'Terminal', icon: <IconTerminal className="h-4 w-4" /> },
   ];
 
   return (
@@ -173,7 +185,11 @@ export default function ServicePage() {
             Reiniciar
           </button>
           {fromGit && (
-            <button onClick={() => setRedeploying(true)} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
+            <button
+              onClick={() => setRedeploying(true)}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            >
               <IconGithub className="h-4 w-4" aria-hidden />
               Reimplantar
             </button>
@@ -229,6 +245,7 @@ export default function ServicePage() {
       {tab === 'domains' && <DomainsTab project={project} service={service} onChange={load} />}
       {tab === 'security' && deployment && <SecurityTab applicationId={project.id} deploymentId={deployment.id} />}
       {tab === 'resources' && <ResourcesTab applicationId={project.id} serviceName={service.name} />}
+      {tab === 'terminal' && <ShellTab applicationId={project.id} service={service} />}
 
       {redeploying && (
         <InstallLogModal
@@ -569,6 +586,29 @@ function ResourcesTab({ applicationId, serviceName }: { applicationId: string; s
       <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
         <MetricValue>{stats.network ?? '—'}</MetricValue>
       </MetricCard>
+    </div>
+  );
+}
+
+function ShellTab({ applicationId, service }: { applicationId: string; service: ProjectService }) {
+  const [mode, setMode] = useState<'shell' | 'db'>('shell');
+  const showDbOption = looksLikeDatabase(service.image);
+
+  const wsPath = `/service-terminal?applicationId=${applicationId}&serviceName=${encodeURIComponent(service.name)}&mode=${mode}`;
+
+  return (
+    <div className="space-y-3">
+      {showDbOption && (
+        <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+          <button onClick={() => setMode('shell')} className={`tab-pill ${mode === 'shell' ? 'tab-pill-active' : ''}`}>
+            Shell
+          </button>
+          <button onClick={() => setMode('db')} className={`tab-pill ${mode === 'db' ? 'tab-pill-active' : ''}`}>
+            Console do banco
+          </button>
+        </div>
+      )}
+      <WebTerminal key={mode} wsPath={wsPath} title={mode === 'db' ? `Console — ${service.name}` : `Shell — ${service.name}`} />
     </div>
   );
 }

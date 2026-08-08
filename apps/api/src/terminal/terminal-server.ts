@@ -7,6 +7,7 @@ import { SshService } from '../ssh/ssh.service';
 import { buildConnectOptions } from '../ssh/connect-options.util';
 import { decryptCredential } from '../ssh/crypto.util';
 import { shellSingleQuote } from '../database/mysql.util';
+import { dbConsoleCommand } from './container-shell.util';
 
 type ClientMessage = { type: 'input'; data: string } | { type: 'resize'; cols: number; rows: number };
 
@@ -30,10 +31,11 @@ export function attachTerminalServer(
 
   httpServer.on('upgrade', (req, socket, head) => {
     const { pathname, query } = parse(req.url ?? '', true);
-    if (pathname !== '/terminal' && pathname !== '/db-console') return;
+    if (pathname !== '/terminal' && pathname !== '/db-console' && pathname !== '/service-terminal') return;
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const handler = pathname === '/terminal' ? handleConnection : handleDbConsole;
+      const handler =
+        pathname === '/terminal' ? handleConnection : pathname === '/db-console' ? handleDbConsole : handleServiceTerminal;
       handler(ws, query as Record<string, string>, deps).catch(() => {
         send(ws, { type: 'error', message: 'Falha ao abrir terminal' });
         ws.close();
@@ -152,4 +154,65 @@ async function handleDbConsole(
   const rootPassword = decryptCredential(instance.rootPasswordEnc);
   const stream = await wirePty(ws, deps.ssh, options);
   stream.write(`sudo docker exec -it ${instance.containerName} mysql -uroot -p${shellSingleQuote(rootPassword)}\n`);
+}
+
+/**
+ * Shell dentro de um container de um serviço de projeto — `docker exec -it
+ * <container> sh` por padrão, ou o cliente do banco (`mode=db`) quando a
+ * imagem é um banco conhecido (ver container-shell.util.ts). Sem login
+ * automático no modo banco: diferente do MySQL solto (`handleDbConsole`,
+ * que sabe a senha de root porque foi o Velix que gerou), aqui a senha é
+ * o que o manifesto do catálogo gerou — o usuário já vê ela pronta na aba
+ * Ambiente do serviço, então digitar na hora é mais simples e mais seguro
+ * que tentar adivinhar qual variável de ambiente cada manifesto usa.
+ */
+async function handleServiceTerminal(
+  ws: WebSocket,
+  query: Record<string, string>,
+  deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
+) {
+  const { token, applicationId, serviceName, mode } = query;
+  if (!token || !applicationId || !serviceName) {
+    send(ws, { type: 'error', message: 'Parâmetros ausentes' });
+    ws.close();
+    return;
+  }
+
+  try {
+    await deps.jwt.verifyAsync(token);
+  } catch {
+    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
+    ws.close();
+    return;
+  }
+
+  const application = await deps.prisma.application.findUnique({ where: { id: applicationId }, include: { server: true } });
+  if (!application) {
+    send(ws, { type: 'error', message: 'Projeto não encontrado' });
+    ws.close();
+    return;
+  }
+  const service = await deps.prisma.projectService.findUnique({
+    where: { applicationId_name: { applicationId, name: serviceName } },
+  });
+  if (!service) {
+    send(ws, { type: 'error', message: 'Serviço não encontrado neste projeto' });
+    ws.close();
+    return;
+  }
+
+  let options;
+  try {
+    options = buildConnectOptions(application.server);
+  } catch (err) {
+    send(ws, { type: 'error', message: err instanceof Error ? err.message : 'Credenciais inválidas' });
+    ws.close();
+    return;
+  }
+
+  const containerName = shellSingleQuote(service.containerName);
+  const command = mode === 'db' ? dbConsoleCommand(service.image) : null;
+
+  const stream = await wirePty(ws, deps.ssh, options);
+  stream.write(`sudo docker exec -it ${containerName} ${command ?? 'sh'}\n`);
 }
