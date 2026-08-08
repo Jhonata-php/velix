@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { ServersService } from '../servers/servers.service';
 import { TraefikService } from '../traefik/traefik.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
+import { dbImportSecretKey, dbImportCommand } from '../terminal/container-shell.util';
+import { shellSingleQuote } from '../database/mysql.util';
 import {
   renderCompose,
   renderServiceEnvFiles,
@@ -437,6 +440,112 @@ export class ApplicationsService {
     );
     const [cpu, memory, network] = result.stdout.trim().split('|');
     return { cpu: cpu ?? null, memory: memory ?? null, network: network ?? null };
+  }
+
+  /**
+   * Importa um dump `.sql` pro banco de um serviço (Postgres/MySQL/MariaDB —
+   * ver dbImportSecretKey/dbImportCommand pra escopo). Grava o conteúdo num
+   * arquivo temporário no SERVIDOR (não dentro do container — `docker exec`
+   * não enxerga o filesystem do host) e usa `< arquivo` na hora de rodar o
+   * `docker exec`: o redirecionamento é interpretado pelo shell do host antes
+   * de existir qualquer container, então o conteúdo chega no stdin do
+   * processo dentro do container sem precisar montar volume nenhum.
+   */
+  async importDatabase(applicationId: string, serviceName: string, sqlContent: string, onLog?: LogFn) {
+    const app = await this.getOne(applicationId);
+    const service = app.services.find((s) => s.name === serviceName);
+    if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
+
+    const secretKey = dbImportSecretKey(service.image);
+    if (!secretKey) throw new BadRequestException('Importação de .sql não é suportada para este tipo de serviço');
+
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+    if (!deployment?.secretsEnc) throw new BadRequestException('Não achei a senha deste banco — a implantação não gerou segredos.');
+    const secretsMap = JSON.parse(decryptCredential(deployment.secretsEnc)) as Record<string, string>;
+    const password = secretsMap[secretKey];
+    if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
+
+    const variablesMap = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
+    const dbName = variablesMap.DATABASE_NAME || 'app';
+
+    const importInfo = dbImportCommand(service.image, password, dbName);
+    if (!importInfo) throw new BadRequestException('Importação de .sql não é suportada para este tipo de serviço');
+
+    const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
+    const dir = appDir(app.slug);
+    const remoteFilePath = `${dir}/.import-${randomBytes(6).toString('hex')}.sql`;
+
+    onLog?.('Enviando o arquivo pro servidor...\n');
+    const write = await this.ssh.writeRemoteFile(options, remoteFilePath, sqlContent, '600');
+    if (!write.ok) throw new BadRequestException(write.message);
+
+    try {
+      onLog?.('Importando...\n');
+      const result = await this.ssh.runCommand(
+        options,
+        `sudo docker exec ${importInfo.execFlags} -i ${shellSingleQuote(service.containerName)} ${importInfo.command} < ${remoteFilePath}`,
+        600_000,
+        onLog && ((chunk) => onLog(chunk)),
+      );
+      if (!result.ok) throw new Error(result.stderr || result.message || 'Falha ao importar — confira o log acima.');
+      onLog?.('Importação concluída.\n');
+      return { ok: true };
+    } finally {
+      await this.ssh.runCommand(options, `sudo rm -f ${remoteFilePath}`, 15_000);
+    }
+  }
+
+  /**
+   * Publica (ou remove) a porta do host mapeada pro container de um serviço
+   * do catálogo — pra conectar um cliente de fora (DBeaver, TablePlus...)
+   * sem passar pelo Traefik, que só roteia HTTP/HTTPS. `hostPort: null`
+   * remove a publicação, voltando o serviço a só existir na rede interna.
+   *
+   * Só serviços do catálogo (deployment.manifestSlug) — precisa re-renderizar
+   * o compose a partir do manifesto pra acrescentar o `ports:`, o mesmo
+   * mecanismo que `addService` já usa pra reconfigurar uma implantação
+   * existente sem derrubar o resto do projeto.
+   */
+  async setPublishedPort(applicationId: string, serviceName: string, hostPort: number | null, onLog?: LogFn) {
+    if (hostPort !== null && (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535)) {
+      throw new BadRequestException('Porta inválida');
+    }
+
+    const app = await this.getOne(applicationId);
+    const service = app.services.find((s) => s.name === serviceName);
+    if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
+
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+    if (!deployment?.manifestSlug) throw new BadRequestException('Publicar porta só é suportado para serviços implantados do catálogo');
+
+    const manifest = this.catalog.getManifest(deployment.manifestSlug);
+    const variablesMap: Record<string, string> = deployment.variablesJson ? JSON.parse(deployment.variablesJson) : {};
+    const hostPorts = hostPort ? { [serviceName]: hostPort } : {};
+    const deploymentCompose = renderCompose(manifest, app.slug, variablesMap, deployment.selectedServices, hostPorts);
+
+    await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { composeRendered: deploymentCompose } });
+    const mergedCompose = await this.mergedComposeExcluding(applicationId);
+
+    const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
+    const dir = appDir(app.slug);
+
+    onLog?.('Gravando docker-compose.yml...\n');
+    const write = await this.ssh.writeRemoteFile(options, `${dir}/docker-compose.yml`, mergedCompose, '644');
+    if (!write.ok) throw new BadRequestException(write.message);
+
+    onLog?.('Recriando o container...\n');
+    const up = await this.ssh.runCommand(
+      options,
+      `cd ${dir} && sudo docker compose -p ${app.slug} up -d`,
+      120_000,
+      onLog && ((chunk) => onLog(chunk)),
+    );
+    if (!up.ok) throw new Error(up.stdout + up.stderr || 'Falha ao recriar o container — a porta pode já estar em uso.');
+
+    await this.prisma.projectService.update({ where: { id: service.id }, data: { publishedPort: hostPort } });
+    await this.prisma.application.update({ where: { id: applicationId }, data: { composeRendered: mergedCompose } });
+
+    return { ok: true, publishedPort: hostPort };
   }
 
   start(id: string, onLog?: LogFn) {

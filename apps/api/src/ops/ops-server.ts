@@ -22,6 +22,7 @@ type StartMessage =
   | { type: 'start'; op: 'service-redeploy-git'; params: { deploymentId: string } }
   | { type: 'start'; op: 'container-logs'; params: { containerId: string } }
   | { type: 'start'; op: 'service-add'; params: { deploymentId: string; serviceName: string } }
+  | { type: 'start'; op: 'service-db-import'; params: { applicationId: string; serviceName: string; sqlContent: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
       type: 'start';
@@ -186,6 +187,8 @@ async function handleConnection(
         result = await deps.servers.streamContainerLogs(serverId, msg.params.containerId, onLog, ws);
       } else if (msg.op === 'service-add') {
         result = await deps.applications.addService(msg.params.deploymentId, msg.params.serviceName, onLog);
+      } else if (msg.op === 'service-db-import') {
+        result = await deps.applications.importDatabase(msg.params.applicationId, msg.params.serviceName, msg.params.sqlContent, onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
       } else if (msg.op === 'mysql-install') {

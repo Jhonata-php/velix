@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
@@ -32,6 +32,8 @@ import {
   IconEye,
   IconEyeOff,
   IconTerminal,
+  IconPlug,
+  IconFileText,
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
@@ -44,6 +46,14 @@ type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | '
 function looksLikeDatabase(image: string): boolean {
   const img = image.toLowerCase();
   return ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'].some((needle) => img.includes(needle));
+}
+
+/** Mesmo escopo de `dbImportSecretKey` no backend — só os bancos com um dump
+ * `.sql` de verdade e senha em local previsível (Mongo usa dump binário,
+ * Redis não tem senha nesta fase — ver comentário no manifesto). */
+function supportsSqlImport(image: string): boolean {
+  const img = image.toLowerCase();
+  return ['postgres', 'mysql', 'mariadb'].some((needle) => img.includes(needle));
 }
 
 const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
@@ -239,7 +249,7 @@ export default function ServicePage() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab project={project} service={service} />}
+      {tab === 'overview' && <OverviewTab project={project} service={service} onChange={load} />}
       {tab === 'source' && deployment && <SourceTab project={project} deployment={deployment} onChange={load} />}
       {tab === 'environment' && deployment && <EnvironmentTab applicationId={project.id} deploymentId={deployment.id} />}
       {tab === 'domains' && <DomainsTab project={project} service={service} onChange={load} />}
@@ -276,8 +286,12 @@ export default function ServicePage() {
   );
 }
 
-function OverviewTab({ project, service }: { project: ProjectDetail; service: ProjectService }) {
+function OverviewTab({ project, service, onChange }: { project: ProjectDetail; service: ProjectService; onChange: () => void }) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importPayload, setImportPayload] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [deployingAdminer, setDeployingAdminer] = useState(false);
 
   useEffect(() => {
     apiFetch<EndpointServiceInfo[]>(`/applications/${project.id}/endpoints`)
@@ -286,6 +300,19 @@ function OverviewTab({ project, service }: { project: ProjectDetail; service: Pr
   }, [project.id]);
 
   const endpoint = endpoints?.find((e) => e.serviceName === service.name);
+  const isDb = looksLikeDatabase(service.image);
+  const canImport = supportsSqlImport(service.image);
+
+  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = () => setImportPayload(String(reader.result ?? ''));
+    reader.onerror = () => setImportError('Falha ao ler o arquivo');
+    reader.readAsText(file);
+  }
 
   return (
     <div className="space-y-4">
@@ -310,7 +337,139 @@ function OverviewTab({ project, service }: { project: ProjectDetail; service: Pr
         </div>
       </div>
 
+      {isDb && (
+        <div className="card space-y-3 p-4">
+          <p className="section-label">Ferramentas de banco</p>
+          {importError && <Alert variant="error">{importError}</Alert>}
+          <div className="flex flex-wrap gap-2">
+            {canImport && (
+              <>
+                <input ref={fileInputRef} type="file" accept=".sql" className="hidden" onChange={handleFilePicked} />
+                <button onClick={() => fileInputRef.current?.click()} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+                  <IconFileText className="h-4 w-4" aria-hidden />
+                  Importar .sql
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setDeployingAdminer(true)}
+              disabled={deployingAdminer}
+              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+            >
+              <IconGlobe className="h-4 w-4" aria-hidden />
+              Abrir interface web
+            </button>
+          </div>
+          <PublishPortControl project={project} service={service} onChange={onChange} />
+        </div>
+      )}
+
       <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />
+
+      {importPayload !== null && (
+        <InstallLogModal
+          serverId={project.server.id}
+          op="service-db-import"
+          params={{ applicationId: project.id, serviceName: service.name, sqlContent: importPayload }}
+          title={`Importando .sql — ${service.name}`}
+          onClose={() => setImportPayload(null)}
+          onDone={() => {}}
+        />
+      )}
+
+      {deployingAdminer && (
+        <InstallLogModal
+          serverId={project.server.id}
+          op="service-deploy"
+          params={{ applicationId: project.id, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: service.containerName } }}
+          title="Implantando Adminer"
+          onClose={() => setDeployingAdminer(false)}
+          onDone={() => onChange()}
+        />
+      )}
+    </div>
+  );
+}
+
+function PublishPortControl({ project, service, onChange }: { project: ProjectDetail; service: ProjectService; onChange: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [port, setPort] = useState(String(service.publishedPort ?? ''));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function publish(newPort: number | null) {
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/applications/${project.id}/services/${encodeURIComponent(service.name)}/publish-port`, {
+        method: 'POST',
+        body: JSON.stringify({ port: newPort }),
+      });
+      setEditing(false);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao publicar a porta');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-slate-100 pt-3 dark:border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <IconPlug className="h-4 w-4 text-slate-400" aria-hidden />
+          {service.publishedPort ? (
+            <span className="text-slate-700 dark:text-slate-200">
+              Porta publicada: <span className="font-mono font-medium">{service.publishedPort}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400">Sem porta publicada — só acessível dentro do servidor.</span>
+          )}
+        </div>
+        {!editing && (
+          <div className="flex gap-2">
+            {service.publishedPort && (
+              <button onClick={() => publish(null)} disabled={saving} className="text-xs text-red-500 hover:underline disabled:opacity-50">
+                Remover
+              </button>
+            )}
+            <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+              {service.publishedPort ? 'Trocar porta' : 'Publicar porta'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            placeholder="ex.: 3306"
+            className="input h-8 w-32 py-0 text-xs"
+          />
+          <button
+            onClick={() => publish(Number(port))}
+            disabled={saving || !port.trim() || !Number.isInteger(Number(port))}
+            className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
+          >
+            {saving ? 'Publicando...' : 'Confirmar'}
+          </button>
+          <button onClick={() => setEditing(false)} className="text-xs text-slate-500 hover:underline">
+            Cancelar
+          </button>
+        </div>
+      )}
+      {error && (
+        <div className="mt-2">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+      <p className="mt-1.5 text-[11px] text-slate-400">
+        Publica a porta direto no servidor (fora do Traefik) — pra conectar um cliente de banco de fora, tipo DBeaver ou
+        TablePlus. Confira se a porta escolhida está liberada no firewall do servidor.
+      </p>
     </div>
   );
 }

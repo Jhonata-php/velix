@@ -489,6 +489,10 @@ model ProjectService {
   containerName   String
   required        Boolean               @default(true)
   status          ProjectServiceStatus  @default(DEPLOYING)
+  // Porta do host publicada pra este container (ex.: pra conectar um cliente
+  // de banco de fora) — null enquanto não publicada. Só a porta muda; a
+  // porta DENTRO do container é sempre a mesma do manifesto.
+  publishedPort   Int?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 

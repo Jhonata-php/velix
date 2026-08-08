@@ -28,6 +28,7 @@ import { homeAssistantManifest } from './manifests/home-assistant';
 import { keycloakManifest } from './manifests/keycloak';
 import { qbittorrentManifest } from './manifests/qbittorrent';
 import { immichManifest } from './manifests/immich';
+import { adminerManifest } from './manifests/adminer';
 import { QUICK_MANIFESTS } from './manifests/quick-apps';
 
 /**
@@ -65,6 +66,7 @@ const OFFICIAL_MANIFESTS: VelixManifest[] = [
   keycloakManifest,
   qbittorrentManifest,
   immichManifest,
+  adminerManifest,
   ...QUICK_MANIFESTS,
 ];
 

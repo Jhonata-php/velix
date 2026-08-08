@@ -73,6 +73,13 @@ export class ApplicationsController {
     return this.applications.serviceAction(appId, name, 'restart');
   }
 
+  /** `port: null` remove a publicação — ver comentário do método no service. */
+  @Post('applications/:appId/services/:name/publish-port')
+  @MinRole('operator')
+  publishPort(@Param('appId') appId: string, @Param('name') name: string, @Body('port') port: number | null) {
+    return this.applications.setPublishedPort(appId, name, port);
+  }
+
   /** Remove UMA implantação do projeto (ex.: tirar um serviço avulso), mantendo
    * o resto no ar — diferente do DELETE em `/applications/:appId`, que apaga
    * o projeto inteiro. */

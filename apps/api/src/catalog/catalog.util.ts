@@ -272,11 +272,22 @@ function renderDependsOn(dependsOn: string[] | undefined, includedNames: Set<str
   return `\n    depends_on:\n${deps.map((d) => `      - ${d}`).join('\n')}`;
 }
 
+/** Publica a porta do container num host port — usado só quando o usuário
+ * pede explicitamente ("Publicar porta" na tela do serviço), pra acessar o
+ * banco direto de um cliente de fora sem passar pelo Traefik (que só roteia
+ * HTTP/HTTPS, não protocolos de banco). Sem isso, todo serviço fica só na
+ * rede interna `velix-proxy`, de propósito (menos superfície exposta). */
+function renderHostPort(hostPort: number | undefined, containerPort: number | undefined): string {
+  if (!hostPort || !containerPort) return '';
+  return `\n    ports:\n      - "${hostPort}:${containerPort}"`;
+}
+
 export function renderCompose(
   manifest: VelixManifest,
   appSlug: string,
   variablesMap: Record<string, string> = {},
   selectedOptional: string[] = [],
+  hostPorts: Record<string, number> = {},
 ): string {
   const usesSecrets = (manifest.secrets?.length ?? 0) > 0;
   const included = resolveIncludedServices(manifest, selectedOptional);
@@ -290,10 +301,11 @@ export function renderCompose(
         usesSecrets && s.environment && Object.keys(s.environment).length > 0
           ? `\n    env_file:\n      - ./secrets/${s.name}.env`
           : renderEnvironment(s.environment, appSlug, variablesMap);
+      const portBlock = renderHostPort(hostPorts[s.name], s.ports?.find((p) => p.recommended)?.port ?? s.ports?.[0]?.port);
       return `  ${s.name}:
     image: ${s.image}
     container_name: ${containerName}
-    restart: unless-stopped${command}${envBlock}${renderVolumes(appSlug, s.volumes)}${renderDependsOn(s.dependsOn, includedNames)}
+    restart: unless-stopped${command}${envBlock}${renderVolumes(appSlug, s.volumes)}${renderDependsOn(s.dependsOn, includedNames)}${portBlock}
     networks:
       - velix-proxy`;
     })

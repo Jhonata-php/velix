@@ -45,6 +45,12 @@ assert.ok(compose.includes('velix-proxy:\n    external: true'));
 // nome do container primário bate com o que o compose realmente gera
 assert.equal(primaryContainerName(uptimeKumaManifest, 'meuapp'), 'meuapp_app');
 
+// publicar porta: só quando pedido (hostPorts), na porta recomendada do serviço
+const withoutPort = renderCompose(uptimeKumaManifest, 'meuapp', {}, []);
+assert.ok(!withoutPort.includes('ports:'), 'sem hostPorts, não publica porta nenhuma');
+const withPort = renderCompose(uptimeKumaManifest, 'meuapp', {}, [], { app: 13001 });
+assert.ok(withPort.includes('ports:\n      - "13001:3001"'), 'porta do host mapeada pra porta recomendada do container');
+
 // segurança: manifesto oficial não deve disparar nenhum achado
 assert.deepEqual(scanSecurityRisks(uptimeKumaManifest), []);
 

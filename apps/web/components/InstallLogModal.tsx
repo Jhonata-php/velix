@@ -17,6 +17,7 @@ export type Op =
   | 'service-redeploy-git'
   | 'container-logs'
   | 'service-add'
+  | 'service-db-import'
   | 'updates-install'
   | 'mysql-install';
 

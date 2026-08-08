@@ -103,6 +103,7 @@ export interface ProjectService {
   containerName: string;
   required: boolean;
   status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR';
+  publishedPort: number | null;
   createdAt: string;
   updatedAt: string;
 }
