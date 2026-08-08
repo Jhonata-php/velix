@@ -8,6 +8,7 @@ import { GitAccountsCard } from '@/components/GitAccountsCard';
 import { BackupCard } from '@/components/BackupCard';
 import { UsersCard } from '@/components/UsersCard';
 import { AlertsCard } from '@/components/AlertsCard';
+import { Alert } from '@/components/Alert';
 import { IconShield, IconUsers, IconHardDrive, IconGithub, IconBell, IconGlobe, IconChevronRight } from '@/components/icons';
 
 type TabKey = 'general' | 'users' | 'backup' | 'git' | 'alerts';
@@ -46,11 +47,23 @@ function SettingsTabs() {
   const fromQuery = searchParams.get('tab') as TabKey | null;
   const [tab, setTab] = useState<TabKey>(fromQuery && TABS.some((t) => t.key === fromQuery) ? fromQuery : 'general');
 
+  // Onde o backend redireciona de volta depois do fluxo "Conectar com
+  // GitHub" (github-app-callback.controller.ts) — sucesso ou erro,
+  // dispensável, e limpo da URL assim que mostrado uma vez.
+  const githubResult = searchParams.get('github');
+  const githubMessage = searchParams.get('message');
+  const [githubDismissed, setGithubDismissed] = useState(false);
+
   function selectTab(key: TabKey) {
     setTab(key);
     // Só pra permitir link direto (ex.: "veja em Configurações > Backup") —
     // não precisa de navegação real, então replace em vez de push.
     router.replace(`/settings?tab=${key}`, { scroll: false });
+  }
+
+  function dismissGithubResult() {
+    setGithubDismissed(true);
+    router.replace('/settings?tab=git', { scroll: false });
   }
 
   return (
@@ -70,6 +83,21 @@ function SettingsTabs() {
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
       </Link>
+
+      {githubResult && !githubDismissed && (
+        <div className="relative mb-4">
+          <Alert variant={githubResult === 'success' ? 'success' : 'error'}>
+            {githubResult === 'success' ? 'Conta do GitHub conectada com sucesso.' : (githubMessage ?? 'Falha ao conectar com o GitHub.')}
+          </Alert>
+          <button
+            onClick={dismissGithubResult}
+            aria-label="Dispensar"
+            className="absolute right-2 top-2 rounded p-1 text-current opacity-60 hover:opacity-100"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
         {TABS.map((t) => {

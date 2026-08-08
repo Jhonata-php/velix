@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
+import { GitHubAppService } from './github-app.service';
 
 const SUPPORTED_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org'];
 
@@ -14,22 +15,40 @@ export interface CreateGitAccountInput {
 /**
  * Contas de forja salvas, para não redigitar o mesmo token a cada implantação.
  *
- * O token nunca sai daqui em claro: as respostas levam só rótulo, host e os
- * quatro últimos caracteres — o bastante pra identificar qual é sem permitir
- * reconstruí-lo. Quem precisa do valor real é o serviço de implantação, que
- * chama `resolveToken` internamente.
+ * Duas origens possíveis: `authMethod: 'token'` (Personal Access Token
+ * colado à mão, qualquer host suportado) ou `authMethod: 'github_app'`
+ * (App auto-registrado via manifest, só github.com — ver
+ * github-app.service.ts). O token/credencial real nunca sai daqui em claro:
+ * as respostas levam só rótulo, host e os quatro últimos caracteres (contas
+ * de token) ou o slug do App (contas GitHub App) — o bastante pra
+ * identificar qual é sem permitir reconstruir o segredo. Quem precisa do
+ * valor real é o motor de implantação, que chama `resolveToken` internamente.
  */
 @Injectable()
 export class GitAccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly githubApp: GitHubAppService,
+  ) {}
 
-  private toPublic(account: { id: string; label: string; host: string; username: string | null; tokenHint: string; createdAt: Date }) {
+  private toPublic(account: {
+    id: string;
+    label: string;
+    host: string;
+    username: string | null;
+    authMethod: string;
+    tokenHint: string | null;
+    githubAppSlug: string | null;
+    createdAt: Date;
+  }) {
     return {
       id: account.id,
       label: account.label,
       host: account.host,
       username: account.username,
+      authMethod: account.authMethod,
       tokenHint: account.tokenHint,
+      githubAppSlug: account.githubAppSlug,
       createdAt: account.createdAt,
     };
   }
@@ -55,6 +74,7 @@ export class GitAccountsService {
         label,
         host,
         username: dto.username?.trim() || null,
+        authMethod: 'token',
         tokenEnc: encryptCredential(token),
         tokenHint: token.slice(-4),
       },
@@ -68,7 +88,9 @@ export class GitAccountsService {
 
     // Implantações que usavam esta conta continuam existindo (onDelete:
     // SetNull); elas só param de conseguir clonar de novo. Avisar é melhor
-    // que impedir.
+    // que impedir. Contas de GitHub App não têm o App/instalação desfeitos
+    // do lado do GitHub aqui — só o registro local some; o usuário pode
+    // desinstalar manualmente em github.com/settings/installations.
     const inUse = await this.prisma.projectDeployment.count({ where: { gitAccountId: id } });
     await this.prisma.gitAccount.delete({ where: { id } });
     return { ok: true, applicationsAffected: inUse };
@@ -78,6 +100,10 @@ export class GitAccountsService {
   async resolveToken(id: string): Promise<string> {
     const account = await this.prisma.gitAccount.findUnique({ where: { id } });
     if (!account) throw new NotFoundException('Conta do repositório não encontrada');
+    if (account.authMethod === 'github_app') {
+      return this.githubApp.resolveInstallationToken(account);
+    }
+    if (!account.tokenEnc) throw new BadRequestException('Esta conta não tem um token configurado');
     return decryptCredential(account.tokenEnc);
   }
 }

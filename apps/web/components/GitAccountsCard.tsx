@@ -11,24 +11,46 @@ interface GitAccount {
   label: string;
   host: string;
   username: string | null;
-  tokenHint: string;
+  authMethod: string;
+  tokenHint: string | null;
+  githubAppSlug: string | null;
 }
 
 const HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org'];
 
+/** Monta e submete um form escondido — é assim que o GitHub exige receber
+ * o manifest de um App novo (POST de verdade, o JSON não cabe numa query
+ * string). Navega a aba inteira pra fora do Velix. */
+function submitManifestForm(targetUrl: string, manifest: unknown) {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = targetUrl;
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'manifest';
+  input.value = JSON.stringify(manifest);
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+
 /**
  * Contas de forja usadas para clonar repositórios privados.
  *
- * O token é enviado uma vez e guardado cifrado; a API devolve só o rótulo, o
- * host e os quatro últimos caracteres. Não há edição de token por isso mesmo —
- * para trocar, remove-se a conta e cria-se outra, o que também deixa explícito
- * que o valor antigo não fica pendurado em lugar nenhum.
+ * Duas formas de conectar: colar um token de acesso (qualquer serviço) ou,
+ * só para o GitHub, "Conectar com GitHub" — o Velix registra um GitHub App
+ * novo (fluxo de manifest) e o usuário só aprova do lado do GitHub, sem
+ * gerar token nenhum à mão. O token/credencial real nunca volta em nenhuma
+ * resposta da API — contas de token mostram só os 4 últimos caracteres,
+ * contas de App mostram o nome do App. Não há edição por isso mesmo: para
+ * trocar, remove-se a conta e reconecta-se.
  */
 export function GitAccountsCard() {
   const [accounts, setAccounts] = useState<GitAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [removing, setRemoving] = useState<GitAccount | null>(null);
 
   const [label, setLabel] = useState('');
@@ -65,6 +87,27 @@ export function GitAccountsCard() {
     }
   }
 
+  async function handleConnectGitHub() {
+    if (!label.trim()) {
+      setError('Dê um nome para identificar esta conta antes de conectar');
+      return;
+    }
+    setConnecting(true);
+    setError(null);
+    try {
+      const { manifest, targetUrl } = await apiFetch<{ manifest: unknown; targetUrl: string }>('/git-accounts/github/manifest', {
+        method: 'POST',
+        body: JSON.stringify({ label: label.trim() }),
+      });
+      submitManifestForm(targetUrl, manifest);
+      // A partir daqui o navegador já está saindo pro GitHub — não há mais
+      // nada pra fazer nesta aba.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao iniciar a conexão com o GitHub');
+      setConnecting(false);
+    }
+  }
+
   async function handleRemove() {
     if (!removing) return;
     try {
@@ -76,13 +119,15 @@ export function GitAccountsCard() {
     }
   }
 
+  const isGitHub = host === 'github.com';
+
   return (
     <section className="card p-5">
       <div className="mb-1 flex items-start justify-between gap-3">
         <div>
           <h2 className="section-title">Contas de repositório</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Tokens usados para clonar repositórios privados ao implantar do GitHub, GitLab, Bitbucket ou Codeberg.
+            Usadas para clonar repositórios privados ao implantar do GitHub, GitLab, Bitbucket ou Codeberg.
           </p>
         </div>
         {!adding && (
@@ -100,7 +145,7 @@ export function GitAccountsCard() {
       )}
 
       {adding && (
-        <form onSubmit={handleSave} className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Nome</span>
@@ -118,29 +163,62 @@ export function GitAccountsCard() {
             </label>
           </div>
 
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">Usuário (opcional)</span>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} className="input" placeholder="seu-usuario" />
-          </label>
+          {isGitHub ? (
+            <div>
+              <p className="mb-3 text-xs leading-relaxed text-slate-400">
+                O Velix registra um GitHub App só pra essa conexão — você aprova do lado do GitHub e escolhe quais
+                repositórios liberar, sem gerar token nenhum à mão.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdding(false)}
+                  className="rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConnectGitHub}
+                  disabled={connecting}
+                  className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-50"
+                >
+                  <IconGithub className="h-3.5 w-3.5" aria-hidden />
+                  {connecting ? 'Redirecionando...' : 'Conectar com GitHub'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSave} className="space-y-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Usuário (opcional)</span>
+                <input value={username} onChange={(e) => setUsername(e.target.value)} className="input" placeholder="seu-usuario" />
+              </label>
 
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">Token de acesso</span>
-            <input required type="password" value={token} onChange={(e) => setToken(e.target.value)} className="input" placeholder="ghp_..." />
-            <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">
-              Crie um token com permissão apenas de <strong>leitura de repositórios</strong>. Ele é guardado cifrado, nunca
-              volta em nenhuma resposta da API e é removido dos logs de implantação.
-            </span>
-          </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Token de acesso</span>
+                <input required type="password" value={token} onChange={(e) => setToken(e.target.value)} className="input" placeholder="ghp_..." />
+                <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">
+                  Crie um token com permissão apenas de <strong>leitura de repositórios</strong>. Ele é guardado cifrado, nunca
+                  volta em nenhuma resposta da API e é removido dos logs de implantação.
+                </span>
+              </label>
 
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setAdding(false)} className="rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving} className="btn-primary px-3 py-1.5 text-xs">
-              {saving ? 'Salvando...' : 'Salvar conta'}
-            </button>
-          </div>
-        </form>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdding(false)}
+                  className="rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={saving} className="btn-primary px-3 py-1.5 text-xs">
+                  {saving ? 'Salvando...' : 'Salvar conta'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
 
       {accounts && accounts.length > 0 && (
@@ -154,7 +232,8 @@ export function GitAccountsCard() {
                 <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{a.label}</p>
                 <p className="truncate text-xs text-slate-400">
                   {a.host}
-                  {a.username ? ` · ${a.username}` : ''} · token ····{a.tokenHint}
+                  {a.username ? ` · ${a.username}` : ''}
+                  {a.authMethod === 'github_app' ? ` · App conectado${a.githubAppSlug ? ` (${a.githubAppSlug})` : ''}` : ` · token ····${a.tokenHint}`}
                 </p>
               </div>
               <button

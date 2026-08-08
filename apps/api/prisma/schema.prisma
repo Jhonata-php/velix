@@ -363,13 +363,29 @@ model ProjectDeployment {
 /// credenciais SSH) e nunca volta em nenhuma resposta da API — a tela mostra
 /// só o rótulo e os últimos caracteres, o suficiente pra identificar qual é.
 model GitAccount {
-  id        String   @id @default(uuid())
-  label     String
-  host      String   @default("github.com")
-  username  String?
-  tokenEnc  String
-  /// Últimos 4 caracteres, em claro, só para exibição.
-  tokenHint String
+  id       String  @id @default(uuid())
+  label    String
+  host     String  @default("github.com")
+  username String?
+
+  /// "token" (Personal Access Token colado à mão) ou "github_app" (App
+  /// auto-registrado via manifest — só disponível pra host="github.com").
+  authMethod String @default("token")
+
+  /// Só para authMethod="token".
+  tokenEnc String?
+  /// Últimos 4 caracteres, em claro, só para exibição. Só para authMethod="token".
+  tokenHint String?
+
+  /// Campos de authMethod="github_app" — todos nulos pras contas de token.
+  githubAppId    String?
+  githubAppSlug  String?
+  installationId String?
+  /// JSON cifrado com clientId/clientSecret/privateKeyPem/webhookSecret —
+  /// mesmo padrão AES-256-GCM de blob JSON já usado em
+  /// ProjectDeployment.secretsEnc/AlertChannel.configEnc.
+  credentialsEnc String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
