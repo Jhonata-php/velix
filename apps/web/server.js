@@ -61,9 +61,13 @@ app.prepare().then(() => {
     handle(req, res, parse(req.url, true));
   });
 
-  // Repassa upgrades de WebSocket em /terminal, /ops e /db-console direto pro
-  // backend, via socket TCP cru — assim terminal, logs ao vivo e o console de
-  // banco funcionam sem precisar de uma segunda porta exposta.
+  // Repassa upgrades de WebSocket em /terminal, /ops, /db-console e
+  // /service-terminal direto pro backend, via socket TCP cru — assim
+  // terminal, logs ao vivo e o console de banco (por servidor ou por
+  // container de serviço) funcionam sem precisar de uma segunda porta
+  // exposta. Toda rota WebSocket nova do backend precisa entrar nesta lista,
+  // senão a conexão nunca sai deste container quando o painel tem domínio
+  // próprio (é aqui, não no Traefik, que a rota é reconhecida ou não).
   //
   // ponytail-bugfix: pra qualquer OUTRO upgrade (ex.: o WebSocket de Hot
   // Reload do próprio Next em dev, /_next/webpack-hmr) a gente só ignora e
@@ -71,7 +75,12 @@ app.prepare().then(() => {
   // (que registra seu próprio listener de 'upgrade' no mesmo server), o que
   // em cascata quebra até o carregamento de chunks dinâmicos no browser.
   server.on('upgrade', (req, socket, head) => {
-    if (!req.url.startsWith('/terminal') && !req.url.startsWith('/ops') && !req.url.startsWith('/db-console')) {
+    if (
+      !req.url.startsWith('/terminal') &&
+      !req.url.startsWith('/ops') &&
+      !req.url.startsWith('/db-console') &&
+      !req.url.startsWith('/service-terminal')
+    ) {
       return;
     }
 
