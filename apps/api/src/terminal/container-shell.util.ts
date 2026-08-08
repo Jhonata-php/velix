@@ -38,10 +38,10 @@ export function dbImportSecretKey(image: string): string | null {
 export function dbImportCommand(image: string, password: string, dbName: string): { execFlags: string; command: string } | null {
   const img = image.toLowerCase();
   if (img.includes('postgres')) {
-    return { execFlags: `-e PGPASSWORD=${shellSingleQuote(password)}`, command: `psql -U postgres -d ${dbName}` };
+    return { execFlags: `-e PGPASSWORD=${shellSingleQuote(password)}`, command: `psql -U postgres -d ${shellSingleQuote(dbName)}` };
   }
   if (img.includes('mysql') || img.includes('mariadb')) {
-    return { execFlags: '', command: `mysql -uroot -p${shellSingleQuote(password)} ${dbName}` };
+    return { execFlags: '', command: `mysql -uroot -p${shellSingleQuote(password)} ${shellSingleQuote(dbName)}` };
   }
   return null;
 }

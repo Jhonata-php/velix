@@ -16,6 +16,44 @@ function send(ws: WebSocket, msg: object) {
 }
 
 /**
+ * Verifica o token e devolve `sub`/`role` do payload, ou fecha a conexão e
+ * devolve `null`. Abrir um terminal é sempre uma ação de escrita (shell com
+ * privilégio de root via sudo, ou console de banco), então 'viewer' não pode
+ * — mesma checagem que ops-server.ts já faz pro canal de operações, e pelo
+ * mesmo motivo: o RolesGuard só cobre rotas HTTP, não WebSocket, então sem
+ * isto aqui os papéis seriam contornáveis abrindo a conexão direto.
+ */
+async function authenticate(
+  ws: WebSocket,
+  jwt: JwtService,
+  token: string | undefined,
+): Promise<{ sub: string; role: string } | null> {
+  if (!token) {
+    send(ws, { type: 'error', message: 'Parâmetros ausentes' });
+    ws.close();
+    return null;
+  }
+
+  let payload: { sub: string; role?: string };
+  try {
+    payload = await jwt.verifyAsync(token);
+  } catch {
+    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
+    ws.close();
+    return null;
+  }
+
+  const role = payload.role ?? 'viewer';
+  if (role !== 'admin' && role !== 'operator') {
+    send(ws, { type: 'error', message: 'Seu perfil não permite abrir um terminal.' });
+    ws.close();
+    return null;
+  }
+
+  return { sub: payload.sub, role };
+}
+
+/**
  * Terminal web (seção 33 do spec): conecta via SSH real e faz proxy
  * bidirecional sobre WebSocket. Autenticação via query string (?token=) —
  * navegador não manda headers customizados no handshake de upgrade.
@@ -77,19 +115,13 @@ async function handleConnection(
   deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
 ) {
   const { token, serverId } = query;
-  if (!token || !serverId) {
+  if (!serverId) {
     send(ws, { type: 'error', message: 'Parâmetros ausentes' });
     ws.close();
     return;
   }
 
-  try {
-    await deps.jwt.verifyAsync(token);
-  } catch {
-    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
-    ws.close();
-    return;
-  }
+  if (!(await authenticate(ws, deps.jwt, token))) return;
 
   const server = await deps.prisma.server.findUnique({ where: { id: serverId } });
   if (!server) {
@@ -121,19 +153,13 @@ async function handleDbConsole(
   deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
 ) {
   const { token, instanceId } = query;
-  if (!token || !instanceId) {
+  if (!instanceId) {
     send(ws, { type: 'error', message: 'Parâmetros ausentes' });
     ws.close();
     return;
   }
 
-  try {
-    await deps.jwt.verifyAsync(token);
-  } catch {
-    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
-    ws.close();
-    return;
-  }
+  if (!(await authenticate(ws, deps.jwt, token))) return;
 
   const instance = await deps.prisma.databaseInstance.findUnique({ where: { id: instanceId }, include: { server: true } });
   if (!instance) {
@@ -172,7 +198,7 @@ async function handleServiceTerminal(
   deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
 ) {
   const { token, applicationId, serviceName, mode, shell } = query;
-  if (!token || !applicationId || !serviceName) {
+  if (!applicationId || !serviceName) {
     send(ws, { type: 'error', message: 'Parâmetros ausentes' });
     ws.close();
     return;
@@ -181,13 +207,7 @@ async function handleServiceTerminal(
   // por SSH como root; melhor recusar um valor inesperado que tentar escapar.
   const shellBin = shell === 'bash' ? 'bash' : 'sh';
 
-  try {
-    await deps.jwt.verifyAsync(token);
-  } catch {
-    send(ws, { type: 'error', message: 'Token inválido ou expirado' });
-    ws.close();
-    return;
-  }
+  if (!(await authenticate(ws, deps.jwt, token))) return;
 
   const application = await deps.prisma.application.findUnique({ where: { id: applicationId }, include: { server: true } });
   if (!application) {
