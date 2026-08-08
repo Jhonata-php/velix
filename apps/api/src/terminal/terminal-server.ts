@@ -171,12 +171,15 @@ async function handleServiceTerminal(
   query: Record<string, string>,
   deps: { jwt: JwtService; prisma: PrismaService; ssh: SshService },
 ) {
-  const { token, applicationId, serviceName, mode } = query;
+  const { token, applicationId, serviceName, mode, shell } = query;
   if (!token || !applicationId || !serviceName) {
     send(ws, { type: 'error', message: 'Parâmetros ausentes' });
     ws.close();
     return;
   }
+  // Lista fechada — isso vira parte de um comando `docker exec` executado
+  // por SSH como root; melhor recusar um valor inesperado que tentar escapar.
+  const shellBin = shell === 'bash' ? 'bash' : 'sh';
 
   try {
     await deps.jwt.verifyAsync(token);
@@ -211,7 +214,7 @@ async function handleServiceTerminal(
   }
 
   const containerName = shellSingleQuote(service.containerName);
-  const command = mode === 'db' ? dbConsoleCommand(service.image) : null;
+  const command = mode === 'db' ? dbConsoleCommand(service.image) : shellBin;
 
   const stream = await wirePty(ws, deps.ssh, options);
   stream.write(`sudo docker exec -it ${containerName} ${command ?? 'sh'}\n`);

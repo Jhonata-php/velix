@@ -592,23 +592,62 @@ function ResourcesTab({ applicationId, serviceName }: { applicationId: string; s
 
 function ShellTab({ applicationId, service }: { applicationId: string; service: ProjectService }) {
   const [mode, setMode] = useState<'shell' | 'db'>('shell');
+  const [shell, setShell] = useState<'sh' | 'bash'>('sh');
+  const [session, setSession] = useState<{ mode: 'shell' | 'db'; shell: 'sh' | 'bash' } | null>(null);
   const showDbOption = looksLikeDatabase(service.image);
 
-  const wsPath = `/service-terminal?applicationId=${applicationId}&serviceName=${encodeURIComponent(service.name)}&mode=${mode}`;
+  if (session) {
+    const wsPath = `/service-terminal?applicationId=${applicationId}&serviceName=${encodeURIComponent(service.name)}&mode=${session.mode}&shell=${session.shell}`;
+    const title =
+      session.mode === 'db'
+        ? `Console — ${service.name}`
+        : `Shell (${session.shell}) — ${service.name}`;
+    return (
+      <div className="space-y-3">
+        <button onClick={() => setSession(null)} className="text-xs text-slate-400 hover:text-indigo-500">
+          ← Trocar
+        </button>
+        <WebTerminal key={`${session.mode}-${session.shell}`} wsPath={wsPath} title={title} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3">
+    <div className="card max-w-md space-y-4 p-5">
       {showDbOption && (
-        <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
-          <button onClick={() => setMode('shell')} className={`tab-pill ${mode === 'shell' ? 'tab-pill-active' : ''}`}>
-            Shell
-          </button>
-          <button onClick={() => setMode('db')} className={`tab-pill ${mode === 'db' ? 'tab-pill-active' : ''}`}>
-            Console do banco
-          </button>
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">O que abrir</p>
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+            <button onClick={() => setMode('shell')} className={`tab-pill flex-1 ${mode === 'shell' ? 'tab-pill-active' : ''}`}>
+              Shell
+            </button>
+            <button onClick={() => setMode('db')} className={`tab-pill flex-1 ${mode === 'db' ? 'tab-pill-active' : ''}`}>
+              Console do banco
+            </button>
+          </div>
         </div>
       )}
-      <WebTerminal key={mode} wsPath={wsPath} title={mode === 'db' ? `Console — ${service.name}` : `Shell — ${service.name}`} />
+
+      {mode === 'shell' && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">Shell</p>
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+            <button onClick={() => setShell('sh')} className={`tab-pill flex-1 ${shell === 'sh' ? 'tab-pill-active' : ''}`}>
+              sh
+            </button>
+            <button onClick={() => setShell('bash')} className={`tab-pill flex-1 ${shell === 'bash' ? 'tab-pill-active' : ''}`}>
+              bash
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            Nem toda imagem tem bash — se a conexão falhar, tente sh (quase sempre disponível).
+          </p>
+        </div>
+      )}
+
+      <button onClick={() => setSession({ mode, shell })} className="btn-primary w-full py-2 text-sm">
+        Conectar
+      </button>
     </div>
   );
 }
