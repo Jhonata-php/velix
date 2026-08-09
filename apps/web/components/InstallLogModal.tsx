@@ -18,6 +18,7 @@ export type Op =
   | 'container-logs'
   | 'service-add'
   | 'service-db-import'
+  | 'database-backup-run'
   | 'updates-install'
   | 'mysql-install';
 

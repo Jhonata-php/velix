@@ -182,3 +182,48 @@ export interface CatalogApplicationDetail extends CatalogApplicationSummary {
   validation: { ok: boolean; errors: string[] };
   securityFindings: CatalogSecurityFinding[];
 }
+
+export interface DatabaseListItem {
+  id: string;
+  applicationId: string;
+  name: string;
+  image: string;
+  containerName: string;
+  status: 'DEPLOYING' | 'RUNNING' | 'STOPPED' | 'ERROR';
+  publishedPort: number | null;
+  createdAt: string;
+  project: { id: string; name: string; slug: string };
+  server: { id: string; name: string };
+  hasSchedule: boolean;
+}
+
+export interface BackupDestinationSummary {
+  id: string;
+  label: string;
+  protocol: 'ftp' | 'sftp';
+  host: string;
+  port: number;
+  username: string;
+  remotePath: string;
+  createdAt: string;
+}
+
+export interface DatabaseBackupConfig {
+  projectServiceId: string;
+  scheduledAt: string | null;
+  retentionDays: number;
+  destinationId: string | null;
+}
+
+export interface DatabaseBackupRun {
+  id: string;
+  projectServiceId: string;
+  trigger: 'scheduled' | 'manual';
+  status: 'RUNNING' | 'SUCCESS' | 'ERROR';
+  fileName: string | null;
+  sizeBytes: number | null;
+  uploadedRemote: boolean;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
