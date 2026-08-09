@@ -67,12 +67,20 @@ export function moveToBackupDirCommand(backupDir: string, remoteTmp: string, fil
 }
 
 /** Retenção por dias, restrita aos backups DESTE serviço — a pasta é
- * compartilhada por todos os bancos do mesmo projeto, então o glob tem que
- * casar só com o prefixo do serviço, senão a retenção de um banco apaga
- * backup de outro. `sudo` é necessário: a pasta é criada root:root por
- * `moveToBackupDirCommand`, e `find -delete` precisa de escrita no diretório
- * que contém o arquivo, não só no arquivo em si. */
+ * compartilhada por todos os bancos do mesmo projeto, então o glob não pode
+ * ser um simples prefixo `${serviceName}-*`: com `uniqueServiceName()` gerando
+ * `db`, `db-2`, `db-3` pra colisões de nome no mesmo projeto, `db-*.sql.gz`
+ * também bate com os arquivos de `db-2` (que começam com `db-2-...`, ou seja,
+ * com `db-`). O glob âncora no formato do timestamp ISO que `backupFileName`
+ * sempre gera logo após o nome do serviço (`????-??-??T` = 4 dígitos de ano,
+ * traço, 2 de mês, traço, 2 de dia, `T` literal) — só isso garante que o
+ * separador é o `-` que introduz a data, não um `-N` de outro serviço.
+ * `sudo` é necessário: a pasta é criada root:root por `moveToBackupDirCommand`,
+ * e `find -delete` precisa de escrita no diretório que contém o arquivo, não
+ * só no arquivo em si. `test -d` evita o find logar aviso quando a pasta
+ * ainda não existe (primeiro backup do projeto). */
 export function pruneBackupsCommand(backupDir: string, serviceName: string, retentionDays: number): string {
-  const pattern = `${serviceName}-*.sql.gz`;
-  return `sudo find ${shellSingleQuote(backupDir)} -name ${shellSingleQuote(pattern)} -mtime +${Math.trunc(retentionDays)} -delete`;
+  const pattern = `${serviceName}-????-??-??T*.sql.gz`;
+  const quotedDir = shellSingleQuote(backupDir);
+  return `test -d ${quotedDir} && sudo find ${quotedDir} -name ${shellSingleQuote(pattern)} -mtime +${Math.trunc(retentionDays)} -delete`;
 }

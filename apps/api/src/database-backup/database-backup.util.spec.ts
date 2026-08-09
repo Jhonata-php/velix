@@ -76,17 +76,44 @@ assert.ok(!/rm -rf \/ #\.sql\.gz'/.test(moveInjected.replace(shellSingleQuoteExp
 
 // --- pruneBackupsCommand -----------------------------------------------------
 const pruneCmd = pruneBackupsCommand('/opt/velix/apps/my-app/backups', 'db', 14);
-assert.equal(pruneCmd, "sudo find '/opt/velix/apps/my-app/backups' -name 'db-*.sql.gz' -mtime +14 -delete");
-assert.ok(pruneCmd.startsWith('sudo '), 'sudo é obrigatório — a pasta é criada root:root por moveToBackupDirCommand');
-assert.ok(pruneCmd.includes("-name 'db-*.sql.gz'"), 'o glob tem que ser restrito ao prefixo deste serviço, não *.sql.gz geral (senão poda backup de outro banco no mesmo projeto)');
+assert.equal(
+  pruneCmd,
+  "test -d '/opt/velix/apps/my-app/backups' && sudo find '/opt/velix/apps/my-app/backups' -name 'db-????-??-??T*.sql.gz' -mtime +14 -delete",
+);
+assert.ok(pruneCmd.includes('sudo find'), 'sudo é obrigatório — a pasta é criada root:root por moveToBackupDirCommand');
+assert.ok(
+  pruneCmd.includes("-name 'db-????-??-??T*.sql.gz'"),
+  'o glob tem que ancorar no formato ISO da data, não só no prefixo do serviço (senão poda backup de outro banco com nome parecido, ex.: db vs db-2)',
+);
 
 // nome de serviço malicioso não pode escapar da aspa simples
 const maliciousServiceName = "app'; rm -rf / #";
 const pruneInjected = pruneBackupsCommand('/opt/velix/apps/my-app/backups', maliciousServiceName, 365);
 assert.equal(
   pruneInjected,
-  "sudo find '/opt/velix/apps/my-app/backups' -name 'app'\\''; rm -rf / #-*.sql.gz' -mtime +365 -delete",
+  "test -d '/opt/velix/apps/my-app/backups' && sudo find '/opt/velix/apps/my-app/backups' -name 'app'\\''; rm -rf / #-????-??-??T*.sql.gz' -mtime +365 -delete",
 );
+
+// --- pruneBackupsCommand não pode confundir 'db' com 'db-2' (colisão de nome
+// gerada por uniqueServiceName em applications.util.ts) -----------------------
+// backupFileName produz nomes reais pra cada serviço, com o mesmo formato de
+// timestamp ISO que o glob âncora.
+const dbFile = backupFileName('db');
+const db2File = backupFileName('db-2');
+// Uma reimplementação ingênua por prefixo (`db-*.sql.gz`) casaria com o
+// arquivo de 'db-2', porque o nome dele literalmente começa com 'db-'.
+const naivePrefixRegex = /^db-.*\.sql\.gz$/;
+assert.ok(naivePrefixRegex.test(dbFile));
+assert.ok(naivePrefixRegex.test(db2File), 'confirma que o glob antigo por prefixo era ambíguo — bug que este teste evita reintroduzir');
+// O glob usado por pruneBackupsCommand('db', ...) é 'db-????-??-??T*.sql.gz'.
+// Depois de consumir 'db-', ele exige 4 caracteres quaisquer seguidos de '-'
+// no 5º caractere. Em db2File esses 4 caracteres são '2-20' (5º char = '2',
+// não '-'), então NÃO bate — é exatamente essa âncora que separa 'db' de 'db-2'.
+const anchoredServiceGlobRegex = /^db-.{4}-.{2}-.{2}T.*\.sql\.gz$/;
+assert.ok(anchoredServiceGlobRegex.test(dbFile), 'arquivo do próprio serviço db tem que bater com o glob âncora');
+assert.ok(!anchoredServiceGlobRegex.test(db2File), "glob âncora de 'db' não pode bater com arquivo de 'db-2'");
+// E o pattern exato que a função monta pra 'db' é o que documentamos acima:
+assert.ok(pruneBackupsCommand('backupDir', 'db', 14).includes("-name 'db-????-??-??T*.sql.gz'"));
 
 // --- backupFileName --------------------------------------------------------
 const name1 = backupFileName('db');
