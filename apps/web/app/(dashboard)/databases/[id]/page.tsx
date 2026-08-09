@@ -29,7 +29,7 @@ function engineLabel(image: string) {
 }
 
 function formatBytes(bytes: number | null) {
-  if (!bytes) return '—';
+  if (bytes == null) return '—';
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -49,7 +49,7 @@ export default function DatabaseDetailPage() {
   // A lista /databases já devolve applicationId — buscamos ela uma vez pra
   // descobrir a qual projeto este banco pertence, depois carregamos o
   // projeto completo (mesmos dados que a tela de serviço genérica usa).
-  useEffect(() => {
+  function load() {
     apiFetch<{ id: string; applicationId: string }[]>('/databases')
       .then((list) => {
         const entry = list.find((d) => d.id === databaseId);
@@ -74,8 +74,10 @@ export default function DatabaseDetailPage() {
         });
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [databaseId]);
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [databaseId]);
 
   function copy(key: string, value: string) {
     navigator.clipboard.writeText(value);
@@ -143,7 +145,11 @@ export default function DatabaseDetailPage() {
         )}
 
         <div className="flex flex-wrap gap-2 pt-1">
-          <button onClick={() => setDeployingAdminer(true)} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+          <button
+            onClick={() => setDeployingAdminer(true)}
+            disabled={deployingAdminer}
+            className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+          >
             <IconGlobe className="h-4 w-4" aria-hidden />
             Abrir interface web
           </button>
@@ -159,7 +165,9 @@ export default function DatabaseDetailPage() {
           params={{ applicationId: project.id, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: service.containerName } }}
           title="Implantando Adminer"
           onClose={() => setDeployingAdminer(false)}
-          onDone={() => {}}
+          onDone={(ok) => {
+            if (ok) load();
+          }}
         />
       )}
     </div>
@@ -178,19 +186,29 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
   const [error, setError] = useState<string | null>(null);
 
   function load() {
-    apiFetch<DatabaseBackupConfig>(`/databases/${databaseId}/backup-config`).then((c) => {
-      setConfig(c);
-      setScheduledAt(c.scheduledAt ?? '');
-      setRetentionDays(c.retentionDays);
-      setDestinationId(c.destinationId ?? '');
-    });
-    apiFetch<DatabaseBackupRun[]>(`/databases/${databaseId}/backup-runs`).then(setRuns);
-    apiFetch<BackupDestinationSummary[]>('/backup-destinations').then(setDestinations);
+    apiFetch<DatabaseBackupConfig>(`/databases/${databaseId}/backup-config`)
+      .then((c) => {
+        setConfig(c);
+        setScheduledAt(c.scheduledAt ?? '');
+        setRetentionDays(c.retentionDays);
+        setDestinationId(c.destinationId ?? '');
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
+    apiFetch<DatabaseBackupRun[]>(`/databases/${databaseId}/backup-runs`)
+      .then(setRuns)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
+    apiFetch<BackupDestinationSummary[]>('/backup-destinations')
+      .then(setDestinations)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
   }
 
   useEffect(load, [databaseId]);
 
   async function saveSchedule() {
+    if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 365) {
+      setError('Retenção precisa ser um número inteiro entre 1 e 365 dias.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
