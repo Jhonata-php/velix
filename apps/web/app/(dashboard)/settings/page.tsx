@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CloudflareCard } from '@/components/CloudflareCard';
 import { GitAccountsCard } from '@/components/GitAccountsCard';
 import { BackupCard } from '@/components/BackupCard';
+import { BackupDestinationsCard } from '@/components/BackupDestinationsCard';
 import { UsersCard } from '@/components/UsersCard';
 import { AlertsCard } from '@/components/AlertsCard';
 import { Alert } from '@/components/Alert';
@@ -123,6 +124,7 @@ function SettingsTabs() {
       {tab === 'general' && <CloudflareCard />}
       {tab === 'users' && <UsersCard />}
       {tab === 'backup' && <BackupCard />}
+      {tab === 'backup' && <BackupDestinationsCard />}
       {tab === 'git' && <GitAccountsCard />}
       {tab === 'alerts' && <AlertsCard />}
     </div>
