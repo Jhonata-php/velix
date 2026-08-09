@@ -496,9 +496,71 @@ model ProjectService {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
+  backupConfig    DatabaseBackupConfig?
+  backupRuns      DatabaseBackupRun[]
+
   @@unique([applicationId, name])
   @@index([applicationId])
   @@index([deploymentId])
+}
+
+/// Conexão FTP/SFTP salva pra onde um backup de banco pode ser enviado —
+/// configurada uma vez em Configurações, reaproveitável por vários bancos
+/// (mesmo padrão de GitAccount pra contas de forja).
+model BackupDestination {
+  id            String   @id @default(uuid())
+  label         String
+  /// "ftp" | "sftp"
+  protocol      String
+  host          String
+  port          Int
+  username      String
+  /// Cifrado com o mesmo padrão AES-256-GCM já usado em GitAccount/Server.
+  credentialEnc String
+  remotePath    String   @default("/")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  backupConfigs DatabaseBackupConfig[]
+}
+
+/// Agendamento de backup de UM banco (ProjectService) — 1:1, cada banco tem
+/// no máximo uma configuração.
+model DatabaseBackupConfig {
+  id               String   @id @default(uuid())
+  projectServiceId String   @unique
+  projectService   ProjectService @relation(fields: [projectServiceId], references: [id], onDelete: Cascade)
+
+  /// "HH:mm" (fuso do servidor da API) — null = sem agendamento automático, só manual.
+  scheduledAt      String?
+  retentionDays    Int      @default(14)
+
+  destinationId    String?
+  destination      BackupDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// Histórico de execuções de backup de um banco — mesmo padrão do BackupRun
+/// já usado pro backup do próprio Velix (apps/api/prisma/schema.prisma, model BackupRun).
+model DatabaseBackupRun {
+  id               String   @id @default(uuid())
+  projectServiceId String
+  projectService   ProjectService @relation(fields: [projectServiceId], references: [id], onDelete: Cascade)
+
+  /// "scheduled" | "manual"
+  trigger          String
+  /// "RUNNING" | "SUCCESS" | "ERROR"
+  status           String
+  fileName         String?
+  sizeBytes        Int?
+  uploadedRemote   Boolean  @default(false)
+  error            String?
+  startedAt        DateTime @default(now())
+  finishedAt       DateTime?
+
+  @@index([projectServiceId])
 }
 
 // ponytail: um espelho por servidor de origem (1 destino) — cobre o caso
