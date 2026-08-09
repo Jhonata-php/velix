@@ -41,8 +41,8 @@ assert.equal(injected!.command, "pg_dump -U postgres -d 'app'\\''; rm -rf / #' -
 
 // --- backupFileName --------------------------------------------------------
 const name1 = backupFileName('db');
-assert.ok(/^db-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.sql\.gz$/.test(name1), `formato inesperado: ${name1}`);
-// dois nomes gerados em sequência não colidem no mesmo milissegundo (timestamp completo, não só data)
+assert.ok(/^db-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}\.sql\.gz$/.test(name1), `formato inesperado: ${name1}`);
+// dois nomes gerados em sequência não colidem no mesmo milissegundo (timestamp + sufixo aleatório garante unicidade)
 assert.notEqual(backupFileName('db'), backupFileName('db'));
 
 console.log('database-backup.util self-check OK');

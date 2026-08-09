@@ -1,6 +1,7 @@
 /** Funções puras do backup de banco de dados — sem I/O, testáveis sem
  * servidor. Ver database-backup.util.spec.ts. Irmã de
  * `terminal/container-shell.util.ts` (que cobre import, não export). */
+import { randomBytes } from 'crypto';
 import { shellSingleQuote } from '../database/mysql.util';
 
 const MANAGED_ENGINES = ['postgres', 'mysql', 'mariadb'];
@@ -33,8 +34,10 @@ export function dumpCommand(image: string, password: string, dbName: string): { 
 }
 
 /** Nome de arquivo com timestamp completo (não só data) — dois backups do
- * mesmo banco no mesmo dia não podem colidir. */
+ * mesmo banco no mesmo dia não podem colidir. Adiciona sufixo aleatório
+ * para garantir unicidade mesmo em chamadas síncronas no mesmo milissegundo. */
 export function backupFileName(serviceName: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `${serviceName}-${stamp}.sql.gz`;
+  const suffix = randomBytes(3).toString('hex');
+  return `${serviceName}-${stamp}-${suffix}.sql.gz`;
 }
