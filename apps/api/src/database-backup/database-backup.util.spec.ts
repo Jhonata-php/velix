@@ -3,7 +3,7 @@
  *   npx ts-node src/database-backup/database-backup.util.spec.ts
  */
 import assert from 'node:assert';
-import { dumpCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
+import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
 
 // --- isManagedDatabaseImage ---------------------------------------------------
 assert.equal(isManagedDatabaseImage('postgres:16.4'), true);
@@ -38,6 +38,18 @@ assert.equal(dumpCommand('nginx:alpine', 'x', 'app'), null);
 const injected = dumpCommand('postgres:16', 'pw', "app'; rm -rf / #");
 assert.ok(injected);
 assert.equal(injected!.command, "pg_dump -U postgres -d 'app'\\''; rm -rf / #' --no-owner --no-privileges");
+
+// --- dumpPipelineCommand ----------------------------------------------------
+const remoteTmp = '/tmp/velix-backup-abc.sql.gz';
+const pipeline = dumpPipelineCommand(pg!.execFlags, "db'container", pg!.command, remoteTmp);
+assert.ok(pipeline.includes('set -o pipefail'), 'sem pipefail o gzip mascara falha do dump (bug corrigido)');
+assert.ok(pipeline.includes('umask 077'), 'sem umask o dump fica world-readable até o chmod final');
+assert.ok(pipeline.includes(shellSingleQuoteExpected("db'container")), 'nome do container tem que ir escapado com aspa simples');
+assert.ok(pipeline.endsWith(`&& chmod 600 ${remoteTmp}`), 'tem que terminar travando a permissão do arquivo');
+
+function shellSingleQuoteExpected(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 
 // --- backupFileName --------------------------------------------------------
 const name1 = backupFileName('db');

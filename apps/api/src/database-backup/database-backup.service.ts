@@ -6,15 +6,24 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServersService } from '../servers/servers.service';
-import { SshService } from '../ssh/ssh.service';
+import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
-import { shellSingleQuote } from '../database/mysql.util';
-import { dumpCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
+import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
 import { uploadToDestination } from './backup-transfer.util';
 import { BackupDestinationsService } from './backup-destinations.service';
 import { SetBackupConfigDto } from './dto/set-backup-config.dto';
 
 type LogFn = (line: string) => void;
+
+/** Mesma ideia de `redactToken` em `applications/git-source.util.ts`: alguns
+ * modos de falha do shell/sudo ecoam parte da linha de comando ofensiva no
+ * stderr, e o comando do dump embute a senha em texto puro (`PGPASSWORD=`/
+ * `-p<senha>`). Aplicado em toda mensagem de erro persistida como
+ * `DatabaseBackupRun.error`. */
+function redactSecret(text: string, secret?: string): string {
+  if (!secret) return text;
+  return text.split(secret).join('***');
+}
 
 @Injectable()
 export class DatabaseBackupService {
@@ -108,40 +117,53 @@ export class DatabaseBackupService {
       include: { application: true, deployment: true },
     });
     if (!service) throw new NotFoundException('Banco não encontrado');
-    if (!isManagedDatabaseImage(service.image)) {
-      throw new BadRequestException('Backup não é suportado para este tipo de serviço');
-    }
-    if (!service.deployment.secretsEnc) {
-      throw new BadRequestException('Não achei a senha deste banco — a implantação não gerou segredos.');
-    }
 
-    const secretsMap = JSON.parse(decryptCredential(service.deployment.secretsEnc)) as Record<string, string>;
-    const secretKey = service.image.toLowerCase().includes('postgres') ? 'POSTGRES_PASSWORD' : 'ROOT_PASSWORD';
-    const password = secretsMap[secretKey];
-    if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
-
-    const variablesMap = service.deployment.variablesJson ? (JSON.parse(service.deployment.variablesJson) as Record<string, string>) : {};
-    const dbName = variablesMap.DATABASE_NAME || 'app';
-
-    const dump = dumpCommand(service.image, password, dbName);
-    if (!dump) throw new BadRequestException('Backup não é suportado para este tipo de serviço');
-
+    // A partir daqui a run já é criada — o `DatabaseBackupRun.projectServiceId`
+    // tem FK pra ProjectService, então o lookup acima não dá pra adiar, mas
+    // toda falha de configuração seguinte (imagem não suportada, segredo
+    // ausente, dump, upload) fica registrada nesta run em vez de estourar
+    // sem deixar rastro pro `scheduledSweep` (era o bug: um agendamento mal
+    // configurado falhava silenciosamente toda hora, pra sempre).
     const fileName = backupFileName(service.name);
-    const config = await this.getConfig(projectServiceId);
-
     const run = await this.prisma.databaseBackupRun.create({
       data: { projectServiceId, trigger, status: 'RUNNING', fileName },
     });
 
-    const { options } = await this.servers.getServerWithConnectOptions(service.application.serverId);
-    const remoteTmp = `/tmp/velix-backup-${randomUUID()}.sql.gz`;
-    const localTmp = join(tmpdir(), `velix-backup-${randomUUID()}.sql.gz`);
+    let password: string | undefined;
+    let sshOptions: SshConnectOptions | undefined;
+    let remoteTmp: string | undefined;
+    let localTmp: string | undefined;
 
     try {
+      if (!isManagedDatabaseImage(service.image)) {
+        throw new BadRequestException('Backup não é suportado para este tipo de serviço');
+      }
+      if (!service.deployment.secretsEnc) {
+        throw new BadRequestException('Não achei a senha deste banco — a implantação não gerou segredos.');
+      }
+
+      const secretsMap = JSON.parse(decryptCredential(service.deployment.secretsEnc)) as Record<string, string>;
+      const secretKey = service.image.toLowerCase().includes('postgres') ? 'POSTGRES_PASSWORD' : 'ROOT_PASSWORD';
+      password = secretsMap[secretKey];
+      if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
+
+      const variablesMap = service.deployment.variablesJson ? (JSON.parse(service.deployment.variablesJson) as Record<string, string>) : {};
+      const dbName = variablesMap.DATABASE_NAME || 'app';
+
+      const dump = dumpCommand(service.image, password, dbName);
+      if (!dump) throw new BadRequestException('Backup não é suportado para este tipo de serviço');
+
+      const config = await this.getConfig(projectServiceId);
+
+      const { options } = await this.servers.getServerWithConnectOptions(service.application.serverId);
+      sshOptions = options;
+      remoteTmp = `/tmp/velix-backup-${randomUUID()}.sql.gz`;
+      localTmp = join(tmpdir(), `velix-backup-${randomUUID()}.sql.gz`);
+
       onLog?.('Gerando o dump dentro do container...\n');
       const dumpResult = await this.ssh.runCommand(
         options,
-        `sudo docker exec ${dump.execFlags} ${shellSingleQuote(service.containerName)} ${dump.command} | gzip > ${remoteTmp} && chmod 600 ${remoteTmp}`,
+        dumpPipelineCommand(dump.execFlags, service.containerName, dump.command, remoteTmp),
         600_000,
         onLog && ((chunk) => onLog(chunk)),
       );
@@ -169,16 +191,23 @@ export class DatabaseBackupService {
       onLog?.('Backup concluído.\n');
       return { ok: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Falha no backup';
+      const rawMessage = err instanceof Error ? err.message : 'Falha no backup';
+      // A senha em texto puro pode ter vazado pro stderr do docker/ssh em
+      // alguns modos de falha do shell — nunca persistir sem redigir.
+      const message = redactSecret(rawMessage, password).slice(0, 500);
       await this.prisma.databaseBackupRun.update({
         where: { id: run.id },
-        data: { status: 'ERROR', finishedAt: new Date(), error: message.slice(0, 500) },
+        data: { status: 'ERROR', finishedAt: new Date(), error: message },
       });
       this.logger.error(`Backup de ${service.name} (${projectServiceId}) falhou: ${message}`);
       return { ok: false, error: message };
     } finally {
-      await this.ssh.runCommand(options, `sudo rm -f ${remoteTmp}`, 15_000).catch(() => undefined);
-      await unlink(localTmp).catch(() => undefined);
+      if (sshOptions && remoteTmp) {
+        await this.ssh.runCommand(sshOptions, `sudo rm -f ${remoteTmp}`, 15_000).catch(() => undefined);
+      }
+      if (localTmp) {
+        await unlink(localTmp).catch(() => undefined);
+      }
     }
   }
 

@@ -41,3 +41,17 @@ export function backupFileName(serviceName: string): string {
   const suffix = randomBytes(3).toString('hex');
   return `${serviceName}-${stamp}-${suffix}.sql.gz`;
 }
+
+/**
+ * Monta o comando completo executado por SSH pra gerar o dump: `docker exec`
+ * pipado pro `gzip`, gravado no tmp remoto e travado com `chmod 600`.
+ * `set -o pipefail` é essencial — sem ele, se o `pg_dump`/`mysqldump` falhar
+ * (senha errada, container fora do ar, disco cheio) o `gzip` mesmo assim sai
+ * com status 0 (só recebeu stdin vazio), e o backup corrompido é gravado
+ * como SUCCESS. `umask 077` garante que o arquivo já nasce 0600, em vez de
+ * ficar world-readable no /tmp durante toda a janela do dump até o `chmod`
+ * rodar no final.
+ */
+export function dumpPipelineCommand(execFlags: string, containerName: string, command: string, remoteTmp: string): string {
+  return `set -o pipefail; umask 077; sudo docker exec ${execFlags} ${shellSingleQuote(containerName)} ${command} | gzip > ${remoteTmp} && chmod 600 ${remoteTmp}`;
+}
