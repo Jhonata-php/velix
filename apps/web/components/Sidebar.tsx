@@ -15,6 +15,7 @@ import {
   IconDownload,
   IconChevronLeft,
   IconChevronRight,
+  IconDatabase,
 } from './icons';
 
 const GROUPS = [
@@ -28,6 +29,7 @@ const GROUPS = [
       { href: '/servers', label: 'Servidores', description: 'Cadastro e monitoramento', icon: IconServer },
       { href: '/library', label: 'Loja', description: 'Catálogo de aplicativos', icon: IconStore },
       { href: '/projects', label: 'Projetos', description: 'O que está implantado', icon: IconLayoutGrid },
+      { href: '/databases', label: 'Bancos de Dados', description: 'Backup e conexão', icon: IconDatabase },
     ],
   },
   {
