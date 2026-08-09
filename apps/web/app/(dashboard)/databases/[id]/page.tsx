@@ -228,6 +228,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
     }
   }
 
+  if (error && (!config || !runs)) return <Alert variant="error">{error}</Alert>;
   if (!config || !runs) return <Skeleton className="h-40" />;
 
   return (
