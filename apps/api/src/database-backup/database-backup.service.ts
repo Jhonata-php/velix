@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
+import { appDir } from '../applications/applications.util';
 import { ServersService } from '../servers/servers.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
@@ -182,6 +183,27 @@ export class DatabaseBackupService {
         const destination = await this.destinations.resolveConnection(config.destinationId);
         await uploadToDestination(this.ssh, destination, localTmp, fileName);
         uploadedRemote = true;
+      } else {
+        // Sem destino: o dump fica no próprio servidor do banco (spec 2.3),
+        // não é jogado fora. Move pra fora do /tmp — o `finally` só limpa o
+        // que ainda estiver lá, então depois do `mv` o `rm -f` dele vira no-op.
+        const backupDir = `${appDir(service.application.slug)}/backups`;
+        onLog?.('Sem destino configurado — guardando o dump no próprio servidor...\n');
+        const moveResult = await this.ssh.runCommand(
+          options,
+          `sudo mkdir -p ${backupDir} && sudo mv ${remoteTmp} ${backupDir}/${fileName}`,
+          30_000,
+        );
+        if (!moveResult.ok) throw new Error(moveResult.stderr || moveResult.message || 'Falha ao guardar o dump no servidor');
+
+        this.ssh
+          .runCommand(options, `find ${backupDir} -name '*.sql.gz' -mtime +${config.retentionDays} -delete`, 30_000)
+          .then((pruneResult) => {
+            if (!pruneResult.ok) {
+              this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${pruneResult.stderr || pruneResult.message}`);
+            }
+          })
+          .catch((err) => this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${err instanceof Error ? err.message : err}`));
       }
 
       await this.prisma.databaseBackupRun.update({
