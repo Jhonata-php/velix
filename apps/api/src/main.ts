@@ -14,6 +14,7 @@ import { DatabaseService } from './database/database.service';
 import { TraefikService } from './traefik/traefik.service';
 import { ApplicationsService } from './applications/applications.service';
 import { GitDeployService } from './applications/git-deploy.service';
+import { DatabaseBackupService } from './database-backup/database-backup.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -59,6 +60,7 @@ async function bootstrap() {
     database: app.get(DatabaseService),
     traefik: app.get(TraefikService),
     applications: app.get(ApplicationsService),
+    databaseBackup: app.get(DatabaseBackupService),
     gitDeploy: app.get(GitDeployService),
   });
 

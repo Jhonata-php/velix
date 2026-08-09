@@ -8,6 +8,7 @@ import { TraefikService } from '../traefik/traefik.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { DeployServiceDto } from '../applications/dto/deploy-service.dto';
 import { GitDeployService, DeployFromGitInput } from '../applications/git-deploy.service';
+import { DatabaseBackupService } from '../database-backup/database-backup.service';
 
 type StartMessage =
   | { type: 'start'; op: 'docker-install' }
@@ -23,6 +24,7 @@ type StartMessage =
   | { type: 'start'; op: 'container-logs'; params: { containerId: string } }
   | { type: 'start'; op: 'service-add'; params: { deploymentId: string; serviceName: string } }
   | { type: 'start'; op: 'service-db-import'; params: { applicationId: string; serviceName: string; sqlContent: string } }
+  | { type: 'start'; op: 'database-backup-run'; params: { projectServiceId: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
       type: 'start';
@@ -74,6 +76,7 @@ export function attachOpsServer(
     database: DatabaseService;
     traefik: TraefikService;
     applications: ApplicationsService;
+    databaseBackup: DatabaseBackupService;
     gitDeploy: GitDeployService;
   },
 ) {
@@ -101,6 +104,7 @@ async function handleConnection(
     database: DatabaseService;
     traefik: TraefikService;
     applications: ApplicationsService;
+    databaseBackup: DatabaseBackupService;
     gitDeploy: GitDeployService;
   },
 ) {
@@ -189,6 +193,8 @@ async function handleConnection(
         result = await deps.applications.addService(msg.params.deploymentId, msg.params.serviceName, onLog);
       } else if (msg.op === 'service-db-import') {
         result = await deps.applications.importDatabase(msg.params.applicationId, msg.params.serviceName, msg.params.sqlContent, onLog);
+      } else if (msg.op === 'database-backup-run') {
+        result = await deps.databaseBackup.run(msg.params.projectServiceId, 'manual', onLog);
       } else if (msg.op === 'updates-install') {
         result = await deps.servers.installUpdates(serverId, msg.params?.securityOnly ?? false, onLog);
       } else if (msg.op === 'mysql-install') {
