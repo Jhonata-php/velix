@@ -53,5 +53,26 @@ export function backupFileName(serviceName: string): string {
  * rodar no final.
  */
 export function dumpPipelineCommand(execFlags: string, containerName: string, command: string, remoteTmp: string): string {
-  return `set -o pipefail; umask 077; sudo docker exec ${execFlags} ${shellSingleQuote(containerName)} ${command} | gzip > ${remoteTmp} && chmod 600 ${remoteTmp}`;
+  const inner = `set -o pipefail; umask 077; sudo docker exec ${execFlags} ${shellSingleQuote(containerName)} ${command} | gzip > ${remoteTmp} && chmod 600 ${remoteTmp}`;
+  return `bash -c ${shellSingleQuote(inner)}`;
+}
+
+/** Move o dump do /tmp pra pasta persistente do projeto no mesmo servidor —
+ * fileName vem de backupFileName(), que embute o nome do serviço (uma
+ * coluna String sem formato garantido), então passa por shellSingleQuote
+ * como qualquer outro valor vindo de fora. */
+export function moveToBackupDirCommand(backupDir: string, remoteTmp: string, fileName: string): string {
+  const target = `${backupDir}/${fileName}`;
+  return `sudo mkdir -p ${shellSingleQuote(backupDir)} && sudo mv ${shellSingleQuote(remoteTmp)} ${shellSingleQuote(target)}`;
+}
+
+/** Retenção por dias, restrita aos backups DESTE serviço — a pasta é
+ * compartilhada por todos os bancos do mesmo projeto, então o glob tem que
+ * casar só com o prefixo do serviço, senão a retenção de um banco apaga
+ * backup de outro. `sudo` é necessário: a pasta é criada root:root por
+ * `moveToBackupDirCommand`, e `find -delete` precisa de escrita no diretório
+ * que contém o arquivo, não só no arquivo em si. */
+export function pruneBackupsCommand(backupDir: string, serviceName: string, retentionDays: number): string {
+  const pattern = `${serviceName}-*.sql.gz`;
+  return `sudo find ${shellSingleQuote(backupDir)} -name ${shellSingleQuote(pattern)} -mtime +${Math.trunc(retentionDays)} -delete`;
 }

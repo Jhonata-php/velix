@@ -9,7 +9,7 @@ import { appDir } from '../applications/applications.util';
 import { ServersService } from '../servers/servers.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
-import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
+import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
 import { uploadToDestination } from './backup-transfer.util';
 import { BackupDestinationsService } from './backup-destinations.service';
 import { SetBackupConfigDto } from './dto/set-backup-config.dto';
@@ -166,12 +166,17 @@ export class DatabaseBackupService {
         options,
         dumpPipelineCommand(dump.execFlags, service.containerName, dump.command, remoteTmp),
         600_000,
-        onLog && ((chunk) => onLog(chunk)),
+        onLog && ((chunk) => onLog(redactSecret(chunk, password))),
       );
       if (!dumpResult.ok) throw new Error(dumpResult.stderr || dumpResult.message || 'Falha ao gerar o dump');
 
       const statResult = await this.ssh.runCommand(options, `stat -c%s ${remoteTmp}`, 15_000);
       const sizeBytes = Number(statResult.stdout.trim()) || null;
+
+      // Pasta compartilhada por todos os bancos deste projeto (spec 2.3) — a
+      // poda abaixo é restrita ao prefixo deste serviço (pruneBackupsCommand),
+      // então não apaga backup de outro banco no mesmo diretório.
+      const backupDir = `${appDir(service.application.slug)}/backups`;
 
       let uploadedRemote = false;
       if (config.destinationId) {
@@ -187,24 +192,23 @@ export class DatabaseBackupService {
         // Sem destino: o dump fica no próprio servidor do banco (spec 2.3),
         // não é jogado fora. Move pra fora do /tmp — o `finally` só limpa o
         // que ainda estiver lá, então depois do `mv` o `rm -f` dele vira no-op.
-        const backupDir = `${appDir(service.application.slug)}/backups`;
         onLog?.('Sem destino configurado — guardando o dump no próprio servidor...\n');
-        const moveResult = await this.ssh.runCommand(
-          options,
-          `sudo mkdir -p ${backupDir} && sudo mv ${remoteTmp} ${backupDir}/${fileName}`,
-          30_000,
-        );
+        const moveResult = await this.ssh.runCommand(options, moveToBackupDirCommand(backupDir, remoteTmp, fileName), 30_000);
         if (!moveResult.ok) throw new Error(moveResult.stderr || moveResult.message || 'Falha ao guardar o dump no servidor');
-
-        this.ssh
-          .runCommand(options, `find ${backupDir} -name '*.sql.gz' -mtime +${config.retentionDays} -delete`, 30_000)
-          .then((pruneResult) => {
-            if (!pruneResult.ok) {
-              this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${pruneResult.stderr || pruneResult.message}`);
-            }
-          })
-          .catch((err) => this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${err instanceof Error ? err.message : err}`));
       }
+
+      // Poda dos backups locais deste serviço — roda nos dois ramos: mesmo com
+      // destino configurado, arquivos locais acumulados de antes (quando ainda
+      // não havia destino) continuam sendo limpos. Fire-and-forget: falha na
+      // poda não pode virar ERROR numa run que já terminou com sucesso.
+      this.ssh
+        .runCommand(options, pruneBackupsCommand(backupDir, service.name, config.retentionDays), 30_000)
+        .then((pruneResult) => {
+          if (!pruneResult.ok) {
+            this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${pruneResult.stderr || pruneResult.message}`);
+          }
+        })
+        .catch((err) => this.logger.warn(`Poda de backups locais de ${service.name} (${projectServiceId}) falhou: ${err instanceof Error ? err.message : err}`));
 
       await this.prisma.databaseBackupRun.update({
         where: { id: run.id },

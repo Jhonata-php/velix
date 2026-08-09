@@ -3,7 +3,8 @@
  *   npx ts-node src/database-backup/database-backup.util.spec.ts
  */
 import assert from 'node:assert';
-import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName } from './database-backup.util';
+import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
+import { shellSingleQuote } from '../database/mysql.util';
 
 // --- isManagedDatabaseImage ---------------------------------------------------
 assert.equal(isManagedDatabaseImage('postgres:16.4'), true);
@@ -42,14 +43,50 @@ assert.equal(injected!.command, "pg_dump -U postgres -d 'app'\\''; rm -rf / #' -
 // --- dumpPipelineCommand ----------------------------------------------------
 const remoteTmp = '/tmp/velix-backup-abc.sql.gz';
 const pipeline = dumpPipelineCommand(pg!.execFlags, "db'container", pg!.command, remoteTmp);
-assert.ok(pipeline.includes('set -o pipefail'), 'sem pipefail o gzip mascara falha do dump (bug corrigido)');
-assert.ok(pipeline.includes('umask 077'), 'sem umask o dump fica world-readable até o chmod final');
-assert.ok(pipeline.includes(shellSingleQuoteExpected("db'container")), 'nome do container tem que ir escapado com aspa simples');
-assert.ok(pipeline.endsWith(`&& chmod 600 ${remoteTmp}`), 'tem que terminar travando a permissão do arquivo');
+assert.ok(pipeline.startsWith('bash -c '), 'pipeline inteiro tem que rodar sob bash -c pra garantir suporte a pipefail (login shell pode ser dash/sh)');
+// o pipeline inteiro é o argumento único de `bash -c`, então as substrings originais
+// só aparecem depois de re-escapadas pela camada externa — reconstrói o esperado
+// com o mesmo shellSingleQuote que a função usa, em vez de decodificar a string.
+const expectedInner = `set -o pipefail; umask 077; sudo docker exec ${pg!.execFlags} ${shellSingleQuote("db'container")} ${pg!.command} | gzip > ${remoteTmp} && chmod 600 ${remoteTmp}`;
+assert.equal(pipeline, `bash -c ${shellSingleQuote(expectedInner)}`);
+assert.ok(expectedInner.includes('set -o pipefail'), 'sem pipefail o gzip mascara falha do dump (bug corrigido)');
+assert.ok(expectedInner.includes('umask 077'), 'sem umask o dump fica world-readable até o chmod final');
+assert.ok(expectedInner.endsWith(`&& chmod 600 ${remoteTmp}`), 'tem que terminar travando a permissão do arquivo');
 
 function shellSingleQuoteExpected(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
+
+// --- moveToBackupDirCommand -------------------------------------------------
+const moveCmd = moveToBackupDirCommand('/opt/velix/apps/my-app/backups', remoteTmp, 'db-2026-01-01T00-00-00-000Z-abc123.sql.gz');
+assert.equal(
+  moveCmd,
+  "sudo mkdir -p '/opt/velix/apps/my-app/backups' && sudo mv '/tmp/velix-backup-abc.sql.gz' '/opt/velix/apps/my-app/backups/db-2026-01-01T00-00-00-000Z-abc123.sql.gz'",
+);
+
+// fileName vem de backupFileName(service.name) — service.name é String sem
+// formato garantido, então tem que ir escapado como qualquer outro valor
+const maliciousFileName = "app'; rm -rf / #.sql.gz";
+const moveInjected = moveToBackupDirCommand('/opt/velix/apps/my-app/backups', remoteTmp, maliciousFileName);
+assert.ok(
+  moveInjected.includes(shellSingleQuoteExpected(`/opt/velix/apps/my-app/backups/${maliciousFileName}`)),
+  'fileName malicioso tem que ir escapado com aspa simples dentro do mv',
+);
+assert.ok(!/rm -rf \/ #\.sql\.gz'/.test(moveInjected.replace(shellSingleQuoteExpected(`/opt/velix/apps/my-app/backups/${maliciousFileName}`), '')), 'sem sobra do payload fora da aspa escapada');
+
+// --- pruneBackupsCommand -----------------------------------------------------
+const pruneCmd = pruneBackupsCommand('/opt/velix/apps/my-app/backups', 'db', 14);
+assert.equal(pruneCmd, "sudo find '/opt/velix/apps/my-app/backups' -name 'db-*.sql.gz' -mtime +14 -delete");
+assert.ok(pruneCmd.startsWith('sudo '), 'sudo é obrigatório — a pasta é criada root:root por moveToBackupDirCommand');
+assert.ok(pruneCmd.includes("-name 'db-*.sql.gz'"), 'o glob tem que ser restrito ao prefixo deste serviço, não *.sql.gz geral (senão poda backup de outro banco no mesmo projeto)');
+
+// nome de serviço malicioso não pode escapar da aspa simples
+const maliciousServiceName = "app'; rm -rf / #";
+const pruneInjected = pruneBackupsCommand('/opt/velix/apps/my-app/backups', maliciousServiceName, 365);
+assert.equal(
+  pruneInjected,
+  "sudo find '/opt/velix/apps/my-app/backups' -name 'app'\\''; rm -rf / #-*.sql.gz' -mtime +365 -delete",
+);
 
 // --- backupFileName --------------------------------------------------------
 const name1 = backupFileName('db');
