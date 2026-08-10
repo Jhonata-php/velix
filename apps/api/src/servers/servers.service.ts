@@ -14,6 +14,10 @@ import { shellSingleQuote } from '../database/mysql.util';
 
 type LogFn = (line: string) => void;
 
+/** `container_name` fixos de docker-compose.yml — o próprio Velix, nunca
+ * "um app implantado" pra fins de listar containers do servidor. */
+const VELIX_OWN_CONTAINERS = new Set(['velix-web', 'velix-api', 'velix-postgres', 'velix-traefik']);
+
 function toPublic<T extends { credentialEnc: string }>(server: T) {
   const { credentialEnc: _drop, ...rest } = server;
   return rest;
@@ -415,7 +419,13 @@ export class ServersService {
       .map((line) => {
         const [id, image, status, names] = line.split('|');
         return { id, image, status, names };
-      });
+      })
+      // O próprio Velix (painel, API, Postgres interno, Traefik do painel)
+      // não é "um app do usuário" — nomes fixos de docker-compose.yml, não
+      // muda de instalação pra instalação. Sem isso, o servidor onde o
+      // Velix roda sempre mostrava os próprios containers do painel
+      // misturados com o que o usuário implantou.
+      .filter((c) => !VELIX_OWN_CONTAINERS.has(c.names));
   }
 
   /**
