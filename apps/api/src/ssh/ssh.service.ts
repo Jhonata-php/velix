@@ -143,7 +143,18 @@ export class SshService {
 
       conn
         .on('ready', () => {
+          let forwardOutTimer: NodeJS.Timeout | undefined;
+
+          forwardOutTimer = setTimeout(() => {
+            fail(`Timeout ao abrir túnel SSH até ${destHost}:${destPort}`);
+          }, timeoutMs);
+
           conn.forwardOut('127.0.0.1', 0, destHost, destPort, (err, stream) => {
+            if (forwardOutTimer) {
+              clearTimeout(forwardOutTimer);
+              forwardOutTimer = undefined;
+            }
+
             if (err) {
               fail(`Falha ao abrir túnel SSH até ${destHost}:${destPort}: ${err.message}`);
               return;
