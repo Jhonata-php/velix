@@ -530,13 +530,14 @@ export function DatabaseDataTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+      <div className="card flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Banco</span>
           <div className="relative">
             <select
               value={currentSchema ?? ''}
               onChange={(e) => setCurrentSchema(e.target.value || null)}
-              className="input h-8 appearance-none py-0 pl-2.5 pr-7 text-xs"
+              className="input h-9 appearance-none pl-3 pr-8 text-sm"
               title="Trocar de banco/schema"
             >
               {!schemas && <option value="">Carregando...</option>}
@@ -546,12 +547,12 @@ export function DatabaseDataTab({
                 </option>
               ))}
             </select>
-            <IconChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" aria-hidden />
+            <IconChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
           </div>
           <button
             onClick={() => setShowCreateSchema(true)}
             title="Novo banco de dados"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
+            className="btn-secondary flex h-9 w-9 items-center justify-center p-0"
           >
             <IconPlus className="h-4 w-4" aria-hidden />
           </button>
@@ -559,10 +560,22 @@ export function DatabaseDataTab({
             onClick={() => setConfirmDeleteSchema(true)}
             disabled={!currentSchema}
             title={currentSchema ? `Excluir banco "${currentSchema}"` : 'Selecione um banco'}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-30 dark:hover:bg-red-500/10"
+            className="btn-secondary flex h-9 w-9 items-center justify-center p-0 hover:border-red-200 hover:text-red-500 disabled:opacity-40 dark:hover:border-red-900/50"
           >
             <IconTrash className="h-4 w-4" aria-hidden />
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedTable && (
+            <button
+              onClick={() => openSqlEditor(insertTemplate(selectedTable, rowsResult?.columns ?? [], engine))}
+              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm"
+            >
+              <IconPlus className="h-4 w-4" aria-hidden />
+              Inserir linha
+            </button>
+          )}
           <SqlImportButton
             applicationId={applicationId}
             serviceName={serviceName}
@@ -575,23 +588,9 @@ export function DatabaseDataTab({
               loadSchemas();
             }}
           />
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedTable && (
-            <button
-              onClick={() => openSqlEditor(insertTemplate(selectedTable, rowsResult?.columns ?? [], engine))}
-              className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-            >
-              <IconPlus className="h-3.5 w-3.5" aria-hidden />
-              Inserir linha
-            </button>
-          )}
-          <button
-            onClick={() => openSqlEditor('')}
-            title="Editor SQL"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
-          >
+          <button onClick={() => openSqlEditor('')} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
             <IconTerminal className="h-4 w-4" aria-hidden />
+            Editor SQL
           </button>
         </div>
       </div>
