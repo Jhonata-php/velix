@@ -487,7 +487,7 @@ export class ApplicationsService {
    * de existir qualquer container, então o conteúdo chega no stdin do
    * processo dentro do container sem precisar montar volume nenhum.
    */
-  async importDatabase(applicationId: string, serviceName: string, uploadId: string, onLog?: LogFn) {
+  async importDatabase(applicationId: string, serviceName: string, uploadId: string, database?: string, onLog?: LogFn) {
     const app = await this.getOne(applicationId);
     const service = app.services.find((s) => s.name === serviceName);
     if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
@@ -502,7 +502,7 @@ export class ApplicationsService {
     if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
 
     const variablesMap = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
-    const dbName = variablesMap.DATABASE_NAME || 'app';
+    const dbName = database || variablesMap.DATABASE_NAME || 'app';
 
     const importInfo = dbImportCommand(service.image, password, dbName);
     if (!importInfo) throw new BadRequestException('Importação de .sql não é suportada para este tipo de serviço');

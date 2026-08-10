@@ -56,12 +56,21 @@ export function SqlImportButton({
   serviceName,
   image,
   serverId,
+  database,
+  label,
   onDone,
 }: {
   applicationId: string;
   serviceName: string;
   image: string;
   serverId: string;
+  /** Importa pra este banco/schema em vez do padrão da implantação — usado
+   * pelo seletor de banco da aba Dados. */
+  database?: string;
+  /** Sobrescreve o texto do botão — a aba Dados já mostra qual banco está
+   * selecionado ao lado, "Importar .sql" sozinho basta ali; a aba Conexão
+   * (sem esse contexto) usa o texto padrão. */
+  label?: string;
   onDone?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,15 +106,15 @@ export function SqlImportButton({
         className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
       >
         <IconFileText className="h-4 w-4" aria-hidden />
-        {uploading ? 'Enviando arquivo...' : 'Importar .sql'}
+        {uploading ? 'Enviando arquivo...' : (label ?? 'Importar .sql')}
       </button>
 
       {uploadId !== null && (
         <InstallLogModal
           serverId={serverId}
           op="service-db-import"
-          params={{ applicationId, serviceName, uploadId }}
-          title={`Importando .sql — ${serviceName}`}
+          params={{ applicationId, serviceName, uploadId, database }}
+          title={database ? `Importando .sql — ${database}` : `Importando .sql — ${serviceName}`}
           onClose={() => setUploadId(null)}
           onDone={() => onDone?.()}
         />

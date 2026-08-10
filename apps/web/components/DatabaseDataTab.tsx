@@ -6,6 +6,7 @@ import type { DatabaseTableInfo, DatabaseRowsResult, DatabaseQueryResult, Databa
 import { Alert } from './Alert';
 import { EmptyState, ErrorState } from './EmptyState';
 import { Modal } from './Modal';
+import { SqlImportButton } from './SqlImportButton';
 import { Skeleton } from './Skeleton';
 import { StatusBadge } from './StatusBadge';
 import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown } from './icons';
@@ -386,7 +387,19 @@ function CreateSchemaModal({ databaseId, onClose, onCreated }: { databaseId: str
   );
 }
 
-export function DatabaseDataTab({ databaseId, image }: { databaseId: string; image: string }) {
+export function DatabaseDataTab({
+  databaseId,
+  applicationId,
+  serverId,
+  serviceName,
+  image,
+}: {
+  databaseId: string;
+  applicationId: string;
+  serverId: string;
+  serviceName: string;
+  image: string;
+}) {
   const engine = engineOf(image);
 
   const [schemas, setSchemas] = useState<string[] | null>(null);
@@ -507,6 +520,18 @@ export function DatabaseDataTab({ databaseId, image }: { databaseId: string; ima
           >
             <IconPlus className="h-4 w-4" aria-hidden />
           </button>
+          <SqlImportButton
+            applicationId={applicationId}
+            serviceName={serviceName}
+            image={image}
+            serverId={serverId}
+            database={currentSchema ?? undefined}
+            label="Importar .sql"
+            onDone={() => {
+              loadTables();
+              loadSchemas();
+            }}
+          />
         </div>
         <div className="flex items-center gap-2">
           {selectedTable && (

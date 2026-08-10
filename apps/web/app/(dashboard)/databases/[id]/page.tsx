@@ -260,7 +260,15 @@ export default function DatabaseDetailPage() {
         </div>
       )}
 
-      {tab === 'dados' && <DatabaseDataTab databaseId={databaseId} image={service.image} />}
+      {tab === 'dados' && (
+        <DatabaseDataTab
+          databaseId={databaseId}
+          applicationId={project.id}
+          serverId={project.server.id}
+          serviceName={service.name}
+          image={service.image}
+        />
+      )}
 
       {tab === 'backups' && <BackupSection databaseId={databaseId} serverId={project.server.id} />}
     </div>
