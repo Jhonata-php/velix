@@ -129,12 +129,28 @@ export class ServersService {
     const osName = result.osRelease?.match(/^ID=(.*)$/m)?.[1]?.replace(/"/g, '');
     const osVersion = result.osRelease?.match(/^VERSION_ID=(.*)$/m)?.[1]?.replace(/"/g, '');
 
+    // dockerInstalled só era marcado true pelo botão "Instalar Docker" — um
+    // servidor com Docker já presente antes de entrar no Velix (inclusive o
+    // servidor local, que sempre tem Docker por ser onde o próprio Velix
+    // roda) nunca passava por ali, então ficava preso em "sem Docker" pra
+    // sempre. "Testar conexão" já abre uma conexão SSH mesmo; aproveitar
+    // pra também checar o Docker corrige os dois lados (detecta o que já
+    // existe, e reflete se alguém desinstalou).
+    let dockerInstalled: boolean | undefined;
+    let dockerVersion: string | null | undefined;
+    if (result.ok) {
+      const dockerCheck = await this.ssh.runCommand(options, "sudo docker version --format '{{.Server.Version}}'", 10_000);
+      dockerInstalled = dockerCheck.ok;
+      dockerVersion = dockerCheck.ok ? dockerCheck.stdout.trim() || null : null;
+    }
+
     await this.prisma.server.update({
       where: { id },
       data: {
         status: result.ok ? 'ONLINE' : 'ERROR',
         lastCheckedAt: new Date(),
         ...(result.ok ? { osName, osVersion } : {}),
+        ...(dockerInstalled !== undefined ? { dockerInstalled, dockerVersion } : {}),
       },
     });
 
