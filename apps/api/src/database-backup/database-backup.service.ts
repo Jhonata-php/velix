@@ -28,6 +28,13 @@ function redactSecret(text: string, secret?: string): string {
   return text.split(secret).join('***');
 }
 
+/** Pasta de backups locais de um projeto — usada tanto por `run()` (pra
+ * guardar o dump quando não há destino) quanto por `downloadLocalBackup`
+ * (pra achar o arquivo de novo). */
+function backupDirFor(slug: string): string {
+  return `${appDir(slug)}/backups`;
+}
+
 @Injectable()
 export class DatabaseBackupService {
   private readonly logger = new Logger(DatabaseBackupService.name);
@@ -179,7 +186,7 @@ export class DatabaseBackupService {
       // Pasta compartilhada por todos os bancos deste projeto (spec 2.3) — a
       // poda abaixo é restrita ao prefixo deste serviço (pruneBackupsCommand),
       // então não apaga backup de outro banco no mesmo diretório.
-      const backupDir = `${appDir(service.application.slug)}/backups`;
+      const backupDir = backupDirFor(service.application.slug);
 
       let uploadedRemote = false;
       if (config.destinationId) {
@@ -246,7 +253,7 @@ export class DatabaseBackupService {
    * Só funciona pra runs SUCCESS que não foram enviadas a um destino externo
    * (uploadedRemote: false); pra essas, o arquivo já não está mais lá.
    */
-  async downloadLocalBackup(runId: string): Promise<{ stream: NodeJS.ReadableStream; fileName: string }> {
+  async downloadLocalBackup(runId: string): Promise<{ stream: NodeJS.ReadableStream; fileName: string; cleanup: () => void }> {
     const run = await this.prisma.databaseBackupRun.findUnique({
       where: { id: runId },
       include: { projectService: { include: { application: true } } },
@@ -261,20 +268,26 @@ export class DatabaseBackupService {
 
     const app = run.projectService.application;
     const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
-    const backupDir = `${appDir(app.slug)}/backups`;
-    const remotePath = `${backupDir}/${run.fileName}`;
+    const remotePath = `${backupDirFor(app.slug)}/${run.fileName}`;
     const localPath = join(tmpdir(), `velix-backup-dl-${randomUUID()}`);
+    const cleanup = () => {
+      unlink(localPath).catch(() => undefined);
+    };
 
     const download = await this.ssh.downloadFile(options, remotePath, localPath, 300_000);
     if (!download.ok) {
-      throw new NotFoundException(download.message || 'Backup não encontrado no servidor — pode já ter sido apagado pela retenção.');
+      // `fastGet` pode deixar um arquivo parcial/vazio em localPath mesmo
+      // falhando — limpa antes de estourar, mesmo padrão do `finally` do run().
+      cleanup();
+      this.logger.warn(`Download do backup ${run.fileName} (run ${runId}) falhou: ${download.message}`);
+      throw new NotFoundException('Backup não encontrado no servidor — pode já ter sido apagado pela retenção.');
     }
 
+    // Cleanup não é wireado aqui num `stream.on('close', ...)` — quem consome
+    // o stream (controller, via `pipeline`) é quem sabe garantir que isso
+    // roda mesmo em erro/desconexão do cliente, então só devolvemos a função.
     const stream = createReadStream(localPath);
-    stream.on('close', () => {
-      unlink(localPath).catch(() => undefined);
-    });
-    return { stream, fileName: run.fileName };
+    return { stream, fileName: run.fileName, cleanup };
   }
 
   /** Varre a cada hora, na hora cheia — cobre qualquer "HH:mm" configurado

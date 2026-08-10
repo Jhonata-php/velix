@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import { pipeline } from 'stream/promises';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { DatabaseBackupService } from './database-backup.service';
@@ -36,9 +37,13 @@ export class DatabaseBackupController {
 
   @Get(':id/backup-runs/:runId/download')
   async downloadBackupRun(@Param('runId') runId: string, @Res() res: Response) {
-    const { stream, fileName } = await this.databaseBackup.downloadLocalBackup(runId);
+    const { stream, fileName, cleanup } = await this.databaseBackup.downloadLocalBackup(runId);
     res.setHeader('Content-Type', 'application/gzip');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    stream.pipe(res);
+    try {
+      await pipeline(stream, res);
+    } finally {
+      cleanup();
+    }
   }
 }
