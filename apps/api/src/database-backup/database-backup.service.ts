@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { appDir } from '../applications/applications.util';
@@ -237,6 +238,43 @@ export class DatabaseBackupService {
         await unlink(localTmp).catch(() => undefined);
       }
     }
+  }
+
+  /**
+   * Baixa um backup guardado só localmente (sem destino remoto configurado)
+   * — o arquivo vive no servidor do próprio banco, em appDir(slug)/backups/.
+   * Só funciona pra runs SUCCESS que não foram enviadas a um destino externo
+   * (uploadedRemote: false); pra essas, o arquivo já não está mais lá.
+   */
+  async downloadLocalBackup(runId: string): Promise<{ stream: NodeJS.ReadableStream; fileName: string }> {
+    const run = await this.prisma.databaseBackupRun.findUnique({
+      where: { id: runId },
+      include: { projectService: { include: { application: true } } },
+    });
+    if (!run) throw new NotFoundException('Backup não encontrado');
+    if (run.status !== 'SUCCESS' || !run.fileName) {
+      throw new BadRequestException('Este backup não terminou com sucesso — nada pra baixar.');
+    }
+    if (run.uploadedRemote) {
+      throw new BadRequestException('Este backup foi enviado a um destino remoto, não fica guardado no Velix — baixe direto do destino configurado.');
+    }
+
+    const app = run.projectService.application;
+    const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
+    const backupDir = `${appDir(app.slug)}/backups`;
+    const remotePath = `${backupDir}/${run.fileName}`;
+    const localPath = join(tmpdir(), `velix-backup-dl-${randomUUID()}`);
+
+    const download = await this.ssh.downloadFile(options, remotePath, localPath, 300_000);
+    if (!download.ok) {
+      throw new NotFoundException(download.message || 'Backup não encontrado no servidor — pode já ter sido apagado pela retenção.');
+    }
+
+    const stream = createReadStream(localPath);
+    stream.on('close', () => {
+      unlink(localPath).catch(() => undefined);
+    });
+    return { stream, fileName: run.fileName };
   }
 
   /** Varre a cada hora, na hora cheia — cobre qualquer "HH:mm" configurado
