@@ -215,6 +215,17 @@ export class ApplicationsService {
     const includedServices = resolveIncludedServices(manifest, selectedServices);
     const expectedContainers = includedServices.map((s) => `${slug}_${s.name}`);
 
+    // `ProjectService` tem @@unique([applicationId, name]) — sem esta checagem,
+    // reimplantar um manifesto cujo nome de serviço já existe neste projeto
+    // (ex.: clicar de novo em "Abrir interface web" do Adminer) derrubava a
+    // "Unique constraint failed" crua do Prisma direto na tela do usuário.
+    const existing = await this.prisma.projectService.findMany({ where: { applicationId }, select: { name: true } });
+    const existingNames = new Set(existing.map((s) => s.name));
+    const conflict = includedServices.find((s) => existingNames.has(s.name));
+    if (conflict) {
+      throw new BadRequestException(`Já existe um serviço chamado "${conflict.name}" neste projeto.`);
+    }
+
     const deployment = await this.prisma.projectDeployment.create({
       data: {
         applicationId,

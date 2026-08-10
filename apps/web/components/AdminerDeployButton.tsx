@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
+import type { ProjectDetail } from '@/lib/types';
 import { Alert } from './Alert';
 import { InstallLogModal } from './InstallLogModal';
 import { IconGlobe, IconExternalLink } from './icons';
@@ -72,19 +73,22 @@ async function createUniqueDomain(
 }
 
 /**
- * Implanta o Adminer nesse projeto e já cria um domínio HTTPS automático pra
- * ele (via zona Cloudflare conectada) — sem isso o usuário implantava o
- * Adminer e não tinha como abrir de fora, já que o container não publica
- * porta nem tem domínio por padrão.
+ * Implanta o Adminer nesse projeto (uma única vez — `ProjectService` tem
+ * nome único por projeto) e já cria um domínio HTTPS automático pra ele (via
+ * zona Cloudflare conectada) — sem isso o usuário implantava o Adminer e não
+ * tinha como abrir de fora, já que o container não publica porta nem tem
+ * domínio por padrão.
+ *
+ * Clique repetido (reabrir a tela, clicar de novo em "Abrir interface web")
+ * NÃO reimplanta — o Adminer já implantado neste projeto é reaproveitado, só
+ * a etapa de domínio roda de novo se ainda não existir um.
  */
 export function AdminerDeployButton({
-  applicationId,
-  serverId,
+  project,
   containerName,
   onChange,
 }: {
-  applicationId: string;
-  serverId: string;
+  project: ProjectDetail;
   containerName: string;
   onChange: () => void;
 }) {
@@ -92,25 +96,44 @@ export function AdminerDeployButton({
   const [linking, setLinking] = useState(false);
   const [result, setResult] = useState<{ hostname: string } | { error: string } | null>(null);
 
-  async function afterDeploy(ok: boolean) {
-    if (!ok) return;
+  const alreadyDeployed = project.services.some((s) => s.name === 'adminer');
+  const existingDomain = project.domains.find((d) => d.serviceName === 'adminer' && d.status === 'ACTIVE');
+
+  async function ensureDomain() {
     setLinking(true);
     setResult(null);
-    const outcome = await createUniqueDomain(applicationId, 'adminer', containerName);
+    const outcome = await createUniqueDomain(project.id, 'adminer', containerName);
     setResult(outcome);
     setLinking(false);
     onChange();
   }
 
+  async function afterDeploy(ok: boolean) {
+    if (!ok) return;
+    await ensureDomain();
+  }
+
+  function handleClick() {
+    if (existingDomain) {
+      window.open(`https://${existingDomain.hostname}`, '_blank', 'noreferrer');
+      return;
+    }
+    if (alreadyDeployed) {
+      ensureDomain();
+      return;
+    }
+    setDeploying(true);
+  }
+
   return (
     <div>
       <button
-        onClick={() => setDeploying(true)}
+        onClick={handleClick}
         disabled={deploying || linking}
         className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
       >
         <IconGlobe className="h-4 w-4" aria-hidden />
-        {linking ? 'Configurando domínio...' : 'Abrir interface web'}
+        {linking ? 'Configurando domínio...' : existingDomain ? 'Abrir Adminer' : 'Abrir interface web'}
       </button>
 
       {result && 'hostname' in result && (
@@ -133,9 +156,9 @@ export function AdminerDeployButton({
 
       {deploying && (
         <InstallLogModal
-          serverId={serverId}
+          serverId={project.server.id}
           op="service-deploy"
-          params={{ applicationId, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: containerName } }}
+          params={{ applicationId: project.id, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: containerName } }}
           title="Implantando Adminer"
           onClose={() => setDeploying(false)}
           onDone={afterDeploy}

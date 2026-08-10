@@ -327,12 +327,7 @@ function OverviewTab({ project, service, onChange }: { project: ProjectDetail; s
               image={service.image}
               serverId={project.server.id}
             />
-            <AdminerDeployButton
-              applicationId={project.id}
-              serverId={project.server.id}
-              containerName={service.containerName}
-              onChange={onChange}
-            />
+            <AdminerDeployButton project={project} containerName={service.containerName} onChange={onChange} />
           </div>
           <PublishPortControl
             applicationId={project.id}

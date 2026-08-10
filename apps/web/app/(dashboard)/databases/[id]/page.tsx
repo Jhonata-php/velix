@@ -153,12 +153,7 @@ export default function DatabaseDetailPage() {
             image={service.image}
             serverId={project.server.id}
           />
-          <AdminerDeployButton
-            applicationId={project.id}
-            serverId={project.server.id}
-            containerName={service.containerName}
-            onChange={load}
-          />
+          <AdminerDeployButton project={project} containerName={service.containerName} onChange={load} />
         </div>
 
         <PublishPortControl
