@@ -16,7 +16,6 @@ import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
-import { AdminerDeployButton } from '@/components/AdminerDeployButton';
 import {
   IconActivity,
   IconGithub,
@@ -327,7 +326,10 @@ function OverviewTab({ project, service, onChange }: { project: ProjectDetail; s
               image={service.image}
               serverId={project.server.id}
             />
-            <AdminerDeployButton project={project} containerName={service.containerName} onChange={onChange} />
+            <a href={`/databases/${service.id}`} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+              <IconGlobe className="h-4 w-4" aria-hidden />
+              Gerenciar dados
+            </a>
           </div>
           <PublishPortControl
             applicationId={project.id}
