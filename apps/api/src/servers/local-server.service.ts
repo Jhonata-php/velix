@@ -42,6 +42,14 @@ export class LocalServerService implements OnModuleInit {
       const sshUser = process.env.VELIX_LOCAL_SSH_USER?.trim() || 'root';
       const sshPort = Number(process.env.VELIX_LOCAL_SSH_PORT?.trim() || '22');
 
+      // O instalador já detecta o IP público (seção "Detectando rede") e
+      // grava em VELIX_LOCAL_PUBLIC_IP — sem isso, o servidor local nunca
+      // tinha publicIp preenchido, mesmo com a detecção funcionando. "127.0.0.1"
+      // é o valor de fallback do instalador quando a detecção falha de
+      // verdade — não é um IP público, não vale gravar como se fosse.
+      const detectedIp = process.env.VELIX_LOCAL_PUBLIC_IP?.trim();
+      const publicIp = detectedIp && detectedIp !== '127.0.0.1' ? detectedIp : undefined;
+
       const existing = await this.prisma.server.findFirst({ where: { isLocal: true } });
 
       // A credencial é regravada a cada start: se o instalador rodou de novo e
@@ -49,6 +57,7 @@ export class LocalServerService implements OnModuleInit {
       const data = {
         name,
         hostname: 'host.docker.internal',
+        ...(publicIp ? { publicIp } : {}),
         sshUser,
         sshPort: Number.isFinite(sshPort) && sshPort > 0 ? sshPort : 22,
         authMethod: 'PRIVATE_KEY' as const,
