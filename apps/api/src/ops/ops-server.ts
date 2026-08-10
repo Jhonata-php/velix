@@ -23,7 +23,7 @@ type StartMessage =
   | { type: 'start'; op: 'service-redeploy-git'; params: { deploymentId: string } }
   | { type: 'start'; op: 'container-logs'; params: { containerId: string } }
   | { type: 'start'; op: 'service-add'; params: { deploymentId: string; serviceName: string } }
-  | { type: 'start'; op: 'service-db-import'; params: { applicationId: string; serviceName: string; sqlContent: string } }
+  | { type: 'start'; op: 'service-db-import'; params: { applicationId: string; serviceName: string; uploadId: string } }
   | { type: 'start'; op: 'database-backup-run'; params: { projectServiceId: string } }
   | { type: 'start'; op: 'updates-install'; params: { securityOnly?: boolean } }
   | {
@@ -192,7 +192,7 @@ async function handleConnection(
       } else if (msg.op === 'service-add') {
         result = await deps.applications.addService(msg.params.deploymentId, msg.params.serviceName, onLog);
       } else if (msg.op === 'service-db-import') {
-        result = await deps.applications.importDatabase(msg.params.applicationId, msg.params.serviceName, msg.params.sqlContent, onLog);
+        result = await deps.applications.importDatabase(msg.params.applicationId, msg.params.serviceName, msg.params.uploadId, onLog);
       } else if (msg.op === 'database-backup-run') {
         result = await deps.databaseBackup.run(msg.params.projectServiceId, 'manual', onLog);
       } else if (msg.op === 'updates-install') {

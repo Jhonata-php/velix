@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { getToken, clearToken } from '@/lib/api';
 import { Alert } from './Alert';
 import { InstallLogModal } from './InstallLogModal';
 import { IconFileText } from './icons';
@@ -13,8 +14,40 @@ export function supportsSqlImport(image: string): boolean {
   return ['postgres', 'mysql', 'mariadb'].some((needle) => img.includes(needle));
 }
 
-/** Botão "Importar .sql" — lê o arquivo local via FileReader e passa o
- * conteúdo pro op `service-db-import` via InstallLogModal. Extraído de
+/** Sobe o arquivo via multipart pro backend (que grava em disco local) —
+ * nunca lê o .sql inteiro como string no navegador. Um dump de banco real
+ * fácil passa de dezenas/centenas de MB, e ler isso com FileReader +
+ * mandar como um único JSON pelo WebSocket derrubava a aba ("allocation
+ * size overflow"). `apiFetch` não serve aqui porque sempre força
+ * Content-Type: application/json — precisa do multipart/form-data que o
+ * próprio `fetch` monta sozinho a partir de um FormData. */
+async function uploadSqlFile(applicationId: string, serviceName: string, file: File): Promise<string> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`/api/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/db-import/upload`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
+    }
+    throw new Error('Sua sessão expirou. Entre novamente.');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || 'Falha ao enviar o arquivo');
+  }
+  const { uploadId } = (await res.json()) as { uploadId: string };
+  return uploadId;
+}
+
+/** Botão "Importar .sql" — sobe o arquivo local via multipart e passa o
+ * `uploadId` pro op `service-db-import` via InstallLogModal. Extraído de
  * `projects/[id]/services/[name]/page.tsx` pra ser reaproveitado também na
  * tela dedicada de banco de dados. Self-gating: não renderiza nada se o
  * motor da imagem não suporta import de .sql. */
@@ -32,38 +65,48 @@ export function SqlImportButton({
   onDone?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importPayload, setImportPayload] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadId, setUploadId] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
   if (!supportsSqlImport(image)) return null;
 
-  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     setImportError(null);
-    const reader = new FileReader();
-    reader.onload = () => setImportPayload(String(reader.result ?? ''));
-    reader.onerror = () => setImportError('Falha ao ler o arquivo');
-    reader.readAsText(file);
+    setUploading(true);
+    try {
+      const id = await uploadSqlFile(applicationId, serviceName, file);
+      setUploadId(id);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Falha ao enviar o arquivo');
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
     <>
       {importError && <Alert variant="error">{importError}</Alert>}
       <input ref={fileInputRef} type="file" accept=".sql" className="hidden" onChange={handleFilePicked} />
-      <button onClick={() => fileInputRef.current?.click()} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm">
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+      >
         <IconFileText className="h-4 w-4" aria-hidden />
-        Importar .sql
+        {uploading ? 'Enviando arquivo...' : 'Importar .sql'}
       </button>
 
-      {importPayload !== null && (
+      {uploadId !== null && (
         <InstallLogModal
           serverId={serverId}
           op="service-db-import"
-          params={{ applicationId, serviceName, sqlContent: importPayload }}
+          params={{ applicationId, serviceName, uploadId }}
           title={`Importando .sql — ${serviceName}`}
-          onClose={() => setImportPayload(null)}
+          onClose={() => setUploadId(null)}
           onDone={() => onDone?.()}
         />
       )}

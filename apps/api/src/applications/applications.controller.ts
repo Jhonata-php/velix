@@ -1,10 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomBytes } from 'crypto';
+import { tmpdir } from 'os';
 import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApplicationsService } from './applications.service';
 import { GitDeployService } from './git-deploy.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
+import { registerSqlImportUpload } from './sql-import-uploads.util';
+
+const SQL_IMPORT_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2GB — dump de banco real pode ser grande
 
 // A implantação de um serviço (`deployManifestIntoProject`/`GitDeployService.
 // deploy`) é demorada e tem log ao vivo — só existe via o canal /ops (op
@@ -23,6 +30,32 @@ export class ApplicationsController {
   @MinRole('operator')
   createProject(@Body() dto: CreateProjectDto) {
     return this.applications.createProject(dto);
+  }
+
+  /**
+   * Recebe o .sql via multipart/form-data e grava direto em disco local (sem
+   * passar pelo body JSON) — arquivo grande lido inteiro como string no
+   * navegador e mandado como um único JSON no WebSocket já derrubou a aba do
+   * usuário ("allocation size overflow"). O upload só devolve um `uploadId`;
+   * quem importa de verdade é o op "service-db-import" do canal /ops, que
+   * manda esse arquivo pro servidor gerenciado via SFTP e roda o import com
+   * log ao vivo — igual já fazia antes, só que a partir de um arquivo local
+   * em vez de uma string que passou pelo corpo da requisição.
+   */
+  @Post('applications/:appId/services/:name/db-import/upload')
+  @MinRole('operator')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: tmpdir(),
+        filename: (_req, _file, cb) => cb(null, `velix-sql-import-${randomBytes(6).toString('hex')}.sql`),
+      }),
+      limits: { fileSize: SQL_IMPORT_MAX_BYTES },
+    }),
+  )
+  uploadSqlImport(@UploadedFile() file: Express.Multer.File) {
+    const uploadId = registerSqlImportUpload(file.path);
+    return { uploadId };
   }
 
   @Get('applications')

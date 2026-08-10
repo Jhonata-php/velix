@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { ServersService } from '../servers/servers.service';
@@ -26,6 +27,7 @@ import { appDir, allContainersUp, parseExposedPorts, slugify, mergeComposeFragme
 import { DeployServiceDto } from './dto/deploy-service.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
+import { consumeSqlImportUpload } from './sql-import-uploads.util';
 
 type LogFn = (line: string) => void;
 
@@ -473,7 +475,7 @@ export class ApplicationsService {
    * de existir qualquer container, então o conteúdo chega no stdin do
    * processo dentro do container sem precisar montar volume nenhum.
    */
-  async importDatabase(applicationId: string, serviceName: string, sqlContent: string, onLog?: LogFn) {
+  async importDatabase(applicationId: string, serviceName: string, uploadId: string, onLog?: LogFn) {
     const app = await this.getOne(applicationId);
     const service = app.services.find((s) => s.name === serviceName);
     if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
@@ -493,27 +495,34 @@ export class ApplicationsService {
     const importInfo = dbImportCommand(service.image, password, dbName);
     if (!importInfo) throw new BadRequestException('Importação de .sql não é suportada para este tipo de serviço');
 
+    const localPath = consumeSqlImportUpload(uploadId);
+    if (!localPath) throw new BadRequestException('Upload do arquivo expirou ou já foi usado — selecione o .sql de novo.');
+
     const { options } = await this.servers.getServerWithConnectOptions(app.serverId);
     const dir = appDir(app.slug);
     const remoteFilePath = `${dir}/.import-${randomBytes(6).toString('hex')}.sql`;
 
-    onLog?.('Enviando o arquivo pro servidor...\n');
-    const write = await this.ssh.writeRemoteFile(options, remoteFilePath, sqlContent, '600');
-    if (!write.ok) throw new BadRequestException(write.message);
-
     try {
-      onLog?.('Importando...\n');
-      const result = await this.ssh.runCommand(
-        options,
-        `sudo docker exec ${importInfo.execFlags} -i ${shellSingleQuote(service.containerName)} ${importInfo.command} < ${remoteFilePath}`,
-        600_000,
-        onLog && ((chunk) => onLog(chunk)),
-      );
-      if (!result.ok) throw new Error(result.stderr || result.message || 'Falha ao importar — confira o log acima.');
-      onLog?.('Importação concluída.\n');
-      return { ok: true };
+      onLog?.('Enviando o arquivo pro servidor...\n');
+      const write = await this.ssh.uploadFile(options, localPath, remoteFilePath);
+      if (!write.ok) throw new BadRequestException(write.message);
+
+      try {
+        onLog?.('Importando...\n');
+        const result = await this.ssh.runCommand(
+          options,
+          `sudo docker exec ${importInfo.execFlags} -i ${shellSingleQuote(service.containerName)} ${importInfo.command} < ${remoteFilePath}`,
+          600_000,
+          onLog && ((chunk) => onLog(chunk)),
+        );
+        if (!result.ok) throw new Error(result.stderr || result.message || 'Falha ao importar — confira o log acima.');
+        onLog?.('Importação concluída.\n');
+        return { ok: true };
+      } finally {
+        await this.ssh.runCommand(options, `sudo rm -f ${remoteFilePath}`, 15_000);
+      }
     } finally {
-      await this.ssh.runCommand(options, `sudo rm -f ${remoteFilePath}`, 15_000);
+      await unlink(localPath).catch(() => {});
     }
   }
 
