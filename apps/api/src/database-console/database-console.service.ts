@@ -10,10 +10,20 @@ export interface TableInfo {
 
 export interface RowsResult {
   columns: string[];
+  /** Colunas que formam a chave primária — vazio quando a tabela não tem
+   * nenhuma. É o que decide se a grade pode ou não editar/excluir linha:
+   * sem chave primária não existe WHERE que identifique UMA linha, e um
+   * UPDATE por valor bateria em várias de uma vez. */
+  primaryKeys: string[];
   rows: Record<string, unknown>[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+interface ColumnInfo {
+  name: string;
+  primaryKey: boolean;
 }
 
 export interface QueryExecResult {
@@ -88,13 +98,52 @@ export class DatabaseConsoleService {
     }));
   }
 
-  private async listColumnNames(conn: DbConnection, engine: DbEngine, table: string): Promise<string[]> {
-    const sql =
-      engine === 'postgresql'
-        ? `SELECT column_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`
-        : `SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position`;
-    const { rows } = await conn.query(sql, [table]);
-    return rows.map((r) => String(r.name));
+  private async listColumns(conn: DbConnection, engine: DbEngine, table: string): Promise<ColumnInfo[]> {
+    if (engine === 'postgresql') {
+      const { rows } = await conn.query(
+        `SELECT c.column_name AS name, (pk.column_name IS NOT NULL) AS is_pk
+         FROM information_schema.columns c
+         LEFT JOIN (
+           SELECT kcu.column_name
+           FROM information_schema.table_constraints tc
+           JOIN information_schema.key_column_usage kcu
+             ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+           WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'
+         ) pk ON pk.column_name = c.column_name
+         WHERE c.table_schema = 'public' AND c.table_name = $2
+         ORDER BY c.ordinal_position`,
+        [table, table],
+      );
+      return rows.map((r) => ({ name: String(r.name), primaryKey: r.is_pk === true }));
+    }
+    const { rows } = await conn.query(
+      `SELECT column_name AS name, column_key AS ckey
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = ?
+       ORDER BY ordinal_position`,
+      [table],
+    );
+    return rows.map((r) => ({ name: String(r.name), primaryKey: String(r.ckey ?? '') === 'PRI' }));
+  }
+
+  /** Valida tabela + colunas contra o schema real e devolve o identificador
+   * já escapado — todo caminho de escrita (update/delete de linha) passa por
+   * aqui antes de montar SQL, pra nunca interpolar um nome que não foi
+   * confirmado no banco. */
+  private async resolveWritableTable(
+    conn: DbConnection,
+    engine: DbEngine,
+    table: string,
+    referencedColumns: string[],
+  ): Promise<{ tableIdent: string; columns: ColumnInfo[] }> {
+    const known = (await this.fetchTables(conn, engine)).map((t) => t.name);
+    if (!isKnownTable(table, known)) throw new BadRequestException(`Tabela "${table}" não existe neste banco.`);
+    const columns = await this.listColumns(conn, engine, table);
+    const names = new Set(columns.map((c) => c.name));
+    for (const name of referencedColumns) {
+      if (!names.has(name)) throw new BadRequestException(`Coluna "${name}" não existe em "${table}".`);
+    }
+    return { tableIdent: quoteIdent(table, engine), columns };
   }
 
   /** Bancos/schemas existentes na mesma instância (servidor) — pra deixar
@@ -150,11 +199,8 @@ export class DatabaseConsoleService {
     opts: { page: number; pageSize: number; search?: string; database?: string },
   ): Promise<RowsResult> {
     return this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
-      const known = (await this.fetchTables(conn, engine)).map((t) => t.name);
-      if (!isKnownTable(table, known)) {
-        throw new BadRequestException(`Tabela "${table}" não existe neste banco.`);
-      }
-      const columns = await this.listColumnNames(conn, engine, table);
+      const { tableIdent, columns: columnInfos } = await this.resolveWritableTable(conn, engine, table, []);
+      const columns = columnInfos.map((c) => c.name);
       const { limit, offset } = paginate(opts.page, opts.pageSize);
 
       let whereClause = '';
@@ -171,7 +217,6 @@ export class DatabaseConsoleService {
         }
       }
 
-      const tableIdent = quoteIdent(table, engine);
       const { rows: countRows } = await conn.query(`SELECT COUNT(*) AS total FROM ${tableIdent} ${whereClause}`, whereParams);
       const total = Number(countRows[0]?.total ?? 0);
 
@@ -181,8 +226,112 @@ export class DatabaseConsoleService {
           : `SELECT * FROM ${tableIdent} ${whereClause} LIMIT ? OFFSET ?`;
       const { rows } = await conn.query(dataSql, [...whereParams, limit, offset]);
 
-      return { columns, rows, total, page: opts.page, pageSize: opts.pageSize };
+      return {
+        columns,
+        primaryKeys: columnInfos.filter((c) => c.primaryKey).map((c) => c.name),
+        rows,
+        total,
+        page: opts.page,
+        pageSize: opts.pageSize,
+      };
     }, opts.database);
+  }
+
+  /**
+   * Altera UMA linha, identificada pela chave primária. Toda escrita vai
+   * parametrizada (nunca interpolada) e o nome de tabela/coluna passa por
+   * `resolveWritableTable` antes de virar identificador. A chave primária é
+   * obrigatória de propósito: sem ela, um UPDATE por valor de coluna comum
+   * poderia atingir várias linhas de uma vez sem o usuário perceber.
+   */
+  async updateRow(
+    projectServiceId: string,
+    userId: string,
+    table: string,
+    opts: { pk: Record<string, unknown>; changes: Record<string, unknown>; database?: string },
+  ): Promise<void> {
+    const pkEntries = Object.entries(opts.pk);
+    const changeEntries = Object.entries(opts.changes);
+    if (pkEntries.length === 0) {
+      throw new BadRequestException('Esta tabela não tem chave primária — edite pelo editor SQL.');
+    }
+    if (changeEntries.length === 0) throw new BadRequestException('Nenhuma alteração informada.');
+
+    await this.runWrite(projectServiceId, userId, opts.database, async (conn, engine) => {
+      const referenced = [...pkEntries.map(([k]) => k), ...changeEntries.map(([k]) => k)];
+      const { tableIdent } = await this.resolveWritableTable(conn, engine, table, referenced);
+
+      let i = 1;
+      const placeholder = () => (engine === 'postgresql' ? `$${i++}` : '?');
+      const setSql = changeEntries.map(([k]) => `${quoteIdent(k, engine)} = ${placeholder()}`).join(', ');
+      const whereSql = pkEntries.map(([k]) => `${quoteIdent(k, engine)} = ${placeholder()}`).join(' AND ');
+      const sql = `UPDATE ${tableIdent} SET ${setSql} WHERE ${whereSql}`;
+      const params = [...changeEntries.map(([, v]) => v), ...pkEntries.map(([, v]) => v)];
+      const result = await conn.query(sql, params);
+      return { sql, rowCount: result.rowCount };
+    });
+  }
+
+  async deleteRow(
+    projectServiceId: string,
+    userId: string,
+    table: string,
+    opts: { pk: Record<string, unknown>; database?: string },
+  ): Promise<void> {
+    const pkEntries = Object.entries(opts.pk);
+    if (pkEntries.length === 0) {
+      throw new BadRequestException('Esta tabela não tem chave primária — exclua pelo editor SQL.');
+    }
+
+    await this.runWrite(projectServiceId, userId, opts.database, async (conn, engine) => {
+      const { tableIdent } = await this.resolveWritableTable(
+        conn,
+        engine,
+        table,
+        pkEntries.map(([k]) => k),
+      );
+      let i = 1;
+      const whereSql = pkEntries
+        .map(([k]) => `${quoteIdent(k, engine)} = ${engine === 'postgresql' ? `$${i++}` : '?'}`)
+        .join(' AND ');
+      const sql = `DELETE FROM ${tableIdent} WHERE ${whereSql}`;
+      const result = await conn.query(
+        sql,
+        pkEntries.map(([, v]) => v),
+      );
+      return { sql, rowCount: result.rowCount };
+    });
+  }
+
+  /** Executa uma escrita da grade e registra no mesmo histórico do editor
+   * SQL — uma edição feita clicando na célula muda dado igual a um UPDATE
+   * digitado à mão, então precisa aparecer na auditoria do mesmo jeito. */
+  private async runWrite(
+    projectServiceId: string,
+    userId: string,
+    database: string | undefined,
+    fn: (conn: DbConnection, engine: DbEngine) => Promise<{ sql: string; rowCount: number | null }>,
+  ): Promise<void> {
+    let attempted = '(comando não chegou a ser montado)';
+    try {
+      const { sql, rowCount } = await this.tunnel.withConnection(
+        projectServiceId,
+        async (conn, engine) => {
+          const outcome = await fn(conn, engine);
+          attempted = outcome.sql;
+          return outcome;
+        },
+        database,
+      );
+      await this.prisma.databaseQueryLog.create({ data: { projectServiceId, userId, query: sql, ok: true, rowCount } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao alterar a linha';
+      await this.prisma.databaseQueryLog.create({
+        data: { projectServiceId, userId, query: attempted, ok: false, error: message },
+      });
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(message);
+    }
   }
 
   async runQuery(projectServiceId: string, userId: string, sql: string, database?: string): Promise<QueryExecResult> {

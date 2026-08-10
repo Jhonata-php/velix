@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/jwt-auth.guard';
@@ -6,6 +6,8 @@ import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { DatabaseConsoleService } from './database-console.service';
 import { RunQueryDto } from './dto/run-query.dto';
 import { CreateSchemaDto } from './dto/create-schema.dto';
+import { UpdateRowDto } from './dto/update-row.dto';
+import { DeleteRowDto } from './dto/delete-row.dto';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -56,6 +58,18 @@ export class DatabaseConsoleController {
       search,
       database,
     });
+  }
+
+  @Patch(':id/tables/:table/rows')
+  @MinRole('operator')
+  updateRow(@Param('id') id: string, @Param('table') table: string, @Body() dto: UpdateRowDto, @Req() req: AuthedRequest) {
+    return this.console.updateRow(id, req.user.sub, table, { pk: dto.pk, changes: dto.changes, database: dto.database });
+  }
+
+  @Delete(':id/tables/:table/rows')
+  @MinRole('operator')
+  deleteRow(@Param('id') id: string, @Param('table') table: string, @Body() dto: DeleteRowDto, @Req() req: AuthedRequest) {
+    return this.console.deleteRow(id, req.user.sub, table, { pk: dto.pk, database: dto.database });
   }
 
   @Post(':id/query')

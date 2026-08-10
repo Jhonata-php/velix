@@ -236,6 +236,7 @@ export interface DatabaseTableInfo {
 
 export interface DatabaseRowsResult {
   columns: string[];
+  primaryKeys: string[];
   rows: Record<string, unknown>[];
   total: number;
   page: number;

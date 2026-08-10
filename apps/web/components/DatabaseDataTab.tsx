@@ -9,7 +9,7 @@ import { Modal, ConfirmModal } from './Modal';
 import { SqlImportButton } from './SqlImportButton';
 import { Skeleton } from './Skeleton';
 import { StatusBadge } from './StatusBadge';
-import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown, IconTrash } from './icons';
+import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown, IconTrash, IconKey } from './icons';
 
 type DbEngine = 'postgresql' | 'mysql' | 'mariadb';
 
@@ -43,8 +43,10 @@ function insertTemplate(table: string, columns: string[], engine: DbEngine): str
 /** Colunas com valor grande (JSON, texto longo) faziam a tabela esticar sem
  * limite, obrigando a rolar a página inteira na horizontal em vez de só a
  * tabela — cada célula agora trunca com "..." num teto de largura, com o
- * valor completo disponível no title (tooltip nativo ao passar o mouse). */
-function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+ * valor completo disponível no title (tooltip nativo ao passar o mouse).
+ * Só leitura — usada no resultado do editor SQL, onde não dá pra garantir
+ * uma chave primária estável (pode vir de um JOIN, agregação etc.). */
+function ReadOnlyDataTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
   return (
     <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
       <table className="w-full text-left text-xs">
@@ -73,6 +75,160 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, 
         </tbody>
       </table>
       {rows.length === 0 && <p className="p-4 text-center text-sm text-slate-400">Nenhuma linha encontrada.</p>}
+    </div>
+  );
+}
+
+/** Uma célula da grade principal — vira um input ao clicar (só quando a
+ * tabela tem chave primária pra identificar a linha certa), salva no
+ * blur/Enter, cancela no Escape. Sem checkbox de "definir como NULL": dá
+ * pra digitar um valor novo, não dá pra voltar um valor pra NULL por aqui
+ * ainda — quem precisar disso usa o editor SQL (`UPDATE ... SET col = NULL`). */
+function EditableCell({
+  value,
+  editable,
+  onSave,
+}: {
+  value: unknown;
+  editable: boolean;
+  onSave: (newValue: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isNull = value === null || value === undefined;
+  const display = formatCell(value);
+
+  function startEdit() {
+    if (!editable || saving) return;
+    setDraft(isNull ? '' : display);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function commit() {
+    const changed = isNull ? draft !== '' : draft !== display;
+    if (!changed) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <td className="max-w-[240px] p-0 align-top">
+        <input
+          autoFocus
+          value={draft}
+          disabled={saving}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit();
+            }
+            if (e.key === 'Escape') {
+              setEditing(false);
+              setError(null);
+            }
+          }}
+          className="w-full min-w-[120px] border-2 border-indigo-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 outline-none disabled:opacity-60 dark:bg-slate-900 dark:text-slate-100"
+        />
+        {error && <p className="bg-red-50 px-2.5 py-0.5 text-[10px] text-red-600 dark:bg-red-500/10 dark:text-red-400">{error}</p>}
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={startEdit}
+      title={editable ? `${display} — clique pra editar` : display}
+      className={`max-w-[240px] truncate px-3 py-1.5 font-mono ${isNull ? 'italic text-slate-400' : 'text-slate-700 dark:text-slate-200'} ${
+        editable ? 'cursor-text hover:bg-indigo-50 dark:hover:bg-indigo-500/10' : ''
+      }`}
+    >
+      {display}
+    </td>
+  );
+}
+
+/** Grade editável da aba Dados — cada célula edita no clique, cada linha tem
+ * um botão de excluir que aparece no hover. Só habilita edição/exclusão
+ * quando a tabela tem chave primária (sem ela não existe um WHERE que
+ * identifique uma linha só, e um UPDATE por valor bateria em várias de
+ * uma vez — nesse caso a grade fica só leitura, com uma nota explicando,
+ * e quem precisar escrever usa o editor SQL). */
+function EditableRowsTable({
+  columns,
+  primaryKeys,
+  rows,
+  onCellSave,
+  onDeleteRow,
+}: {
+  columns: string[];
+  primaryKeys: string[];
+  rows: Record<string, unknown>[];
+  onCellSave: (row: Record<string, unknown>, column: string, value: string) => Promise<void>;
+  onDeleteRow: (row: Record<string, unknown>) => void;
+}) {
+  const canEdit = primaryKeys.length > 0;
+  return (
+    <div className="space-y-1.5">
+      {!canEdit && (
+        <p className="text-[11px] text-amber-500">
+          Esta tabela não tem chave primária — editar/excluir linha aqui não é seguro. Use o Editor SQL.
+        </p>
+      )}
+      <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 dark:bg-slate-800/60">
+            <tr>
+              {columns.map((c) => (
+                <th key={c} className="max-w-[240px] truncate px-3 py-2 font-medium text-slate-500" title={c}>
+                  <span className="inline-flex items-center gap-1">
+                    {primaryKeys.includes(c) && <IconKey className="h-3 w-3 shrink-0 text-amber-500" aria-hidden />}
+                    {c}
+                  </span>
+                </th>
+              ))}
+              {canEdit && <th className="w-9 px-2 py-2" />}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            {rows.map((row, i) => (
+              <tr key={i} className="group hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                {columns.map((c) => (
+                  <EditableCell key={c} value={row[c]} editable={canEdit} onSave={(v) => onCellSave(row, c, v)} />
+                ))}
+                {canEdit && (
+                  <td className="px-2 py-1.5 text-right">
+                    <button
+                      onClick={() => onDeleteRow(row)}
+                      title="Excluir linha"
+                      className="rounded p-1 text-slate-300 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
+                    >
+                      <IconTrash className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && <p className="p-4 text-center text-sm text-slate-400">Nenhuma linha encontrada.</p>}
+      </div>
     </div>
   );
 }
@@ -151,7 +307,7 @@ function SqlEditorModal({
             <Alert variant="success">{result.rowsAffected} linha(s) afetada(s).</Alert>
           ) : (
             <>
-              <DataTable columns={result.columns} rows={result.rows} />
+              <ReadOnlyDataTable columns={result.columns} rows={result.rows} />
               {result.truncated && <p className="text-[11px] text-amber-500">Resultado truncado em 500 linhas.</p>}
             </>
           ))}
@@ -429,6 +585,9 @@ export function DatabaseDataTab({
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [sqlModalSeed, setSqlModalSeed] = useState<string | null>(null);
   const [rowsRefreshKey, setRowsRefreshKey] = useState(0);
+  const [deleteRowPending, setDeleteRowPending] = useState<Record<string, unknown> | null>(null);
+  const [deletingRow, setDeletingRow] = useState(false);
+  const [deleteRowError, setDeleteRowError] = useState<string | null>(null);
 
   function loadSchemas() {
     apiFetch<string[]>(`/databases/${databaseId}/schemas`)
@@ -524,6 +683,44 @@ export function DatabaseDataTab({
     loadTables();
     loadSchemas();
     setRowsRefreshKey((k) => k + 1);
+  }
+
+  function buildPk(row: Record<string, unknown>, primaryKeys: string[]): Record<string, unknown> {
+    const pk: Record<string, unknown> = {};
+    for (const key of primaryKeys) pk[key] = row[key];
+    return pk;
+  }
+
+  /** Edita uma célula direto na grade — identifica a linha pela chave
+   * primária (garantida pelo backend antes de chegar aqui) e atualiza só o
+   * valor local depois de confirmar que o UPDATE deu certo, sem precisar
+   * buscar a página inteira de novo. */
+  async function saveCell(row: Record<string, unknown>, column: string, value: string) {
+    if (!selectedTable || !rowsResult) return;
+    await apiFetch(`/databases/${databaseId}/tables/${encodeURIComponent(selectedTable)}/rows`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pk: buildPk(row, rowsResult.primaryKeys), changes: { [column]: value }, database: currentSchema ?? undefined }),
+    });
+    setRowsResult((prev) => (prev ? { ...prev, rows: prev.rows.map((r) => (r === row ? { ...r, [column]: value } : r)) } : prev));
+  }
+
+  async function deleteRowNow() {
+    if (!deleteRowPending || !selectedTable || !rowsResult) return;
+    setDeletingRow(true);
+    setDeleteRowError(null);
+    try {
+      await apiFetch(`/databases/${databaseId}/tables/${encodeURIComponent(selectedTable)}/rows`, {
+        method: 'DELETE',
+        body: JSON.stringify({ pk: buildPk(deleteRowPending, rowsResult.primaryKeys), database: currentSchema ?? undefined }),
+      });
+      setRowsResult((prev) => (prev ? { ...prev, rows: prev.rows.filter((r) => r !== deleteRowPending), total: Math.max(0, prev.total - 1) } : prev));
+      setDeleteRowPending(null);
+      loadTables();
+    } catch (e) {
+      setDeleteRowError(e instanceof Error ? e.message : 'Falha ao excluir a linha');
+    } finally {
+      setDeletingRow(false);
+    }
   }
 
   const totalPages = rowsResult ? Math.max(1, Math.ceil(rowsResult.total / rowsResult.pageSize)) : 1;
@@ -677,7 +874,13 @@ export function DatabaseDataTab({
             ) : (
               rowsResult && (
                 <>
-                  <DataTable columns={rowsResult.columns} rows={rowsResult.rows} />
+                  <EditableRowsTable
+                    columns={rowsResult.columns}
+                    primaryKeys={rowsResult.primaryKeys}
+                    rows={rowsResult.rows}
+                    onCellSave={saveCell}
+                    onDeleteRow={setDeleteRowPending}
+                  />
                   <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>
                       {rowsResult.total} linha{rowsResult.total === 1 ? '' : 's'}
@@ -745,6 +948,22 @@ export function DatabaseDataTab({
           onCancel={() => {
             setConfirmDeleteSchema(false);
             setDeleteSchemaError(null);
+          }}
+        />
+      )}
+
+      {deleteRowPending && (
+        <ConfirmModal
+          title="Excluir linha"
+          message="Excluir esta linha? Não dá pra desfazer."
+          confirmLabel="Excluir"
+          danger
+          loading={deletingRow}
+          error={deleteRowError}
+          onConfirm={deleteRowNow}
+          onCancel={() => {
+            setDeleteRowPending(null);
+            setDeleteRowError(null);
           }}
         />
       )}
