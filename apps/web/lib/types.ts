@@ -246,6 +246,7 @@ export interface DatabaseQueryResult {
   columns: string[];
   rows: Record<string, unknown>[];
   rowsAffected: number | null;
+  truncated: boolean;
 }
 
 export interface DatabaseQueryLogEntry {

@@ -50,6 +50,7 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
   const [tablesError, setTablesError] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [rowsResult, setRowsResult] = useState<DatabaseRowsResult | null>(null);
   const [rowsError, setRowsError] = useState<string | null>(null);
@@ -68,6 +69,16 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
     loadQueryLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [databaseId]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   useEffect(() => {
     if (!selectedTable) return;
@@ -90,6 +101,7 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
   function selectTable(name: string) {
     setSelectedTable(name);
     setPage(1);
+    setSearchInput('');
     setSearch('');
   }
 
@@ -159,11 +171,8 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
                     aria-hidden
                   />
                   <input
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Buscar..."
                     className="input h-8 w-48 pl-8 text-xs"
                   />
@@ -241,7 +250,10 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
               (sqlResult.rowsAffected != null ? (
                 <Alert variant="success">{sqlResult.rowsAffected} linha(s) afetada(s).</Alert>
               ) : (
-                <DataTable columns={sqlResult.columns} rows={sqlResult.rows} />
+                <>
+                  <DataTable columns={sqlResult.columns} rows={sqlResult.rows} />
+                  {sqlResult.truncated && <p className="text-[11px] text-amber-500">Resultado truncado em 500 linhas.</p>}
+                </>
               ))}
 
             {queryLog && queryLog.length > 0 && (

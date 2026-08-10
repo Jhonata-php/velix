@@ -55,7 +55,9 @@ export class DatabaseTunnelService {
       : {};
     const password = secretKey ? secrets[secretKey] : undefined;
     if (!password) {
-      throw new BadRequestException('Senha do banco não encontrada — esta implantação não gerou o segredo esperado.');
+      throw new BadRequestException(
+        'Este banco não usa um formato de credenciais compatível com o console embutido — confira se ele foi criado pelo assistente "Criar banco" do Velix.',
+      );
     }
 
     const variables = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
@@ -84,6 +86,11 @@ export class DatabaseTunnelService {
         const client = new PgClient({ stream: stream as never, user: engineUser(engine), password, database });
         await client.connect();
         try {
+          try {
+            await client.query('SET statement_timeout = 30000');
+          } catch (err) {
+            console.warn('Falha ao aplicar statement_timeout', err);
+          }
           const conn: DbConnection = {
             async query(sql, params) {
               const result = await client.query(sql, params as unknown[]);
@@ -98,6 +105,12 @@ export class DatabaseTunnelService {
 
       const connection = await createMysqlConnection({ stream: stream as never, user: engineUser(engine), password, database });
       try {
+        try {
+          const timeoutSql = engine === 'mariadb' ? 'SET SESSION max_statement_time=30' : 'SET SESSION MAX_EXECUTION_TIME=30000';
+          await connection.query(timeoutSql);
+        } catch (err) {
+          console.warn('Falha ao aplicar limite de tempo de execução', err);
+        }
         const conn: DbConnection = {
           async query(sql, params) {
             const [result] = await connection.query(sql, params);

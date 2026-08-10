@@ -20,7 +20,10 @@ export interface QueryExecResult {
   columns: string[];
   rows: Record<string, unknown>[];
   rowsAffected: number | null;
+  truncated: boolean;
 }
+
+const RUN_QUERY_ROW_CAP = 500;
 
 export interface QueryLogEntry {
   id: string;
@@ -46,6 +49,16 @@ const MYSQL_LIST_TABLES_SQL = `
   WHERE table_schema = DATABASE()
   ORDER BY table_name
 `;
+
+/** Envolve um nome de tabela/coluna já confirmado contra o schema real num
+ * identificador SQL seguro — a validação (isKnownTable/lista de colunas)
+ * garante que o nome existe, mas não escapa aspas embutidas no próprio nome
+ * (ex.: tabela literalmente chamada `a"b`), então isso ainda é necessário
+ * antes de interpolar. */
+function quoteIdent(name: string, engine: DbEngine): string {
+  if (engine === 'postgresql') return `"${name.replace(/"/g, '""')}"`;
+  return `\`${name.replace(/`/g, '``')}\``;
+}
 
 /**
  * Navegação de tabelas/linhas (só leitura) + editor SQL livre de um banco
@@ -102,15 +115,15 @@ export class DatabaseConsoleService {
       if (search && columns.length > 0) {
         const needle = `%${search}%`;
         if (engine === 'postgresql') {
-          whereClause = `WHERE ${columns.map((c) => `"${c}"::text ILIKE $1`).join(' OR ')}`;
+          whereClause = `WHERE ${columns.map((c) => `${quoteIdent(c, engine)}::text ILIKE $1`).join(' OR ')}`;
           whereParams = [needle];
         } else {
-          whereClause = `WHERE ${columns.map((c) => `CAST(\`${c}\` AS CHAR) LIKE ?`).join(' OR ')}`;
+          whereClause = `WHERE ${columns.map((c) => `CAST(${quoteIdent(c, engine)} AS CHAR) LIKE ?`).join(' OR ')}`;
           whereParams = columns.map(() => needle);
         }
       }
 
-      const tableIdent = engine === 'postgresql' ? `"${table}"` : `\`${table}\``;
+      const tableIdent = quoteIdent(table, engine);
       const { rows: countRows } = await conn.query(`SELECT COUNT(*) AS total FROM ${tableIdent} ${whereClause}`, whereParams);
       const total = Number(countRows[0]?.total ?? 0);
 
@@ -134,10 +147,12 @@ export class DatabaseConsoleService {
         data: { projectServiceId, userId, query: trimmed, ok: true, rowCount: result.rowCount },
       });
       const columns = result.rows[0] ? Object.keys(result.rows[0]) : [];
+      const truncated = result.rows.length > RUN_QUERY_ROW_CAP;
       return {
         columns,
-        rows: result.rows,
+        rows: truncated ? result.rows.slice(0, RUN_QUERY_ROW_CAP) : result.rows,
         rowsAffected: result.rows.length === 0 ? result.rowCount : null,
+        truncated,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Falha ao executar o comando';
