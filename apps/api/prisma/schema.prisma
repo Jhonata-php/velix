@@ -39,6 +39,7 @@ model User {
 
   sessions     UserSession[]
   resetTokens  PasswordResetToken[]
+  databaseQueryLogs DatabaseQueryLog[]
 }
 
 // Uma linha por login bem-sucedido — o JWT carrega `sid` apontando pra cá.
@@ -504,6 +505,7 @@ model ProjectService {
 
   backupConfig    DatabaseBackupConfig?
   backupRuns      DatabaseBackupRun[]
+  queryLogs       DatabaseQueryLog[]
 
   @@unique([applicationId, name])
   @@index([applicationId])
@@ -665,4 +667,24 @@ model DatabaseReplication {
   lastCheckedAt          DateTime?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
+}
+
+/// Histórico de comandos SQL rodados pelo editor livre do console de banco
+/// embutido — só o editor grava aqui (navegação de tabelas/linhas é gerada
+/// pelo Velix, não digitada pelo usuário, não precisa de auditoria de
+/// "o que foi digitado").
+model DatabaseQueryLog {
+  id               String         @id @default(uuid())
+  projectServiceId String
+  projectService   ProjectService @relation(fields: [projectServiceId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  query      String
+  ok         Boolean
+  rowCount   Int?
+  error      String?
+  executedAt DateTime @default(now())
+
+  @@index([projectServiceId, executedAt])
 }
