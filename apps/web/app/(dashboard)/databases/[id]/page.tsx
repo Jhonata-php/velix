@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { apiFetch, getToken } from '@/lib/api';
+import { apiFetch, getToken, clearToken } from '@/lib/api';
 import type {
   ProjectDetail,
   ProjectService,
@@ -198,6 +198,14 @@ async function downloadBackup(databaseId: string, runId: string, fileName: strin
   const res = await fetch(`/api/databases/${databaseId}/backup-runs/${runId}/download`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
+    }
+    throw new Error('Sua sessão expirou. Entre novamente.');
+  }
   if (!res.ok) throw new Error('Falha ao baixar o backup');
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -207,7 +215,7 @@ async function downloadBackup(databaseId: string, runId: string, fileName: strin
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function BackupSection({ databaseId, serverId }: { databaseId: string; serverId: string }) {

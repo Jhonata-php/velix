@@ -31,6 +31,7 @@ export default function DatabasesPage() {
   const [error, setError] = useState<string | null>(null);
 
   function load() {
+    setError(null);
     apiFetch<DatabaseListItem[]>('/databases')
       .then(setDatabases)
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
