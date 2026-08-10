@@ -163,7 +163,7 @@ async function handleConnection(
     const onLog = (line: string) => send(ws, { type: 'log', data: line });
 
     try {
-      let result: { ok?: boolean; status?: string };
+      let result: { ok?: boolean; status?: string; error?: string };
       if (msg.op === 'docker-install') {
         result = await deps.servers.installDocker(serverId, onLog);
       } else if (msg.op === 'docker-uninstall') {
@@ -205,7 +205,12 @@ async function handleConnection(
         return;
       }
       const ok = result.status ? result.status === 'ONLINE' : (result.ok ?? true);
-      send(ws, { type: 'done', ok, result });
+      // Vários métodos chamados acima (deployManifestIntoProject, gitDeploy.deploy,
+      // addService, importDatabase, databaseBackup.run...) capturam a própria
+      // falha internamente e devolvem {ok:false, error} em vez de lançar exceção
+      // — sem isto, esse "error" ficava só dentro de `result`, nunca no campo
+      // de topo que o frontend lê pra mostrar o motivo da falha no terminal.
+      send(ws, { type: 'done', ok, result, ...(!ok && result.error ? { error: result.error } : {}) });
     } catch (err) {
       send(ws, { type: 'done', ok: false, error: err instanceof Error ? err.message : 'Falha na operação' });
     } finally {

@@ -106,6 +106,10 @@ export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange, onLi
         } else if (msg.type === 'done') {
           const ok = !!msg.ok;
           term?.write(`\r\n\x1b[${ok ? '32' : '31'}m${ok ? '✓ Concluído com sucesso.' : '✗ Falhou.'}\x1b[0m\r\n`);
+          // Sem isto, uma falha que não passou por nenhuma linha de log antes
+          // (ex.: validação que já rejeita de cara) deixava o terminal vazio,
+          // só com "✗ Falhou." e nenhuma pista do motivo.
+          if (!ok && msg.error) term?.write(`\x1b[31m${String(msg.error).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
           setStatus(ok ? 'done-ok' : 'done-error');
           onDone(ok, ok ? msg.result : msg.error);
         }
