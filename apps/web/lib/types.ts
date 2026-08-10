@@ -228,3 +228,32 @@ export interface DatabaseBackupRun {
   startedAt: string;
   finishedAt: string | null;
 }
+
+export interface DatabaseTableInfo {
+  name: string;
+  rowCount: number | null;
+}
+
+export interface DatabaseRowsResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface DatabaseQueryResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowsAffected: number | null;
+}
+
+export interface DatabaseQueryLogEntry {
+  id: string;
+  query: string;
+  ok: boolean;
+  rowCount: number | null;
+  error: string | null;
+  executedAt: string;
+  userName: string;
+}
