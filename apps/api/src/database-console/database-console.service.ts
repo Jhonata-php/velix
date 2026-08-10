@@ -50,6 +50,11 @@ const MYSQL_LIST_TABLES_SQL = `
   ORDER BY table_name
 `;
 
+// information_schema/pg_catalog não contam como "banco do usuário" — mesma
+// lista que o Adminer já esconde por padrão.
+const MYSQL_SYSTEM_SCHEMAS = new Set(['information_schema', 'performance_schema', 'mysql', 'sys']);
+const PG_SYSTEM_SCHEMAS = new Set(['template0', 'template1']);
+
 /** Envolve um nome de tabela/coluna já confirmado contra o schema real num
  * identificador SQL seguro — a validação (isKnownTable/lista de colunas)
  * garante que o nome existe, mas não escapa aspas embutidas no próprio nome
@@ -92,14 +97,36 @@ export class DatabaseConsoleService {
     return rows.map((r) => String(r.name));
   }
 
-  listTables(projectServiceId: string): Promise<TableInfo[]> {
-    return this.tunnel.withConnection(projectServiceId, (conn, engine) => this.fetchTables(conn, engine));
+  /** Bancos/schemas existentes na mesma instância (servidor) — pra deixar
+   * trocar de banco na tela sem precisar de outra implantação. MySQL/MariaDB
+   * enxergam a instância toda de qualquer conexão; Postgres só enxerga outros
+   * bancos via `pg_database` mesmo conectado a um específico. */
+  listSchemas(projectServiceId: string): Promise<string[]> {
+    return this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
+      if (engine === 'postgresql') {
+        const { rows } = await conn.query(`SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname`);
+        return rows.map((r) => String(r.name)).filter((name) => !PG_SYSTEM_SCHEMAS.has(name));
+      }
+      const { rows } = await conn.query('SHOW DATABASES');
+      return rows.map((r) => String(r['Database'] ?? r.name)).filter((name) => !MYSQL_SYSTEM_SCHEMAS.has(name));
+    });
+  }
+
+  async createDatabase(projectServiceId: string, name: string): Promise<void> {
+    await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
+      const ident = quoteIdent(name, engine);
+      await conn.query(`CREATE DATABASE ${ident}`);
+    });
+  }
+
+  listTables(projectServiceId: string, database?: string): Promise<TableInfo[]> {
+    return this.tunnel.withConnection(projectServiceId, (conn, engine) => this.fetchTables(conn, engine), database);
   }
 
   getRows(
     projectServiceId: string,
     table: string,
-    opts: { page: number; pageSize: number; search?: string },
+    opts: { page: number; pageSize: number; search?: string; database?: string },
   ): Promise<RowsResult> {
     return this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
       const known = (await this.fetchTables(conn, engine)).map((t) => t.name);
@@ -134,15 +161,15 @@ export class DatabaseConsoleService {
       const { rows } = await conn.query(dataSql, [...whereParams, limit, offset]);
 
       return { columns, rows, total, page: opts.page, pageSize: opts.pageSize };
-    });
+    }, opts.database);
   }
 
-  async runQuery(projectServiceId: string, userId: string, sql: string): Promise<QueryExecResult> {
+  async runQuery(projectServiceId: string, userId: string, sql: string, database?: string): Promise<QueryExecResult> {
     const trimmed = sql.trim();
     if (!trimmed) throw new BadRequestException('Informe um comando SQL.');
 
     try {
-      const result = await this.tunnel.withConnection(projectServiceId, (conn) => conn.query(trimmed));
+      const result = await this.tunnel.withConnection(projectServiceId, (conn) => conn.query(trimmed), database);
       await this.prisma.databaseQueryLog.create({
         data: { projectServiceId, userId, query: trimmed, ok: true, rowCount: result.rowCount },
       });

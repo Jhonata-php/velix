@@ -37,6 +37,11 @@ export class DatabaseTunnelService {
   async withConnection<T>(
     projectServiceId: string,
     fn: (conn: DbConnection, engine: DbEngine) => Promise<T>,
+    /** Nome do banco/schema a conectar, se diferente do `DATABASE_NAME`
+     * padrão da implantação — usado pelo seletor de banco da aba Dados,
+     * pra navegar outro schema na mesma instância sem mudar o banco
+     * "principal" do projeto. */
+    databaseOverride?: string,
   ): Promise<T> {
     const service = await this.prisma.projectService.findUnique({ where: { id: projectServiceId } });
     if (!service) throw new NotFoundException('Banco não encontrado');
@@ -61,7 +66,7 @@ export class DatabaseTunnelService {
     }
 
     const variables = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
-    const database = variables.DATABASE_NAME || 'app';
+    const database = databaseOverride || variables.DATABASE_NAME || 'app';
 
     const application = await this.prisma.application.findUnique({
       where: { id: service.applicationId },

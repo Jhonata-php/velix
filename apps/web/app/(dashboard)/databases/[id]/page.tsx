@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch, getToken, clearToken } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type {
   ProjectDetail,
   ProjectService,
@@ -18,7 +19,23 @@ import { InstallLogModal } from '@/components/InstallLogModal';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
 import { DatabaseDataTab } from '@/components/DatabaseDataTab';
-import { IconDatabase, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy, IconDownload } from '@/components/icons';
+import { LiveLogsPanel } from '@/components/LiveLogsPanel';
+import { MetricCard, MetricValue } from '@/components/MetricCard';
+import {
+  IconDatabase,
+  IconFileText,
+  IconClock,
+  IconCheck,
+  IconEye,
+  IconEyeOff,
+  IconCopy,
+  IconDownload,
+  IconPower,
+  IconRefresh,
+  IconActivity,
+  IconDisk,
+  IconGlobe,
+} from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
 const RUN_TONE: Record<string, StatusTone> = { SUCCESS: 'success', RUNNING: 'info', ERROR: 'danger' };
@@ -48,6 +65,8 @@ export default function DatabaseDetailPage() {
   const [revealed, setRevealed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [tab, setTab] = useState<'conexao' | 'dados' | 'backups'>('conexao');
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // A lista /databases já devolve applicationId — buscamos ela uma vez pra
   // descobrir a qual projeto este banco pertence, depois carregamos o
@@ -88,6 +107,20 @@ export default function DatabaseDetailPage() {
     setTimeout(() => setCopiedKey(null), 1500);
   }
 
+  async function lifecycleAction(action: 'start' | 'stop' | 'restart') {
+    if (!project || !service) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiFetch(`/applications/${project.id}/services/${encodeURIComponent(service.name)}/${action}`, { method: 'POST' });
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Falha ao executar ação');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error) return <Alert variant="error">{error}</Alert>;
   if (!project || !service) return <Skeleton className="h-64" />;
 
@@ -97,16 +130,52 @@ export default function DatabaseDetailPage() {
     <div className="space-y-4">
       <div>
         <Breadcrumb items={[{ label: 'Bancos de Dados', href: '/databases' }, { label: project.name }]} />
-        <div className="mt-1 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
-            <IconDatabase className="h-4.5 w-4.5" aria-hidden />
-          </span>
-          <div>
-            <h1 className="page-title">{project.name}</h1>
-            <p className="text-xs text-slate-400">{engineLabel(service.image)}</p>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
+              <IconDatabase className="h-4.5 w-4.5" aria-hidden />
+            </span>
+            <div>
+              <h1 className="page-title">{project.name}</h1>
+              <p className="text-xs text-slate-400">{engineLabel(service.image)}</p>
+            </div>
+            <StatusBadge tone={STATUS_TONE[service.status] ?? 'neutral'}>{service.status}</StatusBadge>
           </div>
-          <StatusBadge tone={STATUS_TONE[service.status] ?? 'neutral'}>{service.status}</StatusBadge>
+          <div className="flex items-center gap-2">
+            {service.status === 'RUNNING' ? (
+              <button
+                onClick={() => lifecycleAction('stop')}
+                disabled={busy}
+                className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+              >
+                <IconPower className="h-4 w-4" aria-hidden />
+                Parar
+              </button>
+            ) : (
+              <button
+                onClick={() => lifecycleAction('start')}
+                disabled={busy}
+                className="btn-primary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+              >
+                <IconPower className="h-4 w-4" aria-hidden />
+                Iniciar
+              </button>
+            )}
+            <button
+              onClick={() => lifecycleAction('restart')}
+              disabled={busy}
+              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
+            >
+              <IconRefresh className="h-4 w-4" aria-hidden />
+              Reiniciar
+            </button>
+          </div>
         </div>
+        {actionError && (
+          <div className="mt-2">
+            <Alert variant="error">{actionError}</Alert>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
@@ -182,9 +251,47 @@ export default function DatabaseDetailPage() {
       </div>
       )}
 
+      {tab === 'conexao' && <ResourcesRow applicationId={project.id} serviceName={service.name} />}
+
+      {tab === 'conexao' && (
+        <div className="card space-y-2 p-4">
+          <p className="section-label">Logs</p>
+          <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />
+        </div>
+      )}
+
       {tab === 'dados' && <DatabaseDataTab databaseId={databaseId} image={service.image} />}
 
       {tab === 'backups' && <BackupSection databaseId={databaseId} serverId={project.server.id} />}
+    </div>
+  );
+}
+
+function ResourcesRow({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
+  const [stats, setStats] = useState<{ cpu: string | null; memory: string | null; network: string | null } | null>(null);
+
+  function load() {
+    apiFetch<{ cpu: string | null; memory: string | null; network: string | null }>(
+      `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`,
+    )
+      .then(setStats)
+      .catch(() => {});
+  }
+
+  useEffect(load, [applicationId, serviceName]);
+  useAutoRefresh(load, 5_000);
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <MetricCard icon={<IconActivity className="h-3.5 w-3.5" />} label="CPU">
+        <MetricValue>{stats?.cpu ?? '—'}</MetricValue>
+      </MetricCard>
+      <MetricCard icon={<IconDisk className="h-3.5 w-3.5" />} label="Memória">
+        <MetricValue>{stats?.memory ?? '—'}</MetricValue>
+      </MetricCard>
+      <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
+        <MetricValue>{stats?.network ?? '—'}</MetricValue>
+      </MetricCard>
     </div>
   );
 }

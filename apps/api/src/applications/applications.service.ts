@@ -28,6 +28,7 @@ import { DeployServiceDto } from './dto/deploy-service.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
 import { consumeSqlImportUpload } from './sql-import-uploads.util';
+import { resolveEngine } from '../database-console/database-console.util';
 
 type LogFn = (line: string) => void;
 
@@ -69,14 +70,25 @@ export class ApplicationsService {
   /** Todos os projetos de todos os servidores — a visão que faltava pra
    * responder "o que eu tenho instalado?" sem abrir servidor por servidor. */
   async listAll() {
-    return this.prisma.application.findMany({
+    const apps = await this.prisma.application.findMany({
       orderBy: { deployedAt: 'desc' },
       include: {
         domains: true,
         server: { select: { id: true, name: true, isLocal: true } },
         deployments: { select: { sourceType: true, manifestSlug: true } },
+        services: { select: { image: true } },
       },
     });
+    // Projeto "banco puro" (criado pelo assistente "Criar banco" — um único
+    // serviço, batendo com um motor conhecido) já aparece inteiro na aba
+    // Bancos de Dados; mostrar de novo aqui em Projetos é redundante e dá a
+    // entender que existem dois lugares diferentes pra gerenciar a mesma
+    // coisa. Projeto que mistura banco com outros serviços (ex.: WordPress +
+    // o MySQL embutido dele) continua aparecendo normalmente — só o serviço
+    // de banco sozinho, sem mais nada no projeto, some daqui.
+    return apps
+      .filter((app) => !(app.services.length === 1 && resolveEngine(app.services[0].image)))
+      .map(({ services: _services, ...app }) => app);
   }
 
   async getOne(id: string) {

@@ -7,7 +7,8 @@ import { SshService } from '../ssh/ssh.service';
 import { buildConnectOptions } from '../ssh/connect-options.util';
 import { decryptCredential } from '../ssh/crypto.util';
 import { shellSingleQuote } from '../database/mysql.util';
-import { dbConsoleCommand } from './container-shell.util';
+import { dbConsoleCommand, dbImportSecretKey } from './container-shell.util';
+import { resolveEngine, engineUser } from '../database-console/database-console.util';
 
 type ClientMessage = { type: 'input'; data: string } | { type: 'resize'; cols: number; rows: number };
 
@@ -185,12 +186,12 @@ async function handleDbConsole(
 /**
  * Shell dentro de um container de um serviço de projeto — `docker exec -it
  * <container> sh` por padrão, ou o cliente do banco (`mode=db`) quando a
- * imagem é um banco conhecido (ver container-shell.util.ts). Sem login
- * automático no modo banco: diferente do MySQL solto (`handleDbConsole`,
- * que sabe a senha de root porque foi o Velix que gerou), aqui a senha é
- * o que o manifesto do catálogo gerou — o usuário já vê ela pronta na aba
- * Ambiente do serviço, então digitar na hora é mais simples e mais seguro
- * que tentar adivinhar qual variável de ambiente cada manifesto usa.
+ * imagem é um banco conhecido (ver container-shell.util.ts). Login
+ * automático no modo banco para os três motores oficiais do catálogo
+ * (Postgres/MySQL/MariaDB) — mesma senha root que a aba "Dados" e o
+ * "Importar .sql" já usam. Pra qualquer outro tipo de imagem (Mongo, Redis,
+ * bancos de app-stacks de terceiros cujo segredo não está num formato
+ * conhecido) cai no cliente sem login, que pede a senha na hora.
  */
 async function handleServiceTerminal(
   ws: WebSocket,
@@ -234,8 +235,34 @@ async function handleServiceTerminal(
   }
 
   const containerName = shellSingleQuote(service.containerName);
-  const command = mode === 'db' ? dbConsoleCommand(service.image) : shellBin;
+  let execFlags = '';
+  let command: string | null = mode === 'db' ? dbConsoleCommand(service.image) : shellBin;
+
+  // Login automático no modo banco: pros três motores oficiais do catálogo
+  // (Postgres/MySQL/MariaDB) a senha root já foi gerada pelo Velix no deploy
+  // e mora em `secretsEnc` — mesma fonte que a aba "Dados" e o "Importar
+  // .sql" já usam (dbImportSecretKey). Sem isso, o usuário caía direto num
+  // prompt de senha do próprio mysql/psql sem nenhuma pista de que precisava
+  // digitar algo, e "console do banco não funciona" era o relato — o cliente
+  // tá lá, só esperando a senha que o usuário não sabia que precisava dar.
+  if (mode === 'db') {
+    const engine = resolveEngine(service.image);
+    if (engine) {
+      const secretKey = dbImportSecretKey(service.image);
+      const deployment = await deps.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+      const secrets = deployment?.secretsEnc ? (JSON.parse(decryptCredential(deployment.secretsEnc)) as Record<string, string>) : {};
+      const password = secretKey ? secrets[secretKey] : undefined;
+      if (password) {
+        if (engine === 'postgresql') {
+          execFlags = `-e PGPASSWORD=${shellSingleQuote(password)} `;
+          command = `psql -U ${engineUser(engine)}`;
+        } else {
+          command = `mysql -u${engineUser(engine)} -p${shellSingleQuote(password)}`;
+        }
+      }
+    }
+  }
 
   const stream = await wirePty(ws, deps.ssh, options);
-  stream.write(`sudo docker exec -it ${containerName} ${command ?? 'sh'}\n`);
+  stream.write(`sudo docker exec ${execFlags}-it ${containerName} ${command ?? 'sh'}\n`);
 }
