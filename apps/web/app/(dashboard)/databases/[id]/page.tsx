@@ -15,6 +15,8 @@ import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
+import { SqlImportButton } from '@/components/SqlImportButton';
+import { PublishPortControl } from '@/components/PublishPortControl';
 import { IconDatabase, IconGlobe, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy } from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
@@ -145,6 +147,12 @@ export default function DatabaseDetailPage() {
         )}
 
         <div className="flex flex-wrap gap-2 pt-1">
+          <SqlImportButton
+            applicationId={project.id}
+            serviceName={service.name}
+            image={service.image}
+            serverId={project.server.id}
+          />
           <button
             onClick={() => setDeployingAdminer(true)}
             disabled={deployingAdminer}
@@ -154,6 +162,13 @@ export default function DatabaseDetailPage() {
             Abrir interface web
           </button>
         </div>
+
+        <PublishPortControl
+          applicationId={project.id}
+          serviceName={service.name}
+          publishedPort={service.publishedPort}
+          onChange={load}
+        />
       </div>
 
       <BackupSection databaseId={databaseId} serverId={project.server.id} />
