@@ -207,7 +207,7 @@ export class ApplicationsService {
 
     const slug = application.slug;
     const selectedServices = dto.selectedServices ?? [];
-    const secretsMap = resolveSecrets(manifest);
+    const secretsMap = resolveSecrets(manifest, dto.secrets);
     const variablesMap = resolveVariables(manifest, dto.variables);
     const deploymentCompose = renderCompose(manifest, slug, variablesMap, selectedServices);
     const envFiles = renderServiceEnvFiles(manifest, slug, secretsMap, variablesMap, selectedServices);

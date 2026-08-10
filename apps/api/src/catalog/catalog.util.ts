@@ -239,10 +239,12 @@ export function generateSecretValue(bytes = 24): string {
   return randomBytes(bytes).toString('base64url');
 }
 
-/** Gera o valor de cada segredo declarado no manifesto (uma vez por deploy). */
-export function resolveSecrets(manifest: VelixManifest): Record<string, string> {
+/** Gera o valor de cada segredo declarado no manifesto (uma vez por deploy) —
+ * ou usa o valor que o usuário digitou, quando ele escolheu não deixar
+ * gerar automático (ex.: senha root customizada na hora de criar um banco). */
+export function resolveSecrets(manifest: VelixManifest, overrides: Record<string, string> = {}): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const s of manifest.secrets ?? []) map[s.key] = generateSecretValue(s.length);
+  for (const s of manifest.secrets ?? []) map[s.key] = overrides[s.key]?.trim() || generateSecretValue(s.length);
   return map;
 }
 

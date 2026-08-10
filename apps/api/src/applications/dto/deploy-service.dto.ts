@@ -30,6 +30,12 @@ export class DeployServiceDto {
   @IsOptional()
   variables?: Record<string, string>;
 
+  /** Valor customizado pra um `secret` declarado no manifesto (ex.: senha root
+   * digitada em vez de gerada) — chave ausente ou vazia continua gerando
+   * automático, chaves desconhecidas são ignoradas por `resolveSecrets`. */
+  @IsOptional()
+  secrets?: Record<string, string>;
+
   /** Nomes dos serviços opcionais do manifesto escolhidos na etapa "Componentes" —
    * nomes inválidos são ignorados por `resolveIncludedServices`. */
   @IsOptional()

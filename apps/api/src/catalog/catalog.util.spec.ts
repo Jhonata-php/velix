@@ -24,6 +24,8 @@ import {
 import { uptimeKumaManifest } from './manifests/uptime-kuma';
 import { QUICK_MANIFESTS } from './manifests/quick-apps';
 import { immichManifest } from './manifests/immich';
+import { mysqlManifest } from './manifests/mysql';
+import { mariadbManifest } from './manifests/mariadb';
 
 // validação: o manifesto oficial é válido
 assert.equal(validateManifest(uptimeKumaManifest).ok, true);
@@ -105,6 +107,24 @@ const withSecrets: VelixManifest = {
 };
 const resolved = resolveSecrets(withSecrets);
 assert.deepEqual(Object.keys(resolved).sort(), ['APP_PASSWORD', 'ROOT_PASSWORD']);
+
+// resolveSecrets: valor digitado pelo usuário tem prioridade sobre o gerado
+// automático (ex.: senha root customizada na hora de criar um banco) —
+// vazio ou ausente continua gerando, chave desconhecida é ignorada
+assert.equal(resolveSecrets(withSecrets, { ROOT_PASSWORD: 'minhaSenha123' }).ROOT_PASSWORD, 'minhaSenha123');
+assert.notEqual(resolveSecrets(withSecrets, { ROOT_PASSWORD: '' }).ROOT_PASSWORD, '');
+assert.ok(resolveSecrets(withSecrets, { ROOT_PASSWORD: '  ' }).ROOT_PASSWORD.trim().length > 0, 'senha só com espaço não conta como escolhida — gera automático');
+assert.equal(Object.keys(resolveSecrets(withSecrets, { CHAVE_QUE_NAO_EXISTE: 'x' })).length, 2);
+
+// manifestos oficiais de MySQL/MariaDB continuam válidos com o usuário de
+// app opcional (APP_USER/APP_PASSWORD) — pego de propósito fora do laço de
+// QUICK_MANIFESTS mais abaixo, que não inclui os manifestos "oficiais"
+assert.equal(validateManifest(mysqlManifest).ok, true);
+assert.equal(validateManifest(mariadbManifest).ok, true);
+// usuário de app em branco: MYSQL_USER/MARIADB_USER vazios (a imagem oficial
+// pula a criação do usuário extra quando isso acontece)
+const mysqlComposeNoAppUser = renderCompose(mysqlManifest, 'meuapp');
+assert.ok(mysqlComposeNoAppUser.includes('env_file:\n      - ./secrets/db.env'), 'segredos do MySQL continuam via env_file, não inline');
 
 // compose com segredos: nenhum valor sensível inline, usa env_file
 const composeWithSecrets = renderCompose(withSecrets, 'meuapp');
