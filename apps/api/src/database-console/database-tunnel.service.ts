@@ -1,0 +1,119 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { createConnection as createMysqlConnection } from 'mysql2/promise';
+import { Client as PgClient } from 'pg';
+import { PrismaService } from '../prisma/prisma.service';
+import { ServersService } from '../servers/servers.service';
+import { SshService } from '../ssh/ssh.service';
+import { decryptCredential } from '../ssh/crypto.util';
+import { dbImportSecretKey } from '../terminal/container-shell.util';
+import { shellSingleQuote } from '../database/mysql.util';
+import { PROXY_NETWORK } from '../traefik/traefik.util';
+import { resolveEngine, enginePort, engineUser, type DbEngine } from './database-console.util';
+
+export interface DbConnection {
+  query(sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>;
+}
+
+/**
+ * Abre uma conexão real ao banco de um `ProjectService` — a API não tem rota
+ * de rede até a rede Docker `velix-proxy` do servidor gerenciado, então o
+ * caminho é: resolver o IP do container ali dentro via SSH, abrir um túnel
+ * TCP através da mesma conexão SSH (`SshService.openTunnel`), e conectar o
+ * driver nativo do motor (mysql2/pg) nesse túnel. Autentica sozinho com a
+ * senha root já gerada no deploy — sem pedir login.
+ *
+ * `withConnection` garante que a conexão do driver e o túnel SSH sempre
+ * fecham no `finally`, sucesso ou erro — sem isso cada query deixaria uma
+ * conexão SSH pendurada no servidor gerenciado.
+ */
+@Injectable()
+export class DatabaseTunnelService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly servers: ServersService,
+    private readonly ssh: SshService,
+  ) {}
+
+  async withConnection<T>(
+    projectServiceId: string,
+    fn: (conn: DbConnection, engine: DbEngine) => Promise<T>,
+  ): Promise<T> {
+    const service = await this.prisma.projectService.findUnique({ where: { id: projectServiceId } });
+    if (!service) throw new NotFoundException('Banco não encontrado');
+
+    const engine = resolveEngine(service.image);
+    if (!engine) {
+      throw new BadRequestException('Este serviço não é um banco de dados suportado (PostgreSQL/MySQL/MariaDB)');
+    }
+
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+
+    const secretKey = dbImportSecretKey(service.image);
+    const secrets = deployment.secretsEnc
+      ? (JSON.parse(decryptCredential(deployment.secretsEnc)) as Record<string, string>)
+      : {};
+    const password = secretKey ? secrets[secretKey] : undefined;
+    if (!password) {
+      throw new BadRequestException('Senha do banco não encontrada — esta implantação não gerou o segredo esperado.');
+    }
+
+    const variables = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
+    const database = variables.DATABASE_NAME || 'app';
+
+    const application = await this.prisma.application.findUnique({
+      where: { id: service.applicationId },
+      select: { serverId: true },
+    });
+    if (!application) throw new NotFoundException('Projeto não encontrado');
+    const { options } = await this.servers.getServerWithConnectOptions(application.serverId);
+
+    const inspect = await this.ssh.runCommand(
+      options,
+      `sudo docker inspect ${shellSingleQuote(service.containerName)} --format '{{(index .NetworkSettings.Networks "${PROXY_NETWORK}").IPAddress}}'`,
+      15_000,
+    );
+    const containerIp = inspect.stdout.trim();
+    if (!inspect.ok || !containerIp) {
+      throw new BadRequestException('Não foi possível encontrar o container do banco na rede — confira se ele está rodando.');
+    }
+
+    const { stream, close } = await this.ssh.openTunnel(options, containerIp, enginePort(engine));
+    try {
+      if (engine === 'postgresql') {
+        const client = new PgClient({ stream: stream as never, user: engineUser(engine), password, database });
+        await client.connect();
+        try {
+          const conn: DbConnection = {
+            async query(sql, params) {
+              const result = await client.query(sql, params as unknown[]);
+              return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? null };
+            },
+          };
+          return await fn(conn, engine);
+        } finally {
+          await client.end();
+        }
+      }
+
+      const connection = await createMysqlConnection({ stream: stream as never, user: engineUser(engine), password, database });
+      try {
+        const conn: DbConnection = {
+          async query(sql, params) {
+            const [result] = await connection.query(sql, params);
+            if (Array.isArray(result)) {
+              return { rows: result as Record<string, unknown>[], rowCount: result.length };
+            }
+            const info = result as { affectedRows?: number };
+            return { rows: [], rowCount: info.affectedRows ?? null };
+          },
+        };
+        return await fn(conn, engine);
+      } finally {
+        await connection.end();
+      }
+    } finally {
+      close();
+    }
+  }
+}
