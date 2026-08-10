@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import type { Duplex } from 'stream';
 
 export interface SshConnectOptions {
   host: string;
@@ -108,6 +109,57 @@ export class SshService {
           password: options.password,
           privateKey: options.privateKey,
           readyTimeout: Math.min(timeoutMs, 15_000),
+        });
+    });
+  }
+
+  /**
+   * Abre um túnel TCP local → destino através da conexão SSH (equivalente a
+   * `ssh -L`), sem publicar porta nenhuma no host — usado pelo console de
+   * banco de dados pra falar com o driver nativo (mysql2/pg) através da
+   * mesma conexão SSH que já autentica em todo o resto da plataforma, já que
+   * a API não tem rota de rede direta até a rede Docker `velix-proxy` do
+   * servidor gerenciado.
+   *
+   * A conexão SSH fica viva até quem chamou invocar `close()` — diferente de
+   * `runCommand`, que abre e fecha sozinho por chamada.
+   */
+  openTunnel(
+    options: SshConnectOptions,
+    destHost: string,
+    destPort: number,
+    timeoutMs = 15_000,
+  ): Promise<{ stream: Duplex; close: () => void }> {
+    return new Promise((resolve, reject) => {
+      const conn = new Client();
+      let settled = false;
+
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        conn.end();
+        reject(new Error(message));
+      };
+
+      conn
+        .on('ready', () => {
+          conn.forwardOut('127.0.0.1', 0, destHost, destPort, (err, stream) => {
+            if (err) {
+              fail(`Falha ao abrir túnel SSH até ${destHost}:${destPort}: ${err.message}`);
+              return;
+            }
+            settled = true;
+            resolve({ stream, close: () => conn.end() });
+          });
+        })
+        .on('error', (err) => fail(`Falha na conexão SSH: ${err.message}`))
+        .connect({
+          host: options.host,
+          port: options.port,
+          username: options.username,
+          password: options.password,
+          privateKey: options.privateKey,
+          readyTimeout: timeoutMs,
         });
     });
   }
