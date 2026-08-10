@@ -16,6 +16,7 @@ import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
+import { AdminerDeployButton } from '@/components/AdminerDeployButton';
 import {
   IconActivity,
   IconGithub,
@@ -283,7 +284,6 @@ export default function ServicePage() {
 
 function OverviewTab({ project, service, onChange }: { project: ProjectDetail; service: ProjectService; onChange: () => void }) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
-  const [deployingAdminer, setDeployingAdminer] = useState(false);
 
   useEffect(() => {
     apiFetch<EndpointServiceInfo[]>(`/applications/${project.id}/endpoints`)
@@ -327,14 +327,12 @@ function OverviewTab({ project, service, onChange }: { project: ProjectDetail; s
               image={service.image}
               serverId={project.server.id}
             />
-            <button
-              onClick={() => setDeployingAdminer(true)}
-              disabled={deployingAdminer}
-              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
-            >
-              <IconGlobe className="h-4 w-4" aria-hidden />
-              Abrir interface web
-            </button>
+            <AdminerDeployButton
+              applicationId={project.id}
+              serverId={project.server.id}
+              containerName={service.containerName}
+              onChange={onChange}
+            />
           </div>
           <PublishPortControl
             applicationId={project.id}
@@ -346,17 +344,6 @@ function OverviewTab({ project, service, onChange }: { project: ProjectDetail; s
       )}
 
       <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />
-
-      {deployingAdminer && (
-        <InstallLogModal
-          serverId={project.server.id}
-          op="service-deploy"
-          params={{ applicationId: project.id, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: service.containerName } }}
-          title="Implantando Adminer"
-          onClose={() => setDeployingAdminer(false)}
-          onDone={() => onChange()}
-        />
-      )}
     </div>
   );
 }

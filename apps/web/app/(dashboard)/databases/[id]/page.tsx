@@ -17,7 +17,8 @@ import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
-import { IconDatabase, IconGlobe, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy, IconDownload } from '@/components/icons';
+import { AdminerDeployButton } from '@/components/AdminerDeployButton';
+import { IconDatabase, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy, IconDownload } from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
 const RUN_TONE: Record<string, StatusTone> = { SUCCESS: 'success', RUNNING: 'info', ERROR: 'danger' };
@@ -46,7 +47,6 @@ export default function DatabaseDetailPage() {
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [deployingAdminer, setDeployingAdminer] = useState(false);
 
   // A lista /databases já devolve applicationId — buscamos ela uma vez pra
   // descobrir a qual projeto este banco pertence, depois carregamos o
@@ -153,14 +153,12 @@ export default function DatabaseDetailPage() {
             image={service.image}
             serverId={project.server.id}
           />
-          <button
-            onClick={() => setDeployingAdminer(true)}
-            disabled={deployingAdminer}
-            className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50"
-          >
-            <IconGlobe className="h-4 w-4" aria-hidden />
-            Abrir interface web
-          </button>
+          <AdminerDeployButton
+            applicationId={project.id}
+            serverId={project.server.id}
+            containerName={service.containerName}
+            onChange={load}
+          />
         </div>
 
         <PublishPortControl
@@ -172,19 +170,6 @@ export default function DatabaseDetailPage() {
       </div>
 
       <BackupSection databaseId={databaseId} serverId={project.server.id} />
-
-      {deployingAdminer && (
-        <InstallLogModal
-          serverId={project.server.id}
-          op="service-deploy"
-          params={{ applicationId: project.id, manifestSlug: 'adminer', variables: { DEFAULT_SERVER: service.containerName } }}
-          title="Implantando Adminer"
-          onClose={() => setDeployingAdminer(false)}
-          onDone={(ok) => {
-            if (ok) load();
-          }}
-        />
-      )}
     </div>
   );
 }
