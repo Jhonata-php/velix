@@ -4,15 +4,33 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import type { DatabaseTableInfo, DatabaseRowsResult, DatabaseQueryResult, DatabaseQueryLogEntry } from '@/lib/types';
 import { Alert } from './Alert';
+import { EmptyState, ErrorState } from './EmptyState';
 import { Skeleton } from './Skeleton';
 import { StatusBadge } from './StatusBadge';
-import { IconLayers, IconSearch, IconTerminal, IconClock, IconChevronDown } from './icons';
+import { IconLayers, IconSearch, IconTerminal, IconClock, IconChevronDown, IconPlus, IconDatabase } from './icons';
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+/** Mesma detecção de imagem já usada em vários outros pontos do app (backend
+ * e frontend) — só decide qual sintaxe de CREATE TABLE sugerir no editor,
+ * nada crítico se errar (o usuário sempre pode editar antes de executar). */
+function engineOf(image: string): 'postgresql' | 'mysql' | 'mariadb' {
+  const img = image.toLowerCase();
+  if (img.includes('postgres')) return 'postgresql';
+  if (img.includes('mariadb')) return 'mariadb';
+  return 'mysql';
+}
+
+function createTableTemplate(engine: 'postgresql' | 'mysql' | 'mariadb'): string {
+  if (engine === 'postgresql') {
+    return 'CREATE TABLE nome_da_tabela (\n  id SERIAL PRIMARY KEY,\n  criado_em TIMESTAMP DEFAULT NOW()\n);';
+  }
+  return 'CREATE TABLE nome_da_tabela (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP\n);';
 }
 
 function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
@@ -45,7 +63,9 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, 
   );
 }
 
-export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
+export function DatabaseDataTab({ databaseId, image }: { databaseId: string; image: string }) {
+  const engine = engineOf(image);
+
   const [tables, setTables] = useState<DatabaseTableInfo[] | null>(null);
   const [tablesError, setTablesError] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -62,10 +82,23 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
   const [sqlResult, setSqlResult] = useState<DatabaseQueryResult | { error: string } | null>(null);
   const [queryLog, setQueryLog] = useState<DatabaseQueryLogEntry[] | null>(null);
 
-  useEffect(() => {
+  function loadTables() {
     apiFetch<DatabaseTableInfo[]>(`/databases/${databaseId}/tables`)
-      .then(setTables)
+      .then((list) => {
+        setTables(list);
+        setTablesError(null);
+      })
       .catch((e) => setTablesError(e instanceof Error ? e.message : 'Falha ao carregar tabelas'));
+  }
+
+  function loadQueryLog() {
+    apiFetch<DatabaseQueryLogEntry[]>(`/databases/${databaseId}/query-log`)
+      .then(setQueryLog)
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    loadTables();
     loadQueryLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [databaseId]);
@@ -92,17 +125,20 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
       .finally(() => setLoadingRows(false));
   }, [databaseId, selectedTable, page, search]);
 
-  function loadQueryLog() {
-    apiFetch<DatabaseQueryLogEntry[]>(`/databases/${databaseId}/query-log`)
-      .then(setQueryLog)
-      .catch(() => {});
-  }
-
   function selectTable(name: string) {
     setSelectedTable(name);
     setPage(1);
     setSearchInput('');
     setSearch('');
+  }
+
+  /** Pré-preenche o editor com um esqueleto de CREATE TABLE pronto pra editar
+   * — não é um formulário visual de colunas (mais barato de construir e
+   * cobre bem o caso "quero criar uma tabela agora"), mas poupa quem não
+   * lembra a sintaxe de cor de digitar do zero. */
+  function openCreateTable() {
+    setSqlText(createTableTemplate(engine));
+    setShowSqlEditor(true);
   }
 
   async function runSql() {
@@ -119,6 +155,7 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
     } finally {
       setRunningSql(false);
       loadQueryLog();
+      loadTables();
     }
   }
 
@@ -126,20 +163,41 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
-        <div className="card p-3">
-          <p className="section-label mb-2 flex items-center gap-1.5">
-            <IconLayers className="h-3.5 w-3.5" aria-hidden />
-            Tabelas
-          </p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] lg:items-stretch">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="section-label flex items-center gap-1.5">
+              <IconLayers className="h-3.5 w-3.5" aria-hidden />
+              Tabelas
+            </p>
+            <button
+              onClick={openCreateTable}
+              className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              <IconPlus className="h-3.5 w-3.5" aria-hidden />
+              Nova tabela
+            </button>
+          </div>
+
           {tablesError ? (
-            <Alert variant="error">{tablesError}</Alert>
+            <ErrorState message={tablesError} onRetry={loadTables} />
           ) : !tables ? (
-            <Skeleton className="h-32" />
+            <div className="card p-3">
+              <Skeleton className="h-32" />
+            </div>
           ) : tables.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhuma tabela ainda.</p>
+            <EmptyState
+              icon={<IconLayers className="h-4 w-4" aria-hidden />}
+              title="Nenhuma tabela ainda"
+              description="Crie a primeira tabela direto por aqui, ou importe um .sql na aba Conexão."
+              action={
+                <button onClick={openCreateTable} className="btn-secondary px-3 py-1.5 text-xs">
+                  Criar tabela
+                </button>
+              }
+            />
           ) : (
-            <div className="space-y-0.5">
+            <div className="card flex-1 space-y-0.5 overflow-y-auto p-2 lg:max-h-[520px]">
               {tables.map((t) => (
                 <button
                   key={t.name}
@@ -158,63 +216,65 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
           )}
         </div>
 
-        <div className="card space-y-3 p-4">
-          {!selectedTable ? (
-            <p className="text-sm text-slate-400">Selecione uma tabela pra ver os dados.</p>
-          ) : (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <p className="section-label">{selectedTable}</p>
-                <div className="relative">
-                  <IconSearch
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
-                    aria-hidden
-                  />
-                  <input
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Buscar..."
-                    className="input h-8 w-48 pl-8 text-xs"
-                  />
-                </div>
+        {!selectedTable ? (
+          <EmptyState
+            icon={<IconDatabase className="h-4 w-4" aria-hidden />}
+            title="Selecione uma tabela"
+            description="Escolha uma tabela na lista ao lado pra ver as linhas, ou crie uma nova."
+          />
+        ) : (
+          <div className="card flex flex-1 flex-col space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="section-label">{selectedTable}</p>
+              <div className="relative">
+                <IconSearch
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                  aria-hidden
+                />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Buscar..."
+                  className="input h-8 w-48 pl-8 text-xs"
+                />
               </div>
-              {rowsError && <Alert variant="error">{rowsError}</Alert>}
-              {loadingRows ? (
-                <Skeleton className="h-40" />
-              ) : (
-                rowsResult && (
-                  <>
-                    <DataTable columns={rowsResult.columns} rows={rowsResult.rows} />
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+            </div>
+            {rowsError && <Alert variant="error">{rowsError}</Alert>}
+            {loadingRows ? (
+              <Skeleton className="h-40" />
+            ) : (
+              rowsResult && (
+                <>
+                  <DataTable columns={rowsResult.columns} rows={rowsResult.rows} />
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>
+                      {rowsResult.total} linha{rowsResult.total === 1 ? '' : 's'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                        className="btn-secondary px-2 py-1 disabled:opacity-40"
+                      >
+                        Anterior
+                      </button>
                       <span>
-                        {rowsResult.total} linha{rowsResult.total === 1 ? '' : 's'}
+                        Página {page} de {totalPages}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPage((p) => Math.max(1, p - 1))}
-                          disabled={page <= 1}
-                          className="btn-secondary px-2 py-1 disabled:opacity-40"
-                        >
-                          Anterior
-                        </button>
-                        <span>
-                          Página {page} de {totalPages}
-                        </span>
-                        <button
-                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                          disabled={page >= totalPages}
-                          className="btn-secondary px-2 py-1 disabled:opacity-40"
-                        >
-                          Próxima
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages}
+                        className="btn-secondary px-2 py-1 disabled:opacity-40"
+                      >
+                        Próxima
+                      </button>
                     </div>
-                  </>
-                )
-              )}
-            </>
-          )}
-        </div>
+                  </div>
+                </>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card space-y-3 p-4">
@@ -231,7 +291,7 @@ export function DatabaseDataTab({ databaseId }: { databaseId: string }) {
             <textarea
               value={sqlText}
               onChange={(e) => setSqlText(e.target.value)}
-              rows={5}
+              rows={6}
               placeholder="SELECT * FROM ..."
               className="input font-mono text-xs"
             />

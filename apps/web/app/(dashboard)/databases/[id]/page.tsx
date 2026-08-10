@@ -94,7 +94,7 @@ export default function DatabaseDetailPage() {
   const credEntries = credentials ? Object.entries(credentials) : [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="space-y-4">
       <div>
         <Breadcrumb items={[{ label: 'Bancos de Dados', href: '/databases' }, { label: project.name }]} />
         <div className="mt-1 flex items-center gap-2.5">
@@ -182,7 +182,7 @@ export default function DatabaseDetailPage() {
       </div>
       )}
 
-      {tab === 'dados' && <DatabaseDataTab databaseId={databaseId} />}
+      {tab === 'dados' && <DatabaseDataTab databaseId={databaseId} image={service.image} />}
 
       {tab === 'backups' && <BackupSection databaseId={databaseId} serverId={project.server.id} />}
     </div>
