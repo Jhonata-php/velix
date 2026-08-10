@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import type { Duplex } from 'stream';
 import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import { Client as PgClient } from 'pg';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +13,19 @@ import { resolveEngine, enginePort, engineUser, type DbEngine } from './database
 
 export interface DbConnection {
   query(sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>;
+}
+
+/** Túnel/driver que já se recusam antes de tentar conectar (container
+ * parado, credencial errada) lançam `BadRequestException`/`NotFoundException`
+ * — deixa passar como está. Qualquer outra coisa (timeout de rede, conexão
+ * recusada porque o processo do banco caiu no meio) chegava como erro cru
+ * do driver/ssh2, sem `HttpException`, e o Nest mapeia isso pra "Erro
+ * interno no servidor" genérico — o usuário via um 500 sem pista nenhuma do
+ * que fazer, mesmo quando a causa era óbvia (container parado). */
+function toConnectionError(err: unknown): never {
+  if (err instanceof BadRequestException || err instanceof NotFoundException) throw err;
+  const message = err instanceof Error ? err.message : 'Falha desconhecida';
+  throw new ServiceUnavailableException(`Não foi possível conectar ao banco — confira se o container está rodando. (${message})`);
 }
 
 /**
@@ -85,11 +99,22 @@ export class DatabaseTunnelService {
       throw new BadRequestException('Não foi possível encontrar o container do banco na rede — confira se ele está rodando.');
     }
 
-    const { stream, close } = await this.ssh.openTunnel(options, containerIp, enginePort(engine));
+    let stream: Duplex;
+    let close: () => void;
+    try {
+      ({ stream, close } = await this.ssh.openTunnel(options, containerIp, enginePort(engine)));
+    } catch (err) {
+      toConnectionError(err);
+    }
+
     try {
       if (engine === 'postgresql') {
         const client = new PgClient({ stream: stream as never, user: engineUser(engine), password, database });
-        await client.connect();
+        try {
+          await client.connect();
+        } catch (err) {
+          toConnectionError(err);
+        }
         try {
           try {
             await client.query('SET statement_timeout = 30000');
@@ -104,11 +129,16 @@ export class DatabaseTunnelService {
           };
           return await fn(conn, engine);
         } finally {
-          await client.end();
+          await client.end().catch(() => {});
         }
       }
 
-      const connection = await createMysqlConnection({ stream: stream as never, user: engineUser(engine), password, database });
+      let connection: Awaited<ReturnType<typeof createMysqlConnection>>;
+      try {
+        connection = await createMysqlConnection({ stream: stream as never, user: engineUser(engine), password, database });
+      } catch (err) {
+        toConnectionError(err);
+      }
       try {
         try {
           const timeoutSql = engine === 'mariadb' ? 'SET SESSION max_statement_time=30' : 'SET SESSION MAX_EXECUTION_TIME=30000';
@@ -128,7 +158,7 @@ export class DatabaseTunnelService {
         };
         return await fn(conn, engine);
       } finally {
-        await connection.end();
+        await connection.end().catch(() => {});
       }
     } finally {
       close();

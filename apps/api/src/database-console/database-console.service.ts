@@ -113,10 +113,31 @@ export class DatabaseConsoleService {
   }
 
   async createDatabase(projectServiceId: string, name: string): Promise<void> {
-    await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
-      const ident = quoteIdent(name, engine);
-      await conn.query(`CREATE DATABASE ${ident}`);
-    });
+    try {
+      await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
+        const ident = quoteIdent(name, engine);
+        await conn.query(`CREATE DATABASE ${ident}`);
+      });
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao criar o banco');
+    }
+  }
+
+  /** Sempre conecta no banco padrão da implantação (sem `databaseOverride`)
+   * pra rodar o DROP — Postgres recusa derrubar o banco ao qual a própria
+   * conexão está ligada, então tentar excluir o banco padrão por aqui falha
+   * com uma mensagem clara do próprio driver, em vez de travar o console. */
+  async dropDatabase(projectServiceId: string, name: string): Promise<void> {
+    try {
+      await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
+        const ident = quoteIdent(name, engine);
+        await conn.query(`DROP DATABASE ${ident}`);
+      });
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao excluir o banco');
+    }
   }
 
   listTables(projectServiceId: string, database?: string): Promise<TableInfo[]> {

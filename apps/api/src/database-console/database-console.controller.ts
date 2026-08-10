@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/jwt-auth.guard';
@@ -26,6 +26,13 @@ export class DatabaseConsoleController {
   @MinRole('operator')
   async createSchema(@Param('id') id: string, @Body() dto: CreateSchemaDto) {
     await this.console.createDatabase(id, dto.name);
+    return { ok: true };
+  }
+
+  @Delete(':id/schemas/:name')
+  @MinRole('operator')
+  async dropSchema(@Param('id') id: string, @Param('name') name: string) {
+    await this.console.dropDatabase(id, name);
     return { ok: true };
   }
 

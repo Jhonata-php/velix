@@ -275,14 +275,43 @@ export default function DatabaseDetailPage() {
   );
 }
 
+const CPU_HISTORY_SIZE = 20;
+
+/** Mini-gráfico de linha sem depender de nenhuma lib de charting — só um
+ * polyline SVG sobre a janela de amostras recentes. Pra um único número que
+ * atualiza a cada 5s, isso já cobre o que se pede ("ver a tendência"), sem
+ * puxar uma dependência nova pra um caso tão simples. */
+function Sparkline({ values, max = 100 }: { values: number[]; max?: number }) {
+  if (values.length < 2) return <div className="mt-1.5 h-7" />;
+  const w = 100;
+  const h = 28;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - (Math.min(Math.max(v, 0), max) / max) * h;
+      return `${x},${y}`;
+    })
+    .join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-1.5 h-7 w-full text-indigo-500" preserveAspectRatio="none" aria-hidden>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
 function ResourcesRow({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
   const [stats, setStats] = useState<{ cpu: string | null; memory: string | null; network: string | null } | null>(null);
+  const [cpuHistory, setCpuHistory] = useState<number[]>([]);
 
   function load() {
     apiFetch<{ cpu: string | null; memory: string | null; network: string | null }>(
       `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`,
     )
-      .then(setStats)
+      .then((s) => {
+        setStats(s);
+        const parsed = s.cpu ? Number.parseFloat(s.cpu) : NaN;
+        if (!Number.isNaN(parsed)) setCpuHistory((prev) => [...prev.slice(-(CPU_HISTORY_SIZE - 1)), parsed]);
+      })
       .catch(() => {});
   }
 
@@ -293,6 +322,7 @@ function ResourcesRow({ applicationId, serviceName }: { applicationId: string; s
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <MetricCard icon={<IconActivity className="h-3.5 w-3.5" />} label="CPU">
         <MetricValue>{stats?.cpu ?? '—'}</MetricValue>
+        <Sparkline values={cpuHistory} />
       </MetricCard>
       <MetricCard icon={<IconDisk className="h-3.5 w-3.5" />} label="Memória">
         <MetricValue>{stats?.memory ?? '—'}</MetricValue>

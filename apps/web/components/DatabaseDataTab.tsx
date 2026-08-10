@@ -5,11 +5,11 @@ import { apiFetch } from '@/lib/api';
 import type { DatabaseTableInfo, DatabaseRowsResult, DatabaseQueryResult, DatabaseQueryLogEntry } from '@/lib/types';
 import { Alert } from './Alert';
 import { EmptyState, ErrorState } from './EmptyState';
-import { Modal } from './Modal';
+import { Modal, ConfirmModal } from './Modal';
 import { SqlImportButton } from './SqlImportButton';
 import { Skeleton } from './Skeleton';
 import { StatusBadge } from './StatusBadge';
-import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown } from './icons';
+import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown, IconTrash } from './icons';
 
 type DbEngine = 'postgresql' | 'mysql' | 'mariadb';
 
@@ -40,14 +40,18 @@ function insertTemplate(table: string, columns: string[], engine: DbEngine): str
   return `INSERT INTO ${quoteIdent(table, engine)} (${list.map((c) => quoteIdent(c, engine)).join(', ')})\nVALUES (${list.map(() => "''").join(', ')});`;
 }
 
+/** Colunas com valor grande (JSON, texto longo) faziam a tabela esticar sem
+ * limite, obrigando a rolar a página inteira na horizontal em vez de só a
+ * tabela — cada célula agora trunca com "..." num teto de largura, com o
+ * valor completo disponível no title (tooltip nativo ao passar o mouse). */
 function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+    <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
       <table className="w-full text-left text-xs">
         <thead className="bg-slate-50 dark:bg-slate-800/60">
           <tr>
             {columns.map((c) => (
-              <th key={c} className="whitespace-nowrap px-3 py-2 font-medium text-slate-500">
+              <th key={c} className="max-w-[240px] truncate px-3 py-2 font-medium text-slate-500" title={c}>
                 {c}
               </th>
             ))}
@@ -56,11 +60,14 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, 
         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
           {rows.map((row, i) => (
             <tr key={i}>
-              {columns.map((c) => (
-                <td key={c} className="whitespace-nowrap px-3 py-1.5 font-mono text-slate-700 dark:text-slate-200">
-                  {formatCell(row[c])}
-                </td>
-              ))}
+              {columns.map((c) => {
+                const value = formatCell(row[c]);
+                return (
+                  <td key={c} className="max-w-[240px] truncate px-3 py-1.5 font-mono text-slate-700 dark:text-slate-200" title={value}>
+                    {value}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -405,6 +412,9 @@ export function DatabaseDataTab({
   const [schemas, setSchemas] = useState<string[] | null>(null);
   const [currentSchema, setCurrentSchema] = useState<string | null>(null);
   const [showCreateSchema, setShowCreateSchema] = useState(false);
+  const [confirmDeleteSchema, setConfirmDeleteSchema] = useState(false);
+  const [deletingSchema, setDeletingSchema] = useState(false);
+  const [deleteSchemaError, setDeleteSchemaError] = useState<string | null>(null);
 
   const [tables, setTables] = useState<DatabaseTableInfo[] | null>(null);
   const [tablesError, setTablesError] = useState<string | null>(null);
@@ -422,8 +432,33 @@ export function DatabaseDataTab({
 
   function loadSchemas() {
     apiFetch<string[]>(`/databases/${databaseId}/schemas`)
-      .then(setSchemas)
+      .then((list) => {
+        setSchemas(list);
+        // Sem isto, `currentSchema` ficava `null` mesmo com o <select> já
+        // mostrando um banco selecionado (o navegador cai no primeiro
+        // <option> quando o value controlado não bate com nenhum) — o
+        // estado real nunca acompanhava o que a tela mostrava, e ações que
+        // dependem de "qual banco está selecionado agora" (excluir, importar)
+        // ficavam presas em "nenhum banco escolhido".
+        setCurrentSchema((prev) => prev ?? list[0] ?? null);
+      })
       .catch(() => {});
+  }
+
+  async function deleteCurrentSchema() {
+    if (!currentSchema) return;
+    setDeletingSchema(true);
+    setDeleteSchemaError(null);
+    try {
+      await apiFetch(`/databases/${databaseId}/schemas/${encodeURIComponent(currentSchema)}`, { method: 'DELETE' });
+      setConfirmDeleteSchema(false);
+      setCurrentSchema(null);
+      loadSchemas();
+    } catch (e) {
+      setDeleteSchemaError(e instanceof Error ? e.message : 'Falha ao excluir o banco');
+    } finally {
+      setDeletingSchema(false);
+    }
   }
 
   function loadTables() {
@@ -519,6 +554,14 @@ export function DatabaseDataTab({
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
           >
             <IconPlus className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            onClick={() => setConfirmDeleteSchema(true)}
+            disabled={!currentSchema}
+            title={currentSchema ? `Excluir banco "${currentSchema}"` : 'Selecione um banco'}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-30 dark:hover:bg-red-500/10"
+          >
+            <IconTrash className="h-4 w-4" aria-hidden />
           </button>
           <SqlImportButton
             applicationId={applicationId}
@@ -687,6 +730,22 @@ export function DatabaseDataTab({
           onCreated={() => {
             setShowCreateSchema(false);
             loadSchemas();
+          }}
+        />
+      )}
+
+      {confirmDeleteSchema && currentSchema && (
+        <ConfirmModal
+          title="Excluir banco de dados"
+          message={`Excluir o banco "${currentSchema}"? Todas as tabelas e dados dele são apagados — não dá pra desfazer.`}
+          confirmLabel="Excluir"
+          danger
+          loading={deletingSchema}
+          error={deleteSchemaError}
+          onConfirm={deleteCurrentSchema}
+          onCancel={() => {
+            setConfirmDeleteSchema(false);
+            setDeleteSchemaError(null);
           }}
         />
       )}
