@@ -25,7 +25,7 @@ export function LiveLogsPanel({ serverId, containerId }: { serverId: string; con
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState(false);
   const [connectionKey, setConnectionKey] = useState(0);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLines([]);
@@ -60,8 +60,15 @@ export function LiveLogsPanel({ serverId, containerId }: { serverId: string; con
 
   // Só rola sozinho enquanto o usuário não subiu pra ler algo — puxar a tela
   // de volta pro fim no meio de uma leitura é a forma mais rápida de irritar.
+  //
+  // `scrollTop` direto no container, nunca `scrollIntoView` — esse método
+  // rola qualquer ancestral que precise pra trazer o alvo à vista, incluindo
+  // a PÁGINA inteira quando o painel de log não estava totalmente visível
+  // (ex.: mais embaixo na tela). Resultado: a página inteira pulava pra
+  // baixo sozinha a cada linha nova chegando, mesmo com o usuário lendo
+  // outra parte da tela. `scrollTop` só mexe neste container.
   useEffect(() => {
-    if (follow) bottomRef.current?.scrollIntoView({ block: 'end' });
+    if (follow && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [visible, follow]);
 
   async function copyAll() {
@@ -109,6 +116,7 @@ export function LiveLogsPanel({ serverId, containerId }: { serverId: string; con
         </div>
 
         <div
+          ref={scrollRef}
           onScroll={(e) => {
             const el = e.currentTarget;
             setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
@@ -124,7 +132,6 @@ export function LiveLogsPanel({ serverId, containerId }: { serverId: string; con
               </div>
             ))
           )}
-          <div ref={bottomRef} />
         </div>
 
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">

@@ -16,7 +16,6 @@ import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
-import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
 import { DatabaseDataTab } from '@/components/DatabaseDataTab';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
@@ -64,7 +63,7 @@ export default function DatabaseDetailPage() {
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [tab, setTab] = useState<'conexao' | 'dados' | 'backups'>('conexao');
+  const [tab, setTab] = useState<'conexao' | 'dados' | 'logs' | 'backups'>('conexao');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -179,7 +178,7 @@ export default function DatabaseDetailPage() {
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-        {(['conexao', 'dados', 'backups'] as const).map((key) => (
+        {(['conexao', 'dados', 'logs', 'backups'] as const).map((key) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -189,7 +188,7 @@ export default function DatabaseDetailPage() {
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            {key === 'conexao' ? 'Conexão' : key === 'dados' ? 'Dados' : 'Backups'}
+            {key === 'conexao' ? 'Conexão' : key === 'dados' ? 'Dados' : key === 'logs' ? 'Logs' : 'Backups'}
           </button>
         ))}
       </div>
@@ -233,15 +232,6 @@ export default function DatabaseDetailPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-1">
-          <SqlImportButton
-            applicationId={project.id}
-            serviceName={service.name}
-            image={service.image}
-            serverId={project.server.id}
-          />
-        </div>
-
         <PublishPortControl
           applicationId={project.id}
           serviceName={service.name}
@@ -253,12 +243,7 @@ export default function DatabaseDetailPage() {
 
       {tab === 'conexao' && <ResourcesRow applicationId={project.id} serviceName={service.name} />}
 
-      {tab === 'conexao' && (
-        <div className="card space-y-2 p-4">
-          <p className="section-label">Logs</p>
-          <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />
-        </div>
-      )}
+      {tab === 'logs' && <LiveLogsPanel serverId={project.server.id} containerId={service.containerName} />}
 
       {tab === 'dados' && (
         <DatabaseDataTab
