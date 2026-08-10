@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getToken } from '@/lib/api';
 import type {
   ProjectDetail,
   ProjectService,
@@ -17,7 +17,7 @@ import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
-import { IconDatabase, IconGlobe, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy } from '@/components/icons';
+import { IconDatabase, IconGlobe, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy, IconDownload } from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
 const RUN_TONE: Record<string, StatusTone> = { SUCCESS: 'success', RUNNING: 'info', ERROR: 'danger' };
@@ -189,6 +189,27 @@ export default function DatabaseDetailPage() {
   );
 }
 
+/** Baixa um backup mantido só neste servidor (não enviado a um destino
+ * remoto) — a rota exige o Bearer token, não cookie de sessão, então não dá
+ * pra usar um `<a href>` puro: busca como blob e dispara o download via URL
+ * de objeto. */
+async function downloadBackup(databaseId: string, runId: string, fileName: string) {
+  const token = getToken();
+  const res = await fetch(`/api/databases/${databaseId}/backup-runs/${runId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Falha ao baixar o backup');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function BackupSection({ databaseId, serverId }: { databaseId: string; serverId: string }) {
   const [config, setConfig] = useState<DatabaseBackupConfig | null>(null);
   const [runs, setRuns] = useState<DatabaseBackupRun[] | null>(null);
@@ -199,6 +220,19 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  async function handleDownload(runId: string, fileName: string) {
+    setDownloadingId(runId);
+    setError(null);
+    try {
+      await downloadBackup(databaseId, runId, fileName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao baixar o backup');
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   function load() {
     apiFetch<DatabaseBackupConfig>(`/databases/${databaseId}/backup-config`)
@@ -313,8 +347,22 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
                     {r.trigger === 'manual' ? 'Manual' : 'Agendado'} · {formatBytes(r.sizeBytes)}
                     {r.uploadedRemote ? ' · enviado ao destino' : ''}
                   </p>
+                  {r.status === 'ERROR' && r.error && <p className="truncate text-red-500 dark:text-red-400">{r.error}</p>}
                 </div>
-                <StatusBadge tone={RUN_TONE[r.status] ?? 'neutral'}>{r.status}</StatusBadge>
+                <div className="flex shrink-0 items-center gap-2">
+                  {r.status === 'SUCCESS' && !r.uploadedRemote && r.fileName && (
+                    <button
+                      onClick={() => handleDownload(r.id, r.fileName!)}
+                      disabled={downloadingId === r.id}
+                      aria-label="Baixar backup"
+                      title="Baixar backup"
+                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50 dark:hover:bg-slate-700"
+                    >
+                      <IconDownload className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  )}
+                  <StatusBadge tone={RUN_TONE[r.status] ?? 'neutral'}>{r.status}</StatusBadge>
+                </div>
               </div>
             ))}
           </div>
