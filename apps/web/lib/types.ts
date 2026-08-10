@@ -129,6 +129,7 @@ export interface ProjectDomain {
   id: string;
   hostname: string;
   status: string;
+  lastError: string | null;
   serviceName: string | null;
   targetPort: number;
 }

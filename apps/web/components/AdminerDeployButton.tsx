@@ -23,18 +23,30 @@ function randomDomainLabel(base: string): string {
   return `${slug || 'app'}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+interface DomainResult {
+  hostname: string;
+  status: string;
+  lastError: string | null;
+}
+
 /**
  * Gera um hostname livre e cria o domínio — confere contra os registros DNS
  * reais da zona (não só a tabela do Velix) antes de criar, porque um domínio
  * pode ter sido criado direto no painel da Cloudflare, fora do Velix. Tenta
  * de novo com outro nome em caso de colisão (na Cloudflare ou na checagem
  * interna do próprio Velix, que devolve 409).
+ *
+ * O POST devolve 200 mesmo quando o registro DNS não saiu (ex.: servidor sem
+ * IP público, Cloudflare desconectado) — esse tipo de falha vira `status:
+ * 'ERROR'`/`lastError` no domínio, não uma exceção HTTP. Por isso devolvemos
+ * o `status`/`lastError` de volta pro chamador em vez de assumir sucesso só
+ * porque a chamada não lançou erro.
  */
 async function createUniqueDomain(
   applicationId: string,
   serviceName: string,
   baseLabel: string,
-): Promise<{ hostname: string } | { error: string }> {
+): Promise<DomainResult | { error: string }> {
   let zones: { id: string; name: string }[];
   try {
     zones = await apiFetch<{ id: string; name: string }[]>('/cloudflare/zones');
@@ -59,11 +71,11 @@ async function createUniqueDomain(
     const hostname = `${randomDomainLabel(baseLabel)}.${zone.name}`;
     if (taken.has(hostname.toLowerCase())) continue;
     try {
-      await apiFetch(`/applications/${applicationId}/domains`, {
+      const domain = await apiFetch<DomainResult>(`/applications/${applicationId}/domains`, {
         method: 'POST',
         body: JSON.stringify({ hostname, serviceName, port: ADMINER_PORT, createDnsRecord: true }),
       });
-      return { hostname };
+      return { hostname: domain.hostname, status: domain.status, lastError: domain.lastError };
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) continue; // já existe no Velix — tenta outro nome
       return { error: e instanceof Error ? e.message : 'Falha ao criar domínio automático pro Adminer' };
@@ -94,10 +106,14 @@ export function AdminerDeployButton({
 }) {
   const [deploying, setDeploying] = useState(false);
   const [linking, setLinking] = useState(false);
-  const [result, setResult] = useState<{ hostname: string } | { error: string } | null>(null);
+  const [result, setResult] = useState<DomainResult | { error: string } | null>(null);
 
   const alreadyDeployed = project.services.some((s) => s.name === 'adminer');
-  const existingDomain = project.domains.find((d) => d.serviceName === 'adminer' && d.status === 'ACTIVE');
+  // Qualquer status, não só ACTIVE — um domínio recém-criado começa em
+  // PENDING (aguardando DNS/certificado) e só vira ACTIVE depois da checagem
+  // periódica. Filtrar só por ACTIVE aqui fazia o botão gerar um domínio novo
+  // a cada clique enquanto o anterior ainda estava sendo verificado.
+  const existingDomain = project.domains.find((d) => d.serviceName === 'adminer');
 
   async function ensureDomain() {
     setLinking(true);
@@ -115,7 +131,11 @@ export function AdminerDeployButton({
 
   function handleClick() {
     if (existingDomain) {
-      window.open(`https://${existingDomain.hostname}`, '_blank', 'noreferrer');
+      if (existingDomain.status === 'ACTIVE') {
+        window.open(`https://${existingDomain.hostname}`, '_blank', 'noreferrer');
+      } else {
+        setResult({ hostname: existingDomain.hostname, status: existingDomain.status, lastError: existingDomain.lastError });
+      }
       return;
     }
     if (alreadyDeployed) {
@@ -137,7 +157,7 @@ export function AdminerDeployButton({
       </button>
 
       {result && 'hostname' in result && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-1">
           <a
             href={`https://${result.hostname}`}
             target="_blank"
@@ -146,6 +166,14 @@ export function AdminerDeployButton({
           >
             {result.hostname} <IconExternalLink className="h-3 w-3" aria-hidden />
           </a>
+          {result.status === 'ERROR' && (
+            <Alert variant="warning">{result.lastError ?? 'Falha ao configurar o domínio — confira a aba Domínios.'}</Alert>
+          )}
+          {result.status === 'PENDING' && (
+            <p className="text-xs text-slate-400">
+              Verificando DNS e certificado — pode levar alguns instantes antes do link funcionar.
+            </p>
+          )}
         </div>
       )}
       {result && 'error' in result && (

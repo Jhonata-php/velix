@@ -762,6 +762,7 @@ function DomainsTab({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{d.hostname}</p>
                   <p className="text-xs text-slate-400">porta {d.targetPort}</p>
+                  {d.status === 'ERROR' && d.lastError && <p className="truncate text-xs text-red-500 dark:text-red-400">{d.lastError}</p>}
                 </div>
                 <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</StatusBadge>
               </div>
