@@ -7,7 +7,13 @@ generator client {
   // existe no Bookworm. O runtime então quebra em PrismaClientInitializationError
   // ("could not locate the Query Engine for debian-openssl-3.0.x"). Declarar o
   // alvo explicitamente tira a detecção do caminho crítico.
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  //
+  // O mesmo chute errado acontece em servidor ARM64 (ex.: instância Oracle
+  // Cloud/AWS Graviton) — só que a detecção erra pro lado do
+  // "linux-arm64-openssl-1.1.x", igualmente ausente no Bookworm, que só tem
+  // OpenSSL 3. `debian-openssl-3.0.x` sozinho não cobre isso porque é o alvo
+  // x86_64; precisa do par ARM64 explícito também.
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
