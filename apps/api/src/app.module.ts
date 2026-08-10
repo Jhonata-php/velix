@@ -9,6 +9,7 @@ import { TraefikModule } from './traefik/traefik.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
+import { DatabaseConsoleModule } from './database-console/database-console.module';
 import { UpdateModule } from './updates/update.module';
 import { GitAccountsModule } from './git-accounts/git-accounts.module';
 import { BackupModule } from './backup/backup.module';
@@ -31,6 +32,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     CatalogModule,
     ApplicationsModule,
     DatabaseBackupModule,
+    DatabaseConsoleModule,
     UpdateModule,
     GitAccountsModule,
     BackupModule,
