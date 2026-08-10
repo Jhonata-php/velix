@@ -9,6 +9,7 @@ import { appDir } from '../applications/applications.util';
 import { ServersService } from '../servers/servers.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
+import { dbImportSecretKey } from '../terminal/container-shell.util';
 import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
 import { uploadToDestination } from './backup-transfer.util';
 import { BackupDestinationsService } from './backup-destinations.service';
@@ -144,7 +145,8 @@ export class DatabaseBackupService {
       }
 
       const secretsMap = JSON.parse(decryptCredential(service.deployment.secretsEnc)) as Record<string, string>;
-      const secretKey = service.image.toLowerCase().includes('postgres') ? 'POSTGRES_PASSWORD' : 'ROOT_PASSWORD';
+      const secretKey = dbImportSecretKey(service.image);
+      if (!secretKey) throw new BadRequestException('Backup não é suportado para este tipo de serviço');
       password = secretsMap[secretKey];
       if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
 
