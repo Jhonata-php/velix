@@ -26,14 +26,17 @@ export function DatabaseCreateWizard({ onClose, onCreated }: { onClose: () => vo
   const [serverId, setServerId] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<ServerSummary[]>('/servers').then((list) => {
-      setServers(list);
-      const recommended = list.find((s) => s.dockerInstalled);
-      if (recommended) setServerId(recommended.id);
-    });
+    apiFetch<ServerSummary[]>('/servers')
+      .then((list) => {
+        setServers(list);
+        const recommended = list.find((s) => s.dockerInstalled);
+        if (recommended) setServerId(recommended.id);
+      })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Falha ao carregar'));
   }, []);
 
   const selectedServer = servers?.find((s) => s.id === serverId) ?? null;
@@ -73,6 +76,7 @@ export function DatabaseCreateWizard({ onClose, onCreated }: { onClose: () => vo
   return (
     <Modal title="Criar banco" onClose={creating ? undefined : onClose}>
       <div className="space-y-4">
+        {loadError && <Alert variant="error">{loadError}</Alert>}
         <div>
           <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Motor</span>
           <div className="grid grid-cols-3 gap-2">

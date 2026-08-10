@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import type { DatabaseListItem } from '@/lib/types';
 import { Skeleton } from '@/components/Skeleton';
+import { Alert } from '@/components/Alert';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { DatabaseCreateWizard } from '@/components/DatabaseCreateWizard';
 import { IconDatabase, IconPlus, IconClock } from '@/components/icons';
@@ -27,9 +28,12 @@ function engineLabel(image: string) {
 export default function DatabasesPage() {
   const [databases, setDatabases] = useState<DatabaseListItem[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function load() {
-    apiFetch<DatabaseListItem[]>('/databases').then(setDatabases);
+    apiFetch<DatabaseListItem[]>('/databases')
+      .then(setDatabases)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
   }
 
   useEffect(load, []);
@@ -47,7 +51,9 @@ export default function DatabasesPage() {
         </button>
       </div>
 
-      {!databases && <Skeleton className="h-40" />}
+      {error && <Alert variant="error">{error}</Alert>}
+
+      {!databases && !error && <Skeleton className="h-40" />}
 
       {databases && databases.length === 0 && (
         <div className="card flex flex-col items-center gap-2 p-10 text-center">
