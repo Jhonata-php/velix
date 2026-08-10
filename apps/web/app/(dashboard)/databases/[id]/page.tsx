@@ -17,7 +17,7 @@ import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
-import { AdminerDeployButton } from '@/components/AdminerDeployButton';
+import { DatabaseDataTab } from '@/components/DatabaseDataTab';
 import { IconDatabase, IconFileText, IconClock, IconCheck, IconEye, IconEyeOff, IconCopy, IconDownload } from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
@@ -47,6 +47,7 @@ export default function DatabaseDetailPage() {
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [tab, setTab] = useState<'conexao' | 'dados' | 'backups'>('conexao');
 
   // A lista /databases já devolve applicationId — buscamos ela uma vez pra
   // descobrir a qual projeto este banco pertence, depois carregamos o
@@ -93,7 +94,7 @@ export default function DatabaseDetailPage() {
   const credEntries = credentials ? Object.entries(credentials) : [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       <div>
         <Breadcrumb items={[{ label: 'Bancos de Dados', href: '/databases' }, { label: project.name }]} />
         <div className="mt-1 flex items-center gap-2.5">
@@ -108,6 +109,23 @@ export default function DatabaseDetailPage() {
         </div>
       </div>
 
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
+        {(['conexao', 'dados', 'backups'] as const).map((key) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition ${
+              tab === key
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            {key === 'conexao' ? 'Conexão' : key === 'dados' ? 'Dados' : 'Backups'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'conexao' && (
       <div className="card space-y-3 p-4">
         <p className="section-label">Conexão</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -153,7 +171,6 @@ export default function DatabaseDetailPage() {
             image={service.image}
             serverId={project.server.id}
           />
-          <AdminerDeployButton project={project} containerName={service.containerName} onChange={load} />
         </div>
 
         <PublishPortControl
@@ -163,8 +180,11 @@ export default function DatabaseDetailPage() {
           onChange={load}
         />
       </div>
+      )}
 
-      <BackupSection databaseId={databaseId} serverId={project.server.id} />
+      {tab === 'dados' && <DatabaseDataTab databaseId={databaseId} />}
+
+      {tab === 'backups' && <BackupSection databaseId={databaseId} serverId={project.server.id} />}
     </div>
   );
 }
