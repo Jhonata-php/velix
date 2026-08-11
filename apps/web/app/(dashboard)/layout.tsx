@@ -9,6 +9,7 @@ import { MobileHeader } from '@/components/navigation/MobileHeader';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { MoreMenuDrawer } from '@/components/navigation/MoreMenuDrawer';
 import { UpdatingScreen } from '@/components/UpdatingScreen';
+import { UpdateBanner } from '@/components/UpdateBanner';
 import { SelfUpdateProvider, useSelfUpdate } from '@/lib/useSelfUpdate';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -103,7 +104,10 @@ function DashboardShell({
           <ThemeToggle />
         </header>
         <MobileHeader onOpenAccount={() => setMoreOpen(true)} />
-        <main className="p-4 pb-24 md:p-6 md:pb-6">{children}</main>
+        <main className="p-4 pb-24 md:p-6 md:pb-6">
+          <UpdateBanner />
+          {children}
+        </main>
       </div>
 
       <MobileBottomNav onOpenMore={() => setMoreOpen(true)} moreActive={moreOpen} />
