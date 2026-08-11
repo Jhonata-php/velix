@@ -769,17 +769,16 @@ function DomainsTab({
                 <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</StatusBadge>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {d.status === 'ACTIVE' && (
-                  <a
-                    href={`https://${d.hostname}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"
-                    aria-label="Abrir domínio"
-                  >
-                    <IconExternalLink className="h-4 w-4" aria-hidden />
-                  </a>
-                )}
+                <a
+                  href={`https://${d.hostname}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={d.status !== 'ACTIVE' ? 'Domínio ainda não verificado — pode não abrir ainda' : undefined}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"
+                  aria-label="Abrir domínio"
+                >
+                  <IconExternalLink className="h-4 w-4" aria-hidden />
+                </a>
                 <button
                   onClick={() => openEdit(d)}
                   className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"
