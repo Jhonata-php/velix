@@ -401,11 +401,19 @@ export class GitDeployService {
     try {
       const ref = deployment.gitRef ?? 'main';
       log?.(`Buscando a versão mais recente de ${ref}...\n`);
-      // Reset em vez de pull: o diretório é uma cópia descartável do repositório,
-      // não um espaço de trabalho — mesma lógica já usada no autoatualizador.
+      // O remote "origin" ficou com o token de acesso EMBUTIDO na URL desde o
+      // clone original (cloneUrlWithToken) — um token de instalação do GitHub
+      // App expira em ~1h, então qualquer redeploy depois disso falhava com
+      // "Invalid username or token" mesmo com o GitHub ainda configurado
+      // certinho: a URL salva no .git/config é que estava velha. `token` já
+      // foi resolvido de novo (fresco) no topo desta função — só faltava
+      // aplicar ele na URL antes de buscar. Reset em vez de pull: o diretório
+      // é uma cópia descartável do repositório, não um espaço de trabalho —
+      // mesma lógica já usada no autoatualizador.
+      const freshUrl = cloneUrlWithToken(deployment.repoUrl, token);
       const fetch = await this.ssh.runCommand(
         options,
-        `cd ${repoDir} && sudo git fetch --depth 1 origin '${ref}' && sudo git reset --hard FETCH_HEAD`,
+        `cd ${repoDir} && sudo git remote set-url origin '${freshUrl}' && sudo git fetch --depth 1 origin '${ref}' && sudo git reset --hard FETCH_HEAD`,
         600_000,
         log && ((chunk) => log(chunk)),
       );
