@@ -1,5 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
+import { dbImportSecretKey } from '../terminal/container-shell.util';
 import { DatabaseTunnelService, type DbConnection } from './database-tunnel.service';
 import { isKnownTable, paginate, type DbEngine } from './database-console.util';
 
@@ -151,38 +154,117 @@ export class DatabaseConsoleService {
    * enxergam a instância toda de qualquer conexão; Postgres só enxerga outros
    * bancos via `pg_database` mesmo conectado a um específico. */
   listSchemas(projectServiceId: string): Promise<string[]> {
-    return this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
-      if (engine === 'postgresql') {
-        const { rows } = await conn.query(`SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname`);
-        return rows.map((r) => String(r.name)).filter((name) => !PG_SYSTEM_SCHEMAS.has(name));
-      }
-      const { rows } = await conn.query('SHOW DATABASES');
-      return rows.map((r) => String(r['Database'] ?? r.name)).filter((name) => !MYSQL_SYSTEM_SCHEMAS.has(name));
+    return this.tunnel.withConnection(
+      projectServiceId,
+      async (conn, engine) => {
+        if (engine === 'postgresql') {
+          const { rows } = await conn.query(`SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname`);
+          return rows.map((r) => String(r.name)).filter((name) => !PG_SYSTEM_SCHEMAS.has(name));
+        }
+        const { rows } = await conn.query('SHOW DATABASES');
+        return rows.map((r) => String(r['Database'] ?? r.name)).filter((name) => !MYSQL_SYSTEM_SCHEMAS.has(name));
+      },
+      undefined,
+      false,
+    );
+  }
+
+  /** DATABASE_NAME da implantação — é o banco que `withConnection` usa como
+   * padrão sempre que ninguém pede outro explicitamente (navegação de
+   * tabelas, editor SQL sem seletor). Excluí-lo derrubava o console inteiro
+   * (toda reconexão caía em "Unknown database"), então `dropDatabase` recusa
+   * excluir esse banco especificamente. */
+  private async getDefaultDatabaseName(projectServiceId: string): Promise<string> {
+    const service = await this.prisma.projectService.findUnique({ where: { id: projectServiceId } });
+    if (!service) return 'app';
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+    const variables = deployment?.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
+    return variables.DATABASE_NAME || 'app';
+  }
+
+  /**
+   * Troca a senha do usuário administrador (root/postgres) — roda o ALTER
+   * de verdade no banco e só depois atualiza o segredo cifrado guardado na
+   * implantação, pra nunca ficar com os dois lados fora de sincronia: se o
+   * ALTER falhar, nada muda; se o ALTER passar mas salvar o segredo novo
+   * falhar, o console fica destrancado com a senha antiga (raro — é só uma
+   * escrita no Postgres do próprio Velix). `USER()`/`CURRENT_USER` em vez de
+   * `'root'@'%'` fixo: evita apostar em qual host a imagem oficial usa (varia
+   * entre versões), sempre acerta o usuário com quem a conexão já autenticou.
+   */
+  async changeRootPassword(projectServiceId: string, newPassword?: string): Promise<{ password: string }> {
+    const service = await this.prisma.projectService.findUnique({ where: { id: projectServiceId } });
+    if (!service) throw new NotFoundException('Banco não encontrado');
+    const secretKey = dbImportSecretKey(service.image);
+    if (!secretKey) {
+      throw new BadRequestException('Este banco não usa um formato de credenciais compatível com o console embutido.');
+    }
+
+    const password = newPassword?.trim() || randomBytes(12).toString('base64url');
+
+    try {
+      await this.tunnel.withConnection(
+        projectServiceId,
+        async (conn, engine) => {
+          if (engine === 'postgresql') {
+            await conn.query('ALTER USER CURRENT_USER WITH PASSWORD $1', [password]);
+          } else {
+            await conn.query('ALTER USER USER() IDENTIFIED BY ?', [password]);
+          }
+        },
+        undefined,
+        false,
+      );
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao trocar a senha');
+    }
+
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
+    const secrets = deployment?.secretsEnc ? (JSON.parse(decryptCredential(deployment.secretsEnc)) as Record<string, string>) : {};
+    secrets[secretKey] = password;
+    await this.prisma.projectDeployment.update({
+      where: { id: service.deploymentId },
+      data: { secretsEnc: encryptCredential(JSON.stringify(secrets)) },
     });
+
+    return { password };
   }
 
   async createDatabase(projectServiceId: string, name: string): Promise<void> {
     try {
-      await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
-        const ident = quoteIdent(name, engine);
-        await conn.query(`CREATE DATABASE ${ident}`);
-      });
+      await this.tunnel.withConnection(
+        projectServiceId,
+        async (conn, engine) => {
+          const ident = quoteIdent(name, engine);
+          await conn.query(`CREATE DATABASE ${ident}`);
+        },
+        undefined,
+        false,
+      );
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao criar o banco');
     }
   }
 
-  /** Sempre conecta no banco padrão da implantação (sem `databaseOverride`)
-   * pra rodar o DROP — Postgres recusa derrubar o banco ao qual a própria
-   * conexão está ligada, então tentar excluir o banco padrão por aqui falha
-   * com uma mensagem clara do próprio driver, em vez de travar o console. */
   async dropDatabase(projectServiceId: string, name: string): Promise<void> {
+    const defaultDb = await this.getDefaultDatabaseName(projectServiceId);
+    if (name === defaultDb) {
+      throw new BadRequestException(
+        `"${name}" é o banco padrão deste projeto — excluir ele travaria o console (toda navegação volta pra ele por padrão). Use o Editor SQL se precisar mesmo assim.`,
+      );
+    }
     try {
-      await this.tunnel.withConnection(projectServiceId, async (conn, engine) => {
-        const ident = quoteIdent(name, engine);
-        await conn.query(`DROP DATABASE ${ident}`);
-      });
+      await this.tunnel.withConnection(
+        projectServiceId,
+        async (conn, engine) => {
+          const ident = quoteIdent(name, engine);
+          await conn.query(`DROP DATABASE ${ident}`);
+        },
+        undefined,
+        false,
+      );
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(err instanceof Error ? err.message : 'Falha ao excluir o banco');

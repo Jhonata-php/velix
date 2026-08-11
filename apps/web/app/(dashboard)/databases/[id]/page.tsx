@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { apiFetch, getToken, clearToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type {
@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
+import { ConfirmModal, Modal } from '@/components/Modal';
 import { PublishPortControl } from '@/components/PublishPortControl';
 import { DatabaseDataTab } from '@/components/DatabaseDataTab';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
@@ -34,10 +35,15 @@ import {
   IconActivity,
   IconDisk,
   IconGlobe,
+  IconTrash,
+  IconPencil,
 } from '@/components/icons';
 
 const STATUS_TONE: Record<string, StatusTone> = { RUNNING: 'success', DEPLOYING: 'info', STOPPED: 'neutral', ERROR: 'danger' };
 const RUN_TONE: Record<string, StatusTone> = { SUCCESS: 'success', RUNNING: 'info', ERROR: 'danger' };
+// Único segredo que dá pra trocar por aqui — os outros (ex.: APP_PASSWORD)
+// não têm um comando de troca genérico o bastante pra automatizar ainda.
+const ROOT_SECRET_KEYS = new Set(['ROOT_PASSWORD', 'POSTGRES_PASSWORD']);
 
 function engineLabel(image: string) {
   const img = image.toLowerCase();
@@ -55,6 +61,7 @@ function formatBytes(bytes: number | null) {
 
 export default function DatabaseDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const databaseId = params.id;
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -66,6 +73,10 @@ export default function DatabaseDetailPage() {
   const [tab, setTab] = useState<'conexao' | 'dados' | 'logs' | 'backups'>('conexao');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [changingPasswordKey, setChangingPasswordKey] = useState<string | null>(null);
 
   // A lista /databases já devolve applicationId — buscamos ela uma vez pra
   // descobrir a qual projeto este banco pertence, depois carregamos o
@@ -120,6 +131,19 @@ export default function DatabaseDetailPage() {
     }
   }
 
+  async function removeDatabase() {
+    if (!project || !service) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await apiFetch(`/applications/${project.id}/deployments/${service.deploymentId}`, { method: 'DELETE' });
+      router.push('/databases');
+    } catch (e) {
+      setRemoveError(e instanceof Error ? e.message : 'Falha ao excluir o banco');
+      setRemoving(false);
+    }
+  }
+
   if (error) return <Alert variant="error">{error}</Alert>;
   if (!project || !service) return <Skeleton className="h-64" />;
 
@@ -167,6 +191,14 @@ export default function DatabaseDetailPage() {
             >
               <IconRefresh className="h-4 w-4" aria-hidden />
               Reiniciar
+            </button>
+            <button
+              onClick={() => setConfirmRemove(true)}
+              aria-label="Excluir banco de dados"
+              title="Excluir banco de dados"
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+            >
+              <IconTrash className="h-4 w-4" aria-hidden />
             </button>
           </div>
         </div>
@@ -223,9 +255,20 @@ export default function DatabaseDetailPage() {
                     <p className="text-[11px] text-slate-500">{key}</p>
                     <p className="truncate font-mono text-xs">{revealed ? value : '••••••••••••'}</p>
                   </div>
-                  <button onClick={() => copy(key, value)} className="shrink-0 text-xs text-indigo-600 hover:underline dark:text-indigo-400">
-                    {copiedKey === key ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {ROOT_SECRET_KEYS.has(key) && (
+                      <button
+                        onClick={() => setChangingPasswordKey(key)}
+                        title="Trocar senha"
+                        className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                      >
+                        <IconPencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button onClick={() => copy(key, value)} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+                      {copiedKey === key ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -256,7 +299,132 @@ export default function DatabaseDetailPage() {
       )}
 
       {tab === 'backups' && <BackupSection databaseId={databaseId} serverId={project.server.id} />}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title="Excluir banco de dados"
+          message={`Excluir "${project.name}"? O container, os volumes e todos os dados são apagados — não dá pra desfazer.`}
+          confirmLabel="Excluir"
+          danger
+          loading={removing}
+          error={removeError}
+          onConfirm={removeDatabase}
+          onCancel={() => {
+            setConfirmRemove(false);
+            setRemoveError(null);
+          }}
+        />
+      )}
+
+      {changingPasswordKey && (
+        <ChangeRootPasswordModal
+          databaseId={databaseId}
+          onClose={() => setChangingPasswordKey(null)}
+          onChanged={() => {
+            setChangingPasswordKey(null);
+            load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Troca a senha do usuário administrador (root/postgres) de verdade — roda
+ * o ALTER no banco e atualiza o segredo salvo, então nada mais precisa
+ * mudar depois. Mostra o valor novo uma vez só, na hora — depois disso só
+ * dá pra ver de novo revelando o segredo salvo, igual antes. */
+function ChangeRootPasswordModal({ databaseId, onClose, onChanged }: { databaseId: string; onClose: () => void; onChanged: () => void }) {
+  const [mode, setMode] = useState<'auto' | 'custom'>('auto');
+  const [customPassword, setCustomPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const valid = mode === 'auto' || customPassword.trim().length >= 8;
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const body = mode === 'custom' ? { password: customPassword.trim() } : {};
+      const res = await apiFetch<{ password: string }>(`/databases/${databaseId}/root-password`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setResult(res.password);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao trocar a senha');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function copyResult() {
+    if (!result) return;
+    navigator.clipboard.writeText(result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  if (result) {
+    return (
+      <Modal title="Senha trocada" onClose={onClose} maxWidth="max-w-sm">
+        <div className="space-y-4">
+          <Alert variant="success">Pronto — guarde a senha agora, essa é a única vez que ela aparece assim.</Alert>
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+            <p className="truncate font-mono text-sm">{result}</p>
+            <button onClick={copyResult} className="shrink-0 text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+              {copied ? 'Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button onClick={onClose} className="btn-primary px-3.5 py-2 text-sm">
+              Fechar
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Trocar senha do administrador" onClose={saving ? undefined : onClose} closeDisabled={saving} maxWidth="max-w-sm">
+      <div className="space-y-4">
+        <p className="text-xs text-slate-400">Troca a senha de verdade no banco e atualiza o segredo salvo — nada mais precisa mudar.</p>
+        <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+          <button onClick={() => setMode('auto')} className={`tab-pill flex-1 ${mode === 'auto' ? 'tab-pill-active' : ''}`}>
+            Gerar automática
+          </button>
+          <button onClick={() => setMode('custom')} className={`tab-pill flex-1 ${mode === 'custom' ? 'tab-pill-active' : ''}`}>
+            Definir senha
+          </button>
+        </div>
+        {mode === 'custom' && (
+          <label className="block text-sm">
+            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Nova senha</span>
+            <input
+              value={customPassword}
+              onChange={(e) => setCustomPassword(e.target.value)}
+              placeholder="Mínimo 8 caracteres"
+              autoFocus
+              className="input font-mono text-sm"
+            />
+          </label>
+        )}
+        {error && <Alert variant="error">{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className="btn-secondary px-3.5 py-2 text-sm disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={submit} disabled={saving || !valid} className="btn-primary px-3.5 py-2 text-sm disabled:opacity-50">
+            {saving ? 'Trocando...' : 'Trocar senha'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

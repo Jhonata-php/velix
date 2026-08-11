@@ -56,6 +56,17 @@ export class DatabaseTunnelService {
      * pra navegar outro schema na mesma instância sem mudar o banco
      * "principal" do projeto. */
     databaseOverride?: string,
+    /**
+     * `false` pras operações que não navegam dados de um banco específico
+     * (listar/criar/excluir banco na instância) — usam um alvo de conexão
+     * seguro em vez do `DATABASE_NAME` da implantação. Sem isto, excluir o
+     * banco padrão do projeto (ex.: "app") pelo próprio seletor travava o
+     * console inteiro: toda chamada, incluindo listar os bancos restantes ou
+     * criar um novo, tentava reconectar nesse banco que não existe mais e
+     * caía com "Unknown database" — ninguém conseguia nem ver que outro
+     * banco continuava lá.
+     */
+    requireDatabase = true,
   ): Promise<T> {
     const service = await this.prisma.projectService.findUnique({ where: { id: projectServiceId } });
     if (!service) throw new NotFoundException('Banco não encontrado');
@@ -80,7 +91,16 @@ export class DatabaseTunnelService {
     }
 
     const variables = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
-    const database = databaseOverride || variables.DATABASE_NAME || 'app';
+    // MySQL/MariaDB aceitam conectar sem nenhum banco selecionado (só pra
+    // rodar SHOW/CREATE/DROP DATABASE); Postgres exige sempre um banco
+    // válido pra conectar — "postgres" é o banco de manutenção que a imagem
+    // oficial sempre cria, a aposta mais segura quando não precisamos de um
+    // banco específico do projeto.
+    const database = !requireDatabase
+      ? engine === 'postgresql'
+        ? 'postgres'
+        : undefined
+      : databaseOverride || variables.DATABASE_NAME || 'app';
 
     const application = await this.prisma.application.findUnique({
       where: { id: service.applicationId },

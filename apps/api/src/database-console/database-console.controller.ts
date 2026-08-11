@@ -8,6 +8,7 @@ import { RunQueryDto } from './dto/run-query.dto';
 import { CreateSchemaDto } from './dto/create-schema.dto';
 import { UpdateRowDto } from './dto/update-row.dto';
 import { DeleteRowDto } from './dto/delete-row.dto';
+import { ChangeRootPasswordDto } from './dto/change-root-password.dto';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -22,6 +23,12 @@ export class DatabaseConsoleController {
   @Get(':id/schemas')
   listSchemas(@Param('id') id: string) {
     return this.console.listSchemas(id);
+  }
+
+  @Post(':id/root-password')
+  @MinRole('operator')
+  changeRootPassword(@Param('id') id: string, @Body() dto: ChangeRootPasswordDto) {
+    return this.console.changeRootPassword(id, dto.password);
   }
 
   @Post(':id/schemas')
