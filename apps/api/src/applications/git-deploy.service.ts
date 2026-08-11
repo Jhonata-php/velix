@@ -409,7 +409,7 @@ export class GitDeployService {
         600_000,
         log && ((chunk) => log(chunk)),
       );
-      if (!fetch.ok) throw new Error('Falha ao atualizar o repositório no servidor.');
+      if (!fetch.ok) throw new Error(`Falha ao atualizar o repositório no servidor: ${fetch.stderr || fetch.message}`);
 
       log?.('Reconstruindo a imagem...\n');
       const buildCmd =
@@ -417,7 +417,7 @@ export class GitDeployService {
           ? `cd ${repoDir} && sudo nixpacks build . --name ${image}`
           : `cd ${repoDir} && sudo docker build -f ${deployment.dockerfilePath ?? 'Dockerfile'} -t ${image} .`;
       const build = await this.ssh.runCommand(options, buildCmd, 1_800_000, log && ((chunk) => log(chunk)));
-      if (!build.ok) throw new Error('Falha ao reconstruir a imagem.');
+      if (!build.ok) throw new Error('Falha ao reconstruir a imagem — veja o log do build acima.');
 
       log?.('Recriando o container...\n');
       const up = await this.ssh.runCommand(
@@ -426,10 +426,10 @@ export class GitDeployService {
         600_000,
         log && ((chunk) => log(chunk)),
       );
-      if (!up.ok) throw new Error('Falha ao recriar o container.');
+      if (!up.ok) throw new Error(up.stdout + up.stderr || 'Falha ao recriar o container');
 
       const running = await this.waitForContainer(options, container, log);
-      if (!running) throw new Error('O container não ficou de pé a tempo.');
+      if (!running) throw new Error('O container não ficou de pé a tempo — confira o log do serviço.');
 
       await this.prisma.application.update({ where: { id: app.id }, data: { status: 'RUNNING', lastError: null } });
       log?.('Reimplantado com sucesso.\n');
