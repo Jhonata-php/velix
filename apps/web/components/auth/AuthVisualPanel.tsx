@@ -29,11 +29,9 @@ export function AuthVisualPanel() {
       </div>
 
       <div className="relative z-10 max-w-lg">
-        <div className="mb-10 flex items-center gap-2.5">
-          <div className="animate-logo-pop flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold shadow-lg shadow-indigo-500/30">
-            V
-          </div>
-          <span className="text-sm font-semibold tracking-[0.2em] text-slate-300">VELIX</span>
+        <div className="animate-logo-pop mb-10 flex items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-wordmark-white.png" alt="Velix" className="h-8" />
         </div>
 
         <h1 className="animate-fade-up text-4xl font-bold leading-[1.1] tracking-tight xl:text-5xl">Infraestrutura sob controle.</h1>

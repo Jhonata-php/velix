@@ -118,11 +118,18 @@ export function Sidebar() {
         {collapsed ? <IconChevronRight className="h-3.5 w-3.5" aria-hidden /> : <IconChevronLeft className="h-3.5 w-3.5" aria-hidden />}
       </button>
 
-      <div className={`mb-5 flex items-center gap-2.5 ${collapsed ? 'justify-center' : 'px-4'}`}>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold text-white shadow-md shadow-indigo-500/30">
-          V
-        </div>
-        {!collapsed && <span className="text-sm font-semibold tracking-wide text-slate-700 dark:text-slate-200">Velix</span>}
+      <div className={`mb-5 flex items-center ${collapsed ? 'justify-center' : 'px-4'}`}>
+        {collapsed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/logo.png" alt="Velix" className="h-9 w-9 shrink-0" />
+        ) : (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-wordmark.png" alt="Velix" className="h-7 dark:hidden" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-wordmark-white.png" alt="Velix" className="hidden h-7 dark:block" />
+          </>
+        )}
       </div>
 
       {/* Recolhido não rola: os tooltips são `absolute left-full w-52`, e um
