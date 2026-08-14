@@ -11,6 +11,8 @@ import { ServersService } from '../servers/servers.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
 import { dbImportSecretKey } from '../terminal/container-shell.util';
+import { CatalogService } from '../catalog/catalog.service';
+import { resolvedDatabaseName } from '../catalog/catalog.util';
 import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
 import { uploadToDestination } from './backup-transfer.util';
 import { BackupDestinationsService } from './backup-destinations.service';
@@ -44,6 +46,7 @@ export class DatabaseBackupService {
     private readonly servers: ServersService,
     private readonly ssh: SshService,
     private readonly destinations: BackupDestinationsService,
+    private readonly catalog: CatalogService,
   ) {}
 
   /** Todo ProjectService de banco (Postgres/MySQL/MariaDB) de todos os
@@ -159,7 +162,8 @@ export class DatabaseBackupService {
       if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
 
       const variablesMap = service.deployment.variablesJson ? (JSON.parse(service.deployment.variablesJson) as Record<string, string>) : {};
-      const dbName = variablesMap.DATABASE_NAME || 'app';
+      const manifest = service.deployment.manifestSlug ? this.catalog.getManifestSafe(service.deployment.manifestSlug) : null;
+      const dbName = resolvedDatabaseName(manifest, service.name, variablesMap);
 
       const dump = dumpCommand(service.image, password, dbName);
       if (!dump) throw new BadRequestException('Backup não é suportado para este tipo de serviço');

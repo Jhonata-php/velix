@@ -3,6 +3,8 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
 import { dbImportSecretKey } from '../terminal/container-shell.util';
+import { CatalogService } from '../catalog/catalog.service';
+import { resolvedDatabaseName } from '../catalog/catalog.util';
 import { DatabaseTunnelService, type DbConnection } from './database-tunnel.service';
 import { isKnownTable, paginate, type DbEngine } from './database-console.util';
 
@@ -90,6 +92,7 @@ export class DatabaseConsoleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tunnel: DatabaseTunnelService,
+    private readonly catalog: CatalogService,
   ) {}
 
   private async fetchTables(conn: DbConnection, engine: DbEngine): Promise<TableInfo[]> {
@@ -179,7 +182,8 @@ export class DatabaseConsoleService {
     if (!service) return 'app';
     const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: service.deploymentId } });
     const variables = deployment?.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
-    return variables.DATABASE_NAME || 'app';
+    const manifest = deployment?.manifestSlug ? this.catalog.getManifestSafe(deployment.manifestSlug) : null;
+    return resolvedDatabaseName(manifest, service.name, variables);
   }
 
   /**

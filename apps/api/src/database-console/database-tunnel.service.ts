@@ -7,6 +7,8 @@ import { ServersService } from '../servers/servers.service';
 import { SshService } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
 import { dbImportSecretKey } from '../terminal/container-shell.util';
+import { CatalogService } from '../catalog/catalog.service';
+import { resolvedDatabaseName } from '../catalog/catalog.util';
 import { shellSingleQuote } from '../database/mysql.util';
 import { PROXY_NETWORK } from '../traefik/traefik.util';
 import { resolveEngine, enginePort, engineUser, type DbEngine } from './database-console.util';
@@ -46,6 +48,7 @@ export class DatabaseTunnelService {
     private readonly prisma: PrismaService,
     private readonly servers: ServersService,
     private readonly ssh: SshService,
+    private readonly catalog: CatalogService,
   ) {}
 
   async withConnection<T>(
@@ -91,6 +94,7 @@ export class DatabaseTunnelService {
     }
 
     const variables = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
+    const manifest = deployment.manifestSlug ? this.catalog.getManifestSafe(deployment.manifestSlug) : null;
     // MySQL/MariaDB aceitam conectar sem nenhum banco selecionado (só pra
     // rodar SHOW/CREATE/DROP DATABASE); Postgres exige sempre um banco
     // válido pra conectar — "postgres" é o banco de manutenção que a imagem
@@ -100,7 +104,7 @@ export class DatabaseTunnelService {
       ? engine === 'postgresql'
         ? 'postgres'
         : undefined
-      : databaseOverride || variables.DATABASE_NAME || 'app';
+      : databaseOverride || resolvedDatabaseName(manifest, service.name, variables);
 
     const application = await this.prisma.application.findUnique({
       where: { id: service.applicationId },

@@ -123,8 +123,12 @@ function SettingsTabs() {
 
       {tab === 'general' && <CloudflareCard />}
       {tab === 'users' && <UsersCard />}
-      {tab === 'backup' && <BackupCard />}
-      {tab === 'backup' && <BackupDestinationsCard />}
+      {tab === 'backup' && (
+        <div className="space-y-4">
+          <BackupCard />
+          <BackupDestinationsCard />
+        </div>
+      )}
       {tab === 'git' && <GitAccountsCard />}
       {tab === 'alerts' && <AlertsCard />}
     </div>

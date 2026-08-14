@@ -6,6 +6,7 @@ import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { ServersService } from '../servers/servers.service';
 import { TraefikService } from '../traefik/traefik.service';
 import { CatalogService } from '../catalog/catalog.service';
+import { resolvedDatabaseName } from '../catalog/catalog.util';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
 import { dbImportSecretKey, dbImportCommand } from '../terminal/container-shell.util';
 import { shellSingleQuote } from '../database/mysql.util';
@@ -502,7 +503,8 @@ export class ApplicationsService {
     if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
 
     const variablesMap = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
-    const dbName = database || variablesMap.DATABASE_NAME || 'app';
+    const manifest = deployment.manifestSlug ? this.catalog.getManifestSafe(deployment.manifestSlug) : null;
+    const dbName = database || resolvedDatabaseName(manifest, service.name, variablesMap);
 
     const importInfo = dbImportCommand(service.image, password, dbName);
     if (!importInfo) throw new BadRequestException('Importação de .sql não é suportada para este tipo de serviço');

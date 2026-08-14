@@ -347,6 +347,30 @@ export function renderServiceEnvFiles(
   return files;
 }
 
+const DB_NAME_ENV_KEYS = ['MYSQL_DATABASE', 'MARIADB_DATABASE', 'POSTGRES_DB'];
+
+/**
+ * Nome real do banco de um serviço implantado — lê o valor efetivo da env que
+ * define o banco no manifesto, em vez de assumir que existe uma variável
+ * `DATABASE_NAME` preenchida pelo usuário. Vários manifestos do catálogo
+ * fixam o nome do banco direto no `environment` (ex.: Ghost, WordPress,
+ * Nextcloud usam `MYSQL_DATABASE: 'ghost'`/`'wordpress'`/`'nextcloud'`, sem
+ * variável nenhuma) — backup, console, túnel e import de `.sql` caíam todos
+ * no fallback errado `'app'` pra esses bancos e falhavam com "Unknown
+ * database". `'app'` continua sendo o fallback final: cobre implantações Git
+ * (sem manifesto) e o caso normal de `DATABASE_NAME` como variável mesmo.
+ */
+export function resolvedDatabaseName(
+  manifest: VelixManifest | null,
+  serviceName: string,
+  variablesMap: Record<string, string> = {},
+): string {
+  const service = manifest?.services.find((s) => s.name === serviceName);
+  const envKey = DB_NAME_ENV_KEYS.find((k) => service?.environment?.[k]);
+  const resolved = envKey ? interpolate(service!.environment![envKey], '', {}, variablesMap) : '';
+  return resolved || variablesMap.DATABASE_NAME || 'app';
+}
+
 /** Nome do container que recebe tráfego do Traefik quando um domínio é associado. */
 export function primaryContainerName(manifest: VelixManifest, appSlug: string): string {
   return `${appSlug}_${manifest.primaryService}`;

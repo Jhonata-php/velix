@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { ServersModule } from '../servers/servers.module';
+import { CatalogModule } from '../catalog/catalog.module';
 import { DatabaseBackupController } from './database-backup.controller';
 import { DatabaseBackupService } from './database-backup.service';
 import { BackupDestinationsController } from './backup-destinations.controller';
@@ -20,7 +21,7 @@ import { BackupDestinationsService } from './backup-destinations.service';
   // Não existe um SshModule separado — SshService é provido e exportado
   // pelo próprio ServersModule (ver servers.module.ts), mesmo jeito que
   // ApplicationsModule/GitAccountsModule já importam pra usar SSH.
-  imports: [AuthModule, ServersModule],
+  imports: [AuthModule, ServersModule, CatalogModule],
   controllers: [DatabaseBackupController, BackupDestinationsController],
   providers: [DatabaseBackupService, BackupDestinationsService],
   exports: [DatabaseBackupService],

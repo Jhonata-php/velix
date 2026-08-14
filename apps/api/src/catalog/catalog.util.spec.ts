@@ -19,6 +19,7 @@ import {
   requiredServices,
   optionalServices,
   resolveIncludedServices,
+  resolvedDatabaseName,
   type VelixManifest,
 } from './catalog.util';
 import { uptimeKumaManifest } from './manifests/uptime-kuma';
@@ -26,6 +27,7 @@ import { QUICK_MANIFESTS } from './manifests/quick-apps';
 import { immichManifest } from './manifests/immich';
 import { mysqlManifest } from './manifests/mysql';
 import { mariadbManifest } from './manifests/mariadb';
+import { ghostManifest } from './manifests/ghost';
 
 // validação: o manifesto oficial é válido
 assert.equal(validateManifest(uptimeKumaManifest).ok, true);
@@ -233,5 +235,16 @@ for (const manifest of catalog) {
     assert.ok(!service.image.endsWith(':latest'), `${manifest.slug}: imagem sem versão fixa`);
   }
 }
+
+// resolvedDatabaseName: banco fixo no manifesto (Ghost) — nunca cai no fallback 'app'
+assert.equal(resolvedDatabaseName(ghostManifest, 'db', {}), 'ghost');
+
+// resolvedDatabaseName: banco vem de variável do usuário (manifesto genérico do MySQL)
+assert.equal(resolvedDatabaseName(mysqlManifest, 'mysql', { DATABASE_NAME: 'minhaapp' }), 'minhaapp');
+assert.equal(resolvedDatabaseName(mysqlManifest, 'mysql', {}), 'app'); // sem valor: cai no default da variável
+
+// resolvedDatabaseName: sem manifesto (implantação via Git) ou serviço desconhecido — fallback final
+assert.equal(resolvedDatabaseName(null, 'db', {}), 'app');
+assert.equal(resolvedDatabaseName(ghostManifest, 'servico-inexistente', {}), 'app');
 
 console.log(`catalog.util self-check OK (${catalog.length} manifestos novos validados)`);

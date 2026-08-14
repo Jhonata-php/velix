@@ -188,9 +188,17 @@ export class CatalogService {
   }
 
   getManifest(slug: string): VelixManifest {
-    const manifest = OFFICIAL_MANIFESTS.find((m) => m.slug === slug);
+    const manifest = this.getManifestSafe(slug);
     if (!manifest) throw new NotFoundException(`Aplicação "${slug}" não encontrada no catálogo`);
     return manifest;
+  }
+
+  /** Mesma busca de `getManifest`, mas `null` em vez de lançar — pra chamadas
+   * internas (nome do banco pra backup/console/túnel) que não podem derrubar
+   * a operação inteira só porque o manifesto de origem mudou de versão ou
+   * saiu do catálogo; nesses casos o chamador cai pro fallback dele mesmo. */
+  getManifestSafe(slug: string): VelixManifest | null {
+    return OFFICIAL_MANIFESTS.find((m) => m.slug === slug) ?? null;
   }
 
   async getDetail(slug: string) {
