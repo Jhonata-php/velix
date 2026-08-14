@@ -57,6 +57,10 @@ services:
       VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
       VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
 
+      # Ao contrário de CF_DNS_API_TOKEN, esta variável NÃO é preservada pelo
+      # install.sh ao reinstalar/atualizar (ele regenera o .env do zero e não
+      # conhece esta chave) — depois de cada atualização ela precisa ser
+      # readicionada manualmente no .env até isso ser corrigido no instalador.
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
 
     # O fluxo de start (esperar banco, migrar, semear, subir a API) mora na

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { SshConnectOptions } from '../ssh/ssh.service';
 import { MONITORING_SAMPLE_COMMAND, parseSampleLine, RawSample } from './metrics-sample.util';
 import { DOCKER_EVENTS_COMMAND, parseDockerEventLine, NormalizedDockerEvent } from './docker-event.util';
@@ -25,6 +26,7 @@ type StreamKind = 'sample' | 'events';
  * reconecta sozinho com backoff exponencial até `stop()` ser chamado.
  */
 export class ServerWatcher {
+  private readonly logger = new Logger(ServerWatcher.name);
   private stopped = false;
   private sampleAttempt = 0;
   private eventsAttempt = 0;
@@ -32,6 +34,8 @@ export class ServerWatcher {
   private eventsBuffer = '';
   private sampleController: AbortController | null = null;
   private eventsController: AbortController | null = null;
+  private sampleReceivedData = false;
+  private eventsReceivedData = false;
 
   constructor(
     private readonly serverId: string,
@@ -57,6 +61,9 @@ export class ServerWatcher {
   }
 
   private handleChunk(kind: StreamKind, chunk: string) {
+    if (kind === 'sample') this.sampleReceivedData = true;
+    else this.eventsReceivedData = true;
+
     if (kind === 'sample') {
       this.sampleBuffer += chunk;
       const lines = this.sampleBuffer.split('\n');
@@ -89,10 +96,32 @@ export class ServerWatcher {
       const controller = new AbortController();
       if (kind === 'sample') this.sampleController = controller;
       else this.eventsController = controller;
-      await this.ssh.runCommand(this.options, command, LOOP_TIMEOUT_MS, (chunk) => this.handleChunk(kind, chunk), controller.signal);
+      if (kind === 'sample') this.sampleReceivedData = false;
+      else this.eventsReceivedData = false;
+
+      const result = await this.ssh.runCommand(this.options, command, LOOP_TIMEOUT_MS, (chunk) => this.handleChunk(kind, chunk), controller.signal);
+      const receivedData = kind === 'sample' ? this.sampleReceivedData : this.eventsReceivedData;
+
+      this.logger[this.stopped ? 'debug' : 'warn'](
+        `stream ${kind} do servidor ${this.serverId} encerrou (ok=${result.ok}, code=${result.code}${result.message ? `, message=${result.message}` : ''})`,
+      );
       if (this.stopped) return;
-      const attempt = kind === 'sample' ? ++this.sampleAttempt : ++this.eventsAttempt;
-      await this.sleepFn(nextBackoffMs(attempt));
+
+      // Recebeu ao menos uma linha de dado real nesta tentativa: trata como
+      // conexão que funcionou (não importa por que ela caiu depois) e zera o
+      // backoff — senão um único blip travaria o próximo reconnect nesse
+      // servidor no teto de 60s pro resto da vida dele.
+      let attempt: number;
+      if (receivedData) {
+        attempt = 0;
+        if (kind === 'sample') this.sampleAttempt = 0;
+        else this.eventsAttempt = 0;
+      } else {
+        attempt = kind === 'sample' ? ++this.sampleAttempt : ++this.eventsAttempt;
+      }
+      const delayMs = nextBackoffMs(attempt);
+      this.logger.debug(`reconectando stream ${kind} do servidor ${this.serverId} em ${delayMs}ms`);
+      await this.sleepFn(delayMs);
     }
   }
 }

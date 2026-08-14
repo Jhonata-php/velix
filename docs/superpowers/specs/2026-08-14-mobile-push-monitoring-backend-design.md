@@ -46,6 +46,8 @@ Novo módulo `apps/api/src/monitoring/`. Uma instância de `ServerWatcher` por s
 
 Cada amostra de métrica e cada evento de container passa pelo avaliador de alertas existente (`apps/api/src/alerts/alerts.service.ts`), estendido com as condições novas. Reaproveita o mecanismo de fingerprint/dedupe (`AlertState`) que já existe pras condições atuais, incluindo cooldown: uma condição que já está ativa não reenvia notificação a cada amostra, só quando muda de estado (abre/resolve) ou depois de um intervalo mínimo configurável (padrão 15 min) se continuar ativa.
 
+**Desvio em relação ao que está descrito acima:** na implementação (Task 10), as condições novas acabaram avaliadas por um `ThresholdAlertService` separado (`apps/api/src/monitoring/threshold-alert.service.ts`), não por uma extensão do `alerts.service.ts` existente — o evaluator existente é global e cron-driven (checa a cada 5 minutos e transmite pra canais de toda a instância), o que não se encaixa num modelo por usuário e orientado a evento. Os dois só compartilham a tabela `AlertState` (fingerprints com prefixo distinto pra não colidir). Consequência real: por enquanto os alertas novos de CPU/memória/temperatura/docker só chegam por push, não pelos canais de Discord/Telegram/webhook já existentes. Isto é um limite de escopo desta fase, não um esquecimento, e pode ser revisitado se roteamento por usuário pra esses canais virar requisito.
+
 ## 3. Modelo de dados (Prisma)
 
 ```prisma

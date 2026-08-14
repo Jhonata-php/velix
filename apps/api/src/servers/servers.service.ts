@@ -15,8 +15,11 @@ import { shellSingleQuote } from '../database/mysql.util';
 type LogFn = (line: string) => void;
 
 /** `container_name` fixos de docker-compose.yml — o próprio Velix, nunca
- * "um app implantado" pra fins de listar containers do servidor. */
-const VELIX_OWN_CONTAINERS = new Set(['velix-web', 'velix-api', 'velix-postgres', 'velix-traefik']);
+ * "um app implantado" pra fins de listar containers do servidor. Exportado
+ * porque threshold-alert.service.ts também usa isto pra não notificar o
+ * usuário quando o container que reiniciou é do próprio Velix (ex.:
+ * self-update). */
+export const VELIX_OWN_CONTAINERS = new Set(['velix-web', 'velix-api', 'velix-postgres', 'velix-traefik']);
 
 function toPublic<T extends { credentialEnc: string }>(server: T) {
   const { credentialEnc: _drop, ...rest } = server;

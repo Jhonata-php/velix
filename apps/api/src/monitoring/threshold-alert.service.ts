@@ -4,6 +4,7 @@ import { PushService } from '../push/push.service';
 import { resolveThresholdsForServer, ThresholdPreferenceRow } from './threshold-resolver.util';
 import { computeCpuPercent, computeMemoryPercent, RawSample } from './metrics-sample.util';
 import { NormalizedDockerEvent } from './docker-event.util';
+import { VELIX_OWN_CONTAINERS } from '../servers/servers.service';
 
 type MetricKey = 'cpu' | 'memory' | 'temperature';
 
@@ -59,6 +60,12 @@ export class ThresholdAlertService {
   }
 
   async handleDockerEvent(serverId: string, event: NormalizedDockerEvent) {
+    // O host onde o próprio Velix roda também é um Server monitorado
+    // (servidor local) — sem este guard, todo self-update (que reinicia
+    // velix-api/velix-web) notificaria os usuários como se fosse um
+    // problema na infraestrutura deles.
+    if (VELIX_OWN_CONTAINERS.has(event.containerName)) return;
+
     const resolved = resolveThresholdsForServer(await this.loadPreferences(serverId), serverId);
 
     for (const pref of resolved) {
@@ -107,6 +114,12 @@ export class ThresholdAlertService {
     isActive: boolean,
     content: { title: string; body: string },
   ) {
+    // AlertState é compartilhado com alerts.service.ts (o evaluator global,
+    // cron-driven). O check() de lá faz `findMany()` sem filtro — se essas
+    // fingerprints "cpu-high:"/"memory-high:"/"temperature-high:" não
+    // estiverem explicitamente excluídas de lá, ele as trata como
+    // "resolvidas" a cada 5 minutos e apaga o estado por baixo deste
+    // serviço. Ver o filtro em AlertsService.check() (apps/api/src/alerts/alerts.service.ts).
     const fingerprint = `${metric}-high:${serverId}:${userId}`;
     const state = await this.prisma.alertState.findUnique({ where: { fingerprint } });
 

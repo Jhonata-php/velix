@@ -169,7 +169,19 @@ export class AlertsService {
 
     const conditions = await this.collectConditions();
     const active = new Set(conditions.map((c) => c.fingerprint));
-    const known = await this.prisma.alertState.findMany();
+    // AlertState é uma tabela compartilhada: o ThresholdAlertService
+    // (apps/api/src/monitoring/threshold-alert.service.ts) também guarda
+    // estado nela, por usuário, com fingerprints "cpu-high:", "memory-high:"
+    // e "temperature-high:". Sem este filtro, collectConditions() (que não
+    // sabe dessas fingerprints) trataria toda linha delas como "resolvida" a
+    // cada 5 minutos, apagando o estado do outro serviço e vazando a
+    // fingerprint crua num "voltou ao normal" pros canais de Discord/
+    // Telegram/webhook.
+    const known = (
+      await this.prisma.alertState.findMany()
+    ).filter(
+      (k) => !k.fingerprint.startsWith('cpu-high:') && !k.fingerprint.startsWith('memory-high:') && !k.fingerprint.startsWith('temperature-high:'),
+    );
     const knownSet = new Set(known.map((k) => k.fingerprint));
 
     // Abriu agora
