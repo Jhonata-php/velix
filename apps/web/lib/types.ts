@@ -198,6 +198,18 @@ export interface DatabaseListItem {
   hasSchedule: boolean;
 }
 
+export interface DatabaseBackupRoutine {
+  id: string;
+  name: string;
+  image: string;
+  project: { id: string; name: string; slug: string };
+  server: { id: string; name: string };
+  scheduledAt: string;
+  retentionDays: number;
+  destination: { id: string; label: string } | null;
+  lastRun: { status: 'RUNNING' | 'SUCCESS' | 'ERROR'; startedAt: string; error: string | null } | null;
+}
+
 export interface BackupDestinationSummary {
   id: string;
   label: string;

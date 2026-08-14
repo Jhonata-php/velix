@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MinRole, RolesGuard } from '../auth/roles.guard';
 import { DatabaseBackupService } from './database-backup.service';
 import { SetBackupConfigDto } from './dto/set-backup-config.dto';
+import { SetBackupConfigBulkDto } from './dto/set-backup-config-bulk.dto';
 
 /** Disparo de backup manual é via canal /ops (op "database-backup-run"),
  * não aqui — um dump pode demorar em banco grande, mesmo motivo de
@@ -17,6 +18,18 @@ export class DatabaseBackupController {
   @Get()
   list() {
     return this.databaseBackup.listDatabases();
+  }
+
+  @Get('backup-routines')
+  listRoutines() {
+    return this.databaseBackup.listRoutines();
+  }
+
+  @Patch('backup-routines')
+  @MinRole('operator')
+  setRoutines(@Body() dto: SetBackupConfigBulkDto) {
+    const { projectServiceIds, ...config } = dto;
+    return this.databaseBackup.setConfigBulk(projectServiceIds, config);
   }
 
   @Get(':id/backup-config')

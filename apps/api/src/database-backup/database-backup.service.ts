@@ -84,6 +84,40 @@ export class DatabaseBackupService {
       }));
   }
 
+  /**
+   * Rotinas de backup configuradas — só os bancos que têm `scheduledAt`
+   * definido, com o último run de cada um. Alimenta a tela central de
+   * Configurações → Backup (spec: "rotinas e os logs que tem configurado",
+   * em vez de precisar abrir banco por banco pra ver o agendamento).
+   */
+  async listRoutines() {
+    const services = await this.prisma.projectService.findMany({
+      where: { backupConfig: { scheduledAt: { not: null } } },
+      include: {
+        application: { include: { server: { select: { id: true, name: true } } } },
+        backupConfig: { include: { destination: { select: { id: true, label: true } } } },
+        backupRuns: { orderBy: { startedAt: 'desc' }, take: 1 },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return services
+      .filter((s) => isManagedDatabaseImage(s.image))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        image: s.image,
+        project: { id: s.application.id, name: s.application.name, slug: s.application.slug },
+        server: s.application.server,
+        scheduledAt: s.backupConfig!.scheduledAt,
+        retentionDays: s.backupConfig!.retentionDays,
+        destination: s.backupConfig!.destination,
+        lastRun: s.backupRuns[0]
+          ? { status: s.backupRuns[0].status, startedAt: s.backupRuns[0].startedAt, error: s.backupRuns[0].error }
+          : null,
+      }));
+  }
+
   async getConfig(projectServiceId: string) {
     const config = await this.prisma.databaseBackupConfig.findUnique({ where: { projectServiceId } });
     return config ?? { projectServiceId, scheduledAt: null, retentionDays: 14, destinationId: null };
@@ -107,6 +141,17 @@ export class DatabaseBackupService {
         destinationId: dto.destinationId === undefined ? undefined : dto.destinationId,
       },
     });
+  }
+
+  /** Aplica a mesma configuração a vários bancos de uma vez — o "todos os
+   * bancos" do modal de "Adicionar rotina" é só isso no back: a tela junta
+   * os IDs (todos os listados ou os marcados), aqui é o mesmo `setConfig`
+   * em loop. Sem conceito de "todos" persistido — banco criado depois não
+   * entra sozinho, precisa passar pelo modal de novo (igual à config
+   * individual de cada banco, que também nunca foi "dinâmica"). */
+  async setConfigBulk(projectServiceIds: string[], dto: SetBackupConfigDto) {
+    for (const id of projectServiceIds) await this.setConfig(id, dto);
+    return { ok: true, count: projectServiceIds.length };
   }
 
   listRuns(projectServiceId: string) {

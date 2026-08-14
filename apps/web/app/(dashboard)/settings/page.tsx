@@ -7,6 +7,7 @@ import { CloudflareCard } from '@/components/CloudflareCard';
 import { GitAccountsCard } from '@/components/GitAccountsCard';
 import { BackupCard } from '@/components/BackupCard';
 import { BackupDestinationsCard } from '@/components/BackupDestinationsCard';
+import { BackupRoutinesCard } from '@/components/BackupRoutinesCard';
 import { UsersCard } from '@/components/UsersCard';
 import { AlertsCard } from '@/components/AlertsCard';
 import { Alert } from '@/components/Alert';
@@ -126,6 +127,7 @@ function SettingsTabs() {
       {tab === 'backup' && (
         <div className="space-y-4">
           <BackupCard />
+          <BackupRoutinesCard />
           <BackupDestinationsCard />
         </div>
       )}
