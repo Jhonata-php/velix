@@ -167,7 +167,7 @@ export class ServersService {
   async collectMetrics(id: string) {
     const server = await this.getRawServer(id);
     const options = this.toConnectOptions(server);
-    const result = await this.ssh.runCommand(options, METRICS_COMMAND, 15_000);
+    const result = await this.ssh.runCommand(options, METRICS_COMMAND, 20_000);
 
     if (!result.ok) {
       await this.prisma.server.update({ where: { id }, data: { status: 'OFFLINE', lastCheckedAt: new Date() } });
@@ -187,6 +187,8 @@ export class ServersService {
         memUsedMb: metrics.memUsedMb,
         memTotalMb: metrics.memTotalMb,
         diskPercent: metrics.diskPercent ? Number(metrics.diskPercent.replace('%', '')) : null,
+        cpuPercent: metrics.cpuPercent,
+        temperatureCelsius: metrics.temperatureCelsius,
       },
     });
     // ponytail: poda direto aqui em vez de um job separado — cada coleta já é
