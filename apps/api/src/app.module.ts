@@ -16,6 +16,9 @@ import { BackupModule } from './backup/backup.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { UsersModule } from './users/users.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PushModule } from './push/push.module';
+import { AlertThresholdsModule } from './alert-thresholds/alert-thresholds.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -37,6 +40,9 @@ import { ScheduleModule } from '@nestjs/schedule';
     GitAccountsModule,
     BackupModule,
     AlertsModule,
+    PushModule,
+    AlertThresholdsModule,
+    MonitoringModule,
     UsersModule,
   ],
 })
