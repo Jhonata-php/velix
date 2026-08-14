@@ -40,6 +40,8 @@ model User {
   sessions     UserSession[]
   resetTokens  PasswordResetToken[]
   databaseQueryLogs DatabaseQueryLog[]
+  deviceTokens      DeviceToken[]
+  alertThresholds   AlertThresholdPreference[]
 }
 
 // Uma linha por login bem-sucedido — o JWT carrega `sid` apontando pra cá.
@@ -221,6 +223,7 @@ model Server {
   mirrorsAsTarget ServerMirror[] @relation("MirrorTarget")
   domains       Domain[]
   applications  Application[]
+  alertThresholdOverrides AlertThresholdPreference[]
 }
 
 enum DomainStatus {
@@ -617,9 +620,42 @@ model ServerMetricSample {
   memUsedMb   Int?
   memTotalMb  Int?
   diskPercent Float?
+  cpuPercent  Float?
+  temperatureCelsius Float?
   capturedAt  DateTime @default(now())
 
   @@index([serverId, capturedAt])
+}
+
+model DeviceToken {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  fcmToken   String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AlertThresholdPreference {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId           String?
+  server             Server?  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  cpuPercent         Int?
+  memoryPercent      Int?
+  temperatureCelsius Int?
+  dockerScope        String   @default("all")
+  dockerEnabled      Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, serverId])
 }
 
 enum DbEngine {
