@@ -32,6 +32,15 @@ const resolved2 = resolveThresholdsForServer(globalAndOverride, 'srv-1');
 assert.equal(resolved2.length, 1);
 assert.equal(resolved2[0].cpuPercent, 95);
 
+// mesmo caso com ordem invertida: override PRIMEIRO, depois global -> override ainda vence
+const globalAndOverrideReversed = [
+  row({ userId: 'u7', serverId: 'srv-1', cpuPercent: 95 }),
+  row({ userId: 'u7', cpuPercent: 80 }),
+];
+const resolved2b = resolveThresholdsForServer(globalAndOverrideReversed, 'srv-1');
+assert.equal(resolved2b.length, 1);
+assert.equal(resolved2b[0].cpuPercent, 95);
+
 // preferência é de outro servidor -> não entra pro srv-1
 const otherServerOnly = [row({ userId: 'u3', serverId: 'srv-2', cpuPercent: 70 })];
 assert.equal(resolveThresholdsForServer(otherServerOnly, 'srv-1').length, 0);
