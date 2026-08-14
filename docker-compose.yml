@@ -57,6 +57,8 @@ services:
       VELIX_ADMIN_EMAIL: ${VELIX_ADMIN_EMAIL}
       VELIX_ADMIN_PASSWORD: ${VELIX_ADMIN_PASSWORD}
 
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+
     # O fluxo de start (esperar banco, migrar, semear, subir a API) mora na
     # imagem (ver apps/api/docker-entrypoint.sh) — não numa string de shell
     # aqui, que é frágil de editar e não é versionada junto do código que roda.
