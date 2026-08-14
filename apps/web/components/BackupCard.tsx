@@ -21,6 +21,7 @@ interface BackupRun {
 interface BackupInfo {
   available: boolean;
   directory: string;
+  scheduledAt: string;
   retentionDays: number;
   runs: BackupRun[];
 }
@@ -42,10 +43,17 @@ export function BackupCard() {
   const [info, setInfo] = useState<BackupInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('03:15');
+  const [retentionDays, setRetentionDays] = useState(14);
+  const [saving, setSaving] = useState(false);
 
   function load() {
     apiFetch<BackupInfo>('/backups')
-      .then(setInfo)
+      .then((i) => {
+        setInfo(i);
+        setScheduledAt(i.scheduledAt);
+        setRetentionDays(i.retentionDays);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
   }
   useEffect(load, []);
@@ -60,6 +68,23 @@ export function BackupCard() {
       setError(err instanceof Error ? err.message : 'Falha ao executar');
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function saveSchedule() {
+    if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 365) {
+      setError('Retenção precisa ser um número inteiro entre 1 e 365 dias.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch('/backups/config', { method: 'PATCH', body: JSON.stringify({ scheduledAt, retentionDays }) });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar agendamento');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -78,7 +103,7 @@ export function BackupCard() {
         <div className="min-w-0 flex-1">
           <h2 className="section-title">Backup automático</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Banco de dados e <code>.env</code> todo dia às 03:15, mantidos por {info?.retentionDays ?? 14} dias.
+            Banco de dados e <code>.env</code> todo dia às {info?.scheduledAt ?? '03:15'}, mantidos por {info?.retentionDays ?? 14} dias.
           </p>
         </div>
         {info?.available && (
@@ -105,6 +130,29 @@ export function BackupCard() {
 
       {info?.available && (
         <>
+          <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:grid-cols-2 dark:border-slate-700">
+            <label className="block">
+              <span className="mb-1 block text-xs text-slate-400">Horário diário</span>
+              <input type="time" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="input h-9" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-slate-400">Retenção (dias)</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={retentionDays}
+                onChange={(e) => setRetentionDays(Number(e.target.value))}
+                className="input h-9"
+              />
+            </label>
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button onClick={saveSchedule} disabled={saving} className="btn-secondary px-3.5 py-2 text-sm disabled:opacity-50">
+              {saving ? 'Salvando...' : 'Salvar agendamento'}
+            </button>
+          </div>
+
           {stale && (
             <div className="mt-3">
               <Alert variant="warning" title="Nenhum backup recente">

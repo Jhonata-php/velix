@@ -27,7 +27,9 @@ const BACKUP_DIR_NAME = 'backups';
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
   private readonly hostDir = process.env.VELIX_HOST_DIR?.trim() || '/host/velix';
-  private readonly retentionDays = Number(process.env.VELIX_BACKUP_RETENTION_DAYS ?? '14');
+  /** Só usado pra semear a linha de BackupSettings na primeira leitura —
+   * depois disso quem manda é o banco, não a env var. */
+  private readonly defaultRetentionDays = Number(process.env.VELIX_BACKUP_RETENTION_DAYS ?? '14');
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -39,21 +41,55 @@ export class BackupService {
     return existsSync(this.hostDir);
   }
 
+  /** Sempre uma linha só (id fixo "default") — cria com os padrões na
+   * primeira leitura, mesmo padrão de `DatabaseBackupService.getConfig`. */
+  async getSettings() {
+    const existing = await this.prisma.backupSettings.findUnique({ where: { id: 'default' } });
+    if (existing) return existing;
+    return this.prisma.backupSettings.create({
+      data: { id: 'default', retentionDays: this.defaultRetentionDays },
+    });
+  }
+
+  async updateSettings(dto: { scheduledAt?: string; retentionDays?: number }) {
+    return this.prisma.backupSettings.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        scheduledAt: dto.scheduledAt ?? '03:15',
+        retentionDays: dto.retentionDays ?? this.defaultRetentionDays,
+      },
+      update: {
+        scheduledAt: dto.scheduledAt,
+        retentionDays: dto.retentionDays,
+      },
+    });
+  }
+
   async list() {
-    const runs = await this.prisma.backupRun.findMany({ orderBy: { startedAt: 'desc' }, take: 30 });
+    const [runs, settings] = await Promise.all([
+      this.prisma.backupRun.findMany({ orderBy: { startedAt: 'desc' }, take: 30 }),
+      this.getSettings(),
+    ]);
     return {
       available: this.isAvailable(),
       directory: this.backupDir,
-      retentionDays: this.retentionDays,
+      scheduledAt: settings.scheduledAt,
+      retentionDays: settings.retentionDays,
       runs,
     };
   }
 
-  /** 03:15 todo dia: fora do horário de uso e longe da virada, onde costuma
-   * haver disputa por CPU com rotações de log e cron de sistema. */
-  @Cron('15 3 * * *')
+  /** Roda toda hora, cheia, e só dispara quando a hora atual bate com a
+   * configurada — mesma granularidade (por hora, não por minuto exato) de
+   * `DatabaseBackupService.scheduledSweep`, que já cobre bem "todo dia por
+   * volta desse horário" sem precisar de cron dinâmico por linha do banco. */
+  @Cron('0 * * * *')
   async scheduled() {
     if (!this.isAvailable()) return;
+    const settings = await this.getSettings();
+    const currentHour = new Date().getHours().toString().padStart(2, '0');
+    if (!settings.scheduledAt.startsWith(`${currentHour}:`)) return;
     await this.run('scheduled');
   }
 
@@ -62,6 +98,7 @@ export class BackupService {
       throw new NotFoundException('Diretório de instalação não está montado — backup indisponível nesta instalação.');
     }
 
+    const { retentionDays } = await this.getSettings();
     mkdirSync(this.backupDir, { recursive: true });
 
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -87,7 +124,7 @@ export class BackupService {
         data: { status: 'SUCCESS', finishedAt: new Date(), sizeBytes: size },
       });
 
-      this.pruneOld();
+      this.pruneOld(retentionDays);
       this.logger.log(`Backup concluído: ${fileName} (${Math.round(size / 1024)} KB)`);
       return { ok: true, fileName, sizeBytes: size };
     } catch (err) {
@@ -186,8 +223,8 @@ export class BackupService {
 
   /** Retenção por idade: sem isso o disco enche sozinho e o backup vira a causa
    * da queda que deveria evitar. */
-  private pruneOld() {
-    const cutoff = Date.now() - this.retentionDays * 86400_000;
+  private pruneOld(retentionDays: number) {
+    const cutoff = Date.now() - retentionDays * 86400_000;
     for (const file of readdirSync(this.backupDir)) {
       if (!file.startsWith('velix-')) continue;
       const path = join(this.backupDir, file);

@@ -460,6 +460,19 @@ model BackupRun {
   @@index([startedAt])
 }
 
+/// Configuração do backup do próprio Velix — sempre uma linha só (id fixo
+/// "default"). Antes disso o horário era fixo no código (03:15) e a
+/// retenção só vinha de env var (VELIX_BACKUP_RETENTION_DAYS); agora dá pra
+/// ajustar pela tela, igual já era possível por banco em DatabaseBackupConfig.
+model BackupSettings {
+  id            String @id @default("default")
+  /// "HH:mm" — casado por hora com BackupService.scheduled() (granularidade
+  /// de minuto exata não é garantida, mesma simplificação de
+  /// DatabaseBackupService.scheduledSweep).
+  scheduledAt   String @default("03:15")
+  retentionDays Int    @default(14)
+}
+
 /// Bloqueio de conta por tentativas falhas. Separado de LoginAttempt (que é
 /// trilha de auditoria, append-only) porque aqui o estado é mutável e
 /// consultado a cada login.
