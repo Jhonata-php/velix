@@ -201,11 +201,13 @@ export interface DatabaseListItem {
 export interface BackupDestinationSummary {
   id: string;
   label: string;
-  protocol: 'ftp' | 'sftp';
-  host: string;
-  port: number;
+  protocol: 'ftp' | 'sftp' | 's3';
+  host: string | null;
+  port: number | null;
   username: string;
   remotePath: string;
+  bucket: string | null;
+  region: string | null;
   createdAt: string;
 }
 

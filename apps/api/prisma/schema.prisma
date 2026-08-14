@@ -518,14 +518,24 @@ model ProjectService {
 model BackupDestination {
   id            String   @id @default(uuid())
   label         String
-  /// "ftp" | "sftp"
+  /// "ftp" | "sftp" | "s3"
   protocol      String
-  host          String
-  port          Int
+  /// FTP/SFTP: endereço do servidor. S3: endpoint customizado (S3-compatível
+  /// — MinIO, R2, B2...); vazio usa o endpoint padrão da AWS pra `region`.
+  host          String?
+  /// Sem sentido pra "s3" (endpoint já embute a porta quando precisa).
+  port          Int?
+  /// FTP/SFTP: usuário. S3: access key id.
   username      String
   /// Cifrado com o mesmo padrão AES-256-GCM já usado em GitAccount/Server.
+  /// FTP/SFTP: senha. S3: secret access key.
   credentialEnc String
+  /// FTP/SFTP: diretório remoto. S3: prefixo dentro do bucket.
   remotePath    String   @default("/")
+  /// Só "s3".
+  bucket        String?
+  /// Só "s3" — padrão "us-east-1" quando omitido.
+  region        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

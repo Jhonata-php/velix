@@ -5,17 +5,19 @@ import { CreateBackupDestinationDto } from './dto/create-backup-destination.dto'
 
 export interface ResolvedDestination {
   protocol: string;
-  host: string;
-  port: number;
+  host: string | null;
+  port: number | null;
   username: string;
   password: string;
   remotePath: string;
+  bucket: string | null;
+  region: string | null;
 }
 
 /**
- * Conexões FTP/SFTP salvas pra onde backup de banco pode ser enviado —
+ * Conexões FTP/SFTP/S3 salvas pra onde backup de banco pode ser enviado —
  * mesmo padrão de credencial cifrada de `GitAccountsService`/`ServersService`.
- * A senha nunca volta em nenhuma resposta pública (`toPublic` a omite).
+ * A senha/secret key nunca volta em nenhuma resposta pública (`toPublic` a omite).
  */
 @Injectable()
 export class BackupDestinationsService {
@@ -25,10 +27,12 @@ export class BackupDestinationsService {
     id: string;
     label: string;
     protocol: string;
-    host: string;
-    port: number;
+    host: string | null;
+    port: number | null;
     username: string;
     remotePath: string;
+    bucket: string | null;
+    region: string | null;
     createdAt: Date;
   }) {
     return {
@@ -39,6 +43,8 @@ export class BackupDestinationsService {
       port: d.port,
       username: d.username,
       remotePath: d.remotePath,
+      bucket: d.bucket,
+      region: d.region,
       createdAt: d.createdAt,
     };
   }
@@ -53,11 +59,13 @@ export class BackupDestinationsService {
       data: {
         label: dto.label.trim(),
         protocol: dto.protocol,
-        host: dto.host.trim(),
-        port: dto.port,
+        host: dto.host?.trim() || null,
+        port: dto.protocol === 's3' ? null : dto.port,
         username: dto.username.trim(),
         credentialEnc: encryptCredential(dto.password),
         remotePath: dto.remotePath?.trim() || '/',
+        bucket: dto.protocol === 's3' ? dto.bucket?.trim() : null,
+        region: dto.protocol === 's3' ? dto.region?.trim() || 'us-east-1' : null,
       },
     });
     return this.toPublic(row);
@@ -81,6 +89,8 @@ export class BackupDestinationsService {
       username: row.username,
       password: decryptCredential(row.credentialEnc),
       remotePath: row.remotePath,
+      bucket: row.bucket,
+      region: row.region,
     };
   }
 }
