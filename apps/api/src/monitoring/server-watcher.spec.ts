@@ -111,10 +111,58 @@ async function testDockerEventCallback() {
   assert.equal(events[0].kind, 'restarted');
 }
 
+// --- stop() aborta o comando SSH em andamento, não só evita reconexão -----
+
+async function testStopAbortsInFlightCommand() {
+  let abortedAt: number | null = null;
+  const fakeSsh: ServerWatcherSsh = {
+    runCommand(_options, _command, _timeout, _onData, abortSignal) {
+      // simula o loop remoto de 24h: só resolve quando abortado, nunca sozinho
+      return new Promise((resolve) => {
+        abortSignal?.addEventListener('abort', () => {
+          abortedAt = Date.now();
+          resolve({ ok: false, code: null, stdout: '', stderr: '', message: 'aborted' });
+        });
+      });
+    },
+  };
+
+  const watcher = new ServerWatcher(
+    'srv-4',
+    { host: 'x', port: 22, username: 'root' },
+    fakeSsh,
+    () => {},
+    () => {},
+    async () => {},
+  );
+
+  watcher.start();
+  await new Promise((r) => setTimeout(r, 20)); // deixa o loop entrar na 1ª iteração e "rodar"
+  const stopCalledAt = Date.now();
+  watcher.stop();
+
+  const proof = new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (abortedAt !== null) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 5);
+  });
+  const timeout = new Promise<void>((_, reject) =>
+    setTimeout(() => reject(new Error('stop() did not abort the in-flight command within 200ms')), 200),
+  );
+  await Promise.race([proof, timeout]);
+
+  assert.equal(abortedAt !== null, true, 'runCommand deveria ter resolvido via abort');
+  assert.equal((abortedAt as unknown as number) >= stopCalledAt, true, 'abort deveria ter acontecido depois de stop()');
+}
+
 async function main() {
   await testReconnectAndStop();
   await testPartialLineBuffering();
   await testDockerEventCallback();
+  await testStopAbortsInFlightCommand();
   console.log('server-watcher self-check OK');
 }
 

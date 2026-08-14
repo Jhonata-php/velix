@@ -30,6 +30,8 @@ export class ServerWatcher {
   private eventsAttempt = 0;
   private sampleBuffer = '';
   private eventsBuffer = '';
+  private sampleController: AbortController | null = null;
+  private eventsController: AbortController | null = null;
 
   constructor(
     private readonly serverId: string,
@@ -48,6 +50,10 @@ export class ServerWatcher {
 
   stop() {
     this.stopped = true;
+    // aborta o comando SSH em andamento (se houver) — sem isso ele fica rodando
+    // até cair sozinho, o que só acontece depois de 24h (LOOP_TIMEOUT_MS)
+    this.sampleController?.abort();
+    this.eventsController?.abort();
   }
 
   private handleChunk(kind: StreamKind, chunk: string) {
@@ -81,6 +87,8 @@ export class ServerWatcher {
       // SSH real já é uma fronteira de I/O e isso não teria efeito prático.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const controller = new AbortController();
+      if (kind === 'sample') this.sampleController = controller;
+      else this.eventsController = controller;
       await this.ssh.runCommand(this.options, command, LOOP_TIMEOUT_MS, (chunk) => this.handleChunk(kind, chunk), controller.signal);
       if (this.stopped) return;
       const attempt = kind === 'sample' ? ++this.sampleAttempt : ++this.eventsAttempt;
