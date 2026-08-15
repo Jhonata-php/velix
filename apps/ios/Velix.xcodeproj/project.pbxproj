@@ -15,6 +15,7 @@
 		5F3D8E5E6BDB0571D9ACEA27 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */; };
 		7A6523892DEB3CE142E17167 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4DC84F585D65384BF06820 /* Models.swift */; };
 		8FF49F1F00C8B80B1B9D0B69 /* InstanceStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */; };
+		F1E2D3C4B5A6978869A05400 /* AppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +41,7 @@
 		9DBA3E7F56410CA82D506026 /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
 		BA618BF4B79D700D7412A10F /* VelixTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VelixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E389E9BC8864CB50E9690C87 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSession.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -77,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				E389E9BC8864CB50E9690C87 /* APIClient.swift */,
+				1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */,
 				722498D34EF947CE3A08E53F /* Instance.swift */,
 				182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */,
 				1B4DC84F585D65384BF06820 /* Models.swift */,
@@ -168,6 +171,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */,
+				F1E2D3C4B5A6978869A05400 /* AppSession.swift in Sources */,
 				2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */,
 				5F3D8E5E6BDB0571D9ACEA27 /* KeychainStore.swift in Sources */,
 				7A6523892DEB3CE142E17167 /* Models.swift in Sources */,
