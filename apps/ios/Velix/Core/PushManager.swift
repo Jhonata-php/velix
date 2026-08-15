@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseCore
 import FirebaseMessaging
 
 /// Registra o token FCM em cada instância logada (ver spec de UX seção 7 —
@@ -28,6 +29,9 @@ final class PushManager {
     /// (troca é assíncrona). Isso é normal, não um erro: só não registra
     /// nada dessa vez.
     func registerCurrentToken(for instance: Instance, apiClient: APIClient) async {
+        // ponytail: Messaging.messaging() dá fatalError se FirebaseApp.configure()
+        // nunca rodou (sem GoogleService-Info.plist) — mesma guarda do AppDelegate.
+        guard FirebaseApp.app() != nil else { return }
         guard let token = Messaging.messaging().fcmToken else { return }
         _ = try? await apiClient.post("/push/devices", body: RegisterDeviceBody(fcmToken: token)) as EmptyResponse
     }
