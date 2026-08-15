@@ -1,0 +1,94 @@
+package com.velix.app.core
+
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class LoginResponse(
+    val accessToken: String? = null,
+    val user: LoggedUser? = null,
+)
+
+@Serializable
+data class LoggedUser(val name: String, val email: String, val role: String)
+
+@Serializable
+data class ServerMetrics(
+    val loadAvg1: Double? = null,
+    val memUsedMb: Int? = null,
+    val memTotalMb: Int? = null,
+    val diskPercent: Double? = null,
+    val cpuPercent: Double? = null,
+    val temperatureCelsius: Double? = null,
+)
+
+@Serializable
+data class ServerSummary(
+    val id: String,
+    val name: String,
+    val status: String,
+    val publicIp: String? = null,
+    val hostname: String? = null,
+    val dockerInstalled: Boolean,
+    val metrics: ServerMetrics? = null,
+)
+
+@Serializable
+data class MetricSample(
+    val loadAvg1: Double? = null,
+    val memUsedMb: Int? = null,
+    val memTotalMb: Int? = null,
+    val diskPercent: Double? = null,
+    val cpuPercent: Double? = null,
+    val temperatureCelsius: Double? = null,
+    val capturedAt: String,
+)
+
+@Serializable
+data class ContainerStatus(val id: String, val image: String, val status: String, val names: String)
+
+@Serializable
+data class DockerStatusResponse(
+    val installed: Boolean,
+    val version: String? = null,
+    val containers: List<ContainerStatus>? = null,
+)
+
+@Serializable
+data class AlertThresholdPreference(
+    val id: String? = null,
+    val userId: String? = null,
+    val serverId: String? = null,
+    val cpuPercent: Int? = null,
+    val memoryPercent: Int? = null,
+    val temperatureCelsius: Int? = null,
+    val dockerScope: String = "all",
+    val dockerEnabled: Boolean = true,
+)
+
+// encodeDefaults=false (o padrão do Json) omite qualquer campo cujo valor bata
+// com o default declarado — inclusive null==null — independente de
+// explicitNulls. Sem @EncodeDefault(ALWAYS) aqui, cpuPercent/temperatureCelsius
+// nulos somem da chave em vez de virar "null" explícito (o mesmo bug do iOS
+// que o teste disabledThresholdFieldSerializesAsExplicitNull trava).
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class ThresholdUpdateBody(
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val cpuPercent: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val memoryPercent: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val temperatureCelsius: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val dockerScope: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val dockerEnabled: Boolean? = null,
+)
+
+@Serializable
+data class ApiErrorBody(val message: String? = null, val reason: String? = null)
+
+@Serializable
+data class LoginRequestBody(
+    val email: String,
+    val password: String,
+    val totpCode: String? = null,
+    val rememberMe: Boolean? = null,
+)
