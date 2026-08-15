@@ -1,9 +1,29 @@
 import SwiftUI
 
-// TODO(Task 6): substituir por dashboard/tabs de verdade. Placeholder só pra
-// destravar o build depois que o onboarding (Task 5) passa a existir de fato.
 struct MainTabView: View {
     var body: some View {
-        Text("TODO")
+        TabView {
+            DashboardView()
+                .tabItem {
+                    Label("Dashboard", systemImage: "gauge")
+                }
+
+            // TODO(Task 8): notificações reais.
+            Text("TODO — Task 8")
+                .tabItem {
+                    Label("Notificações", systemImage: "bell")
+                }
+
+            // TODO(Task 9): tela de conta.
+            Text("TODO — Task 9")
+                .tabItem {
+                    Label("Conta", systemImage: "person.crop.circle")
+                }
+        }
     }
+}
+
+#Preview {
+    MainTabView()
+        .environment(AppSession())
 }
