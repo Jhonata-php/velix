@@ -42,7 +42,7 @@ struct InstanceListView: View {
                 }
             }
             .sheet(isPresented: $isAddingInstance) {
-                AddInstanceView()
+                AddInstanceView(onFinished: { isAddingInstance = false })
             }
         }
     }

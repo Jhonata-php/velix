@@ -11,8 +11,9 @@ struct TwoFactorRoute: Hashable {
 
 struct TwoFactorView: View {
     let route: TwoFactorRoute
+    /// Ver `AddInstanceView.onFinished` — fecha a sheet (ou no-op na raiz do app).
+    var onFinished: () -> Void = {}
     @Environment(AppSession.self) private var session
-    @Environment(\.dismiss) private var dismiss
 
     @State private var code = ""
     @State private var useRecoveryCode = false
@@ -69,7 +70,7 @@ struct TwoFactorView: View {
             )
             if let instance = Instance(baseURL: route.baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
-                dismiss() // no-op quando esta view é a raiz do app (sem sheet pra fechar)
+                onFinished()
             } else {
                 errorMessage = "Código inválido"
             }

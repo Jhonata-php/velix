@@ -3,6 +3,12 @@ import SwiftUI
 /// Primeira tela do app: usuário digita o domínio da instância Velix própria.
 /// Dono do `NavigationPath` que empilha Login → TwoFactor (ver LoginView/TwoFactorView).
 struct AddInstanceView: View {
+    /// Chamado quando uma instância é adicionada com sucesso (login direto ou
+    /// pós-2FA). Default no-op: cobre o uso como view raiz do app (VelixApp),
+    /// onde não há sheet pra fechar. Quando apresentada como sheet
+    /// (InstanceListView), o chamador passa aqui o que fecha a sheet.
+    var onFinished: () -> Void = {}
+
     @State private var domainText = ""
     @State private var isChecking = false
     @State private var errorMessage: String?
@@ -39,10 +45,10 @@ struct AddInstanceView: View {
             }
             .navigationTitle("Adicionar instância")
             .navigationDestination(for: URL.self) { baseURL in
-                LoginView(baseURL: baseURL, path: $path)
+                LoginView(baseURL: baseURL, path: $path, onFinished: onFinished)
             }
             .navigationDestination(for: TwoFactorRoute.self) { route in
-                TwoFactorView(route: route)
+                TwoFactorView(route: route, onFinished: onFinished)
             }
         }
     }

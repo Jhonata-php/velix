@@ -12,8 +12,9 @@ struct LoginRequest: Encodable {
 struct LoginView: View {
     let baseURL: URL
     @Binding var path: NavigationPath
+    /// Ver `AddInstanceView.onFinished` — fecha a sheet (ou no-op na raiz do app).
+    var onFinished: () -> Void = {}
     @Environment(AppSession.self) private var session
-    @Environment(\.dismiss) private var dismiss
 
     @State private var email = ""
     @State private var password = ""
@@ -68,7 +69,7 @@ struct LoginView: View {
             // ver o catch abaixo), então isso aqui é só o fallback genérico.
             if let instance = Instance(baseURL: baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
-                dismiss() // no-op quando esta view é a raiz do app (sem sheet pra fechar)
+                onFinished()
             } else {
                 errorMessage = "Não foi possível entrar"
             }
