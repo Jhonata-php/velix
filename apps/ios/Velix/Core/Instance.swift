@@ -9,6 +9,22 @@ struct Instance: Codable, Identifiable, Equatable {
     var accessToken: String
 }
 
+extension Instance {
+    /// Monta a `Instance` a partir da resposta de `/auth/login` (usada tanto no
+    /// login direto quanto após confirmar o 2FA — ver Onboarding/LoginView e
+    /// Onboarding/TwoFactorView). `nil` se a resposta não trouxer token/usuário.
+    init?(baseURL: URL, loginResponse: LoginResponse) {
+        guard let token = loginResponse.accessToken, let user = loginResponse.user else { return nil }
+        self.init(
+            id: UUID(),
+            baseURL: baseURL,
+            displayName: baseURL.host ?? baseURL.absoluteString,
+            userEmail: user.email,
+            accessToken: token
+        )
+    }
+}
+
 /// Lista de instâncias Velix logadas (ver spec de UX, seção 2 — "multi-servidor"
 /// no app é multi-instância, não multi-servidor dentro de uma instância só).
 @Observable
