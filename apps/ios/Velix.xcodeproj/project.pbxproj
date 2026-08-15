@@ -7,7 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E389E9BC8864CB50E9690C87 /* APIClient.swift */; };
+		2F2BD72FA40C58724DFC2889 /* APIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBA3E7F56410CA82D506026 /* APIClientTests.swift */; };
 		4B5822B6FA15D28D6A13E4CA /* VelixApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270E8D06C636DA79508B29FD /* VelixApp.swift */; };
+		7A6523892DEB3CE142E17167 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4DC84F585D65384BF06820 /* Models.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -21,16 +24,22 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		1B4DC84F585D65384BF06820 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		207EA0EADDA66ECE30917579 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		270E8D06C636DA79508B29FD /* VelixApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VelixApp.swift; sourceTree = "<group>"; };
 		47A33D8B0AEBD507703C87B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		54FFD3C7AF444BE7531D4C6B /* Velix.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Velix.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9DBA3E7F56410CA82D506026 /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
 		BA618BF4B79D700D7412A10F /* VelixTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VelixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E389E9BC8864CB50E9690C87 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		293D2DA1AC05D7904FAE8E5C /* VelixTests */ = {
 			isa = PBXGroup;
 			children = (
+				207EA0EADDA66ECE30917579 /* .gitkeep */,
+				9DBA3E7F56410CA82D506026 /* APIClientTests.swift */,
 			);
 			path = VelixTests;
 			sourceTree = "<group>";
@@ -40,6 +49,7 @@
 			children = (
 				47A33D8B0AEBD507703C87B0 /* Info.plist */,
 				270E8D06C636DA79508B29FD /* VelixApp.swift */,
+				A9A04D3D23E79424F37E9672 /* Core */,
 			);
 			path = Velix;
 			sourceTree = "<group>";
@@ -51,6 +61,15 @@
 				BA618BF4B79D700D7412A10F /* VelixTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A9A04D3D23E79424F37E9672 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				E389E9BC8864CB50E9690C87 /* APIClient.swift */,
+				1B4DC84F585D65384BF06820 /* Models.swift */,
+			);
+			path = Core;
 			sourceTree = "<group>";
 		};
 		AF24DC6ACD4856158AA779A0 = {
@@ -136,6 +155,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */,
+				7A6523892DEB3CE142E17167 /* Models.swift in Sources */,
 				4B5822B6FA15D28D6A13E4CA /* VelixApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -144,6 +165,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F2BD72FA40C58724DFC2889 /* APIClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -180,12 +202,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.velix.VelixTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.velix.app.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Velix.app/Velix";
@@ -315,12 +338,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.velix.VelixTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.velix.app.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Velix.app/Velix";

@@ -22,5 +22,9 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources: [VelixTests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.velix.app.tests
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Velix
