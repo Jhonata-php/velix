@@ -176,6 +176,23 @@ private struct ThresholdUpdateBody: Encodable {
     var temperatureCelsius: Int?
     var dockerScope: String?
     var dockerEnabled: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case cpuPercent, memoryPercent, temperatureCelsius, dockerScope, dockerEnabled
+    }
+
+    // ponytail: auto-synthesis usa encodeIfPresent e OMITE a chave quando o
+    // valor é nil, mas o backend trata "chave ausente" (não mexe) e "null"
+    // (limpa o campo) como coisas diferentes — precisamos mandar null de
+    // verdade quando o usuário desliga um limite.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(cpuPercent, forKey: .cpuPercent)
+        try container.encode(memoryPercent, forKey: .memoryPercent)
+        try container.encode(temperatureCelsius, forKey: .temperatureCelsius)
+        try container.encode(dockerScope, forKey: .dockerScope)
+        try container.encode(dockerEnabled, forKey: .dockerEnabled)
+    }
 }
 
 #Preview {
