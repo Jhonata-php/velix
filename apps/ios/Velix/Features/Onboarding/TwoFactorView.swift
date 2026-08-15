@@ -12,6 +12,7 @@ struct TwoFactorRoute: Hashable {
 struct TwoFactorView: View {
     let route: TwoFactorRoute
     @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
 
     @State private var code = ""
     @State private var useRecoveryCode = false
@@ -68,6 +69,7 @@ struct TwoFactorView: View {
             )
             if let instance = Instance(baseURL: route.baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
+                dismiss() // no-op quando esta view é a raiz do app (sem sheet pra fechar)
             } else {
                 errorMessage = "Código inválido"
             }

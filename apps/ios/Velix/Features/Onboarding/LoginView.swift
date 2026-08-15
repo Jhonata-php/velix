@@ -13,6 +13,7 @@ struct LoginView: View {
     let baseURL: URL
     @Binding var path: NavigationPath
     @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
 
     @State private var email = ""
     @State private var password = ""
@@ -67,6 +68,7 @@ struct LoginView: View {
             // ver o catch abaixo), então isso aqui é só o fallback genérico.
             if let instance = Instance(baseURL: baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
+                dismiss() // no-op quando esta view é a raiz do app (sem sheet pra fechar)
             } else {
                 errorMessage = "Não foi possível entrar"
             }

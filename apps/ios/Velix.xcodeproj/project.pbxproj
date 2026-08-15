@@ -25,6 +25,7 @@
 		DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */; };
 		5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */; };
 		57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */; };
+		E943C0854D99419EB9FA0FBA /* InstanceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,6 +61,7 @@
 		DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDetailView.swift; sourceTree = "<group>"; };
 		5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdEditorView.swift; sourceTree = "<group>"; };
 		02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
+		FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceListView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -93,6 +95,7 @@
 				DA58F0E0B1A24D3F9A0C7777 /* Dashboard */,
 				DA58F0E0B1A24D3F9A0C8888 /* ServerDetail */,
 				C94A3B5CC24F76BB710D08BA /* Notifications */,
+				19936DEC77954369956D487E /* Instances */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -131,6 +134,14 @@
 				02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */,
 			);
 			path = Notifications;
+			sourceTree = "<group>";
+		};
+		19936DEC77954369956D487E /* Instances */ = {
+			isa = PBXGroup;
+			children = (
+				FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */,
+			);
+			path = Instances;
 			sourceTree = "<group>";
 		};
 		76108B3A1EBE93B3F49F1C17 /* Products */ = {
@@ -252,6 +263,7 @@
 				DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */,
 				5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */,
 				57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */,
+				E943C0854D99419EB9FA0FBA /* InstanceListView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

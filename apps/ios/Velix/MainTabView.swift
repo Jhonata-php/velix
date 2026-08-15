@@ -13,8 +13,7 @@ struct MainTabView: View {
                     Label("Notificações", systemImage: "bell")
                 }
 
-            // TODO(Task 9): tela de conta.
-            Text("TODO — Task 9")
+            InstanceListView()
                 .tabItem {
                     Label("Conta", systemImage: "person.crop.circle")
                 }
