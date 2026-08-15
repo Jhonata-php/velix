@@ -8,8 +8,7 @@ struct MainTabView: View {
                     Label("Dashboard", systemImage: "gauge")
                 }
 
-            // TODO(Task 8): notificações reais.
-            Text("TODO — Task 8")
+            NotificationSettingsView()
                 .tabItem {
                     Label("Notificações", systemImage: "bell")
                 }

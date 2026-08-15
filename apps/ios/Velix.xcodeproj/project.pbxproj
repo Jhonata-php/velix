@@ -23,6 +23,8 @@
 		DA58F0E0B1A24D3F9A0C2222 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C1111 /* DashboardView.swift */; };
 		DA58F0E0B1A24D3F9A0C4444 /* ServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C3333 /* ServerRow.swift */; };
 		DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */; };
+		5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */; };
+		57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +58,8 @@
 		DA58F0E0B1A24D3F9A0C1111 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		DA58F0E0B1A24D3F9A0C3333 /* ServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRow.swift; sourceTree = "<group>"; };
 		DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDetailView.swift; sourceTree = "<group>"; };
+		5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdEditorView.swift; sourceTree = "<group>"; };
+		02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -88,6 +92,7 @@
 				1BB7F104FB574B0A983DDFCB /* Onboarding */,
 				DA58F0E0B1A24D3F9A0C7777 /* Dashboard */,
 				DA58F0E0B1A24D3F9A0C8888 /* ServerDetail */,
+				C94A3B5CC24F76BB710D08BA /* Notifications */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -117,6 +122,15 @@
 				DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */,
 			);
 			path = ServerDetail;
+			sourceTree = "<group>";
+		};
+		C94A3B5CC24F76BB710D08BA /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */,
+				02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		76108B3A1EBE93B3F49F1C17 /* Products */ = {
@@ -236,6 +250,8 @@
 				DA58F0E0B1A24D3F9A0C2222 /* DashboardView.swift in Sources */,
 				DA58F0E0B1A24D3F9A0C4444 /* ServerRow.swift in Sources */,
 				DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */,
+				5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */,
+				57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
