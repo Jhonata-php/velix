@@ -71,6 +71,11 @@ struct AlertThresholdPreference: Codable {
     var dockerEnabled: Bool
 }
 
+// Corpo de erro do backend: a maioria das respostas 4xx/5xx só tem `message`,
+// mas o 401 de 2FA (auth.service.ts:66/70) manda `message` + `reason`
+// ("totp_required"/"totp_invalid"). Os dois campos ficam opcionais pra cobrir
+// qualquer um dos dois formatos.
 struct APIErrorBody: Decodable {
     let message: String?
+    let reason: String?
 }

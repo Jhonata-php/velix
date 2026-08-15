@@ -62,13 +62,16 @@ struct LoginView: View {
                 "/auth/login",
                 body: LoginRequest(email: email, password: password, totpCode: nil, rememberMe: rememberMe)
             )
+            // Um 2xx sem token nunca carrega reason de 2FA na prática (o backend
+            // manda totp_required/invalid como corpo de um 401, não de sucesso —
+            // ver o catch abaixo), então isso aqui é só o fallback genérico.
             if let instance = Instance(baseURL: baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
-            } else if response.reason == "totp_required" || response.reason == "totp_invalid" {
-                path.append(TwoFactorRoute(baseURL: baseURL, email: email, password: password, rememberMe: rememberMe))
             } else {
                 errorMessage = "Não foi possível entrar"
             }
+        } catch let APIError.http(_, _, reason) where reason == "totp_required" || reason == "totp_invalid" {
+            path.append(TwoFactorRoute(baseURL: baseURL, email: email, password: password, rememberMe: rememberMe))
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Erro ao entrar"
         }

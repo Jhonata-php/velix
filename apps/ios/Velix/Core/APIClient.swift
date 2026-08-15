@@ -1,13 +1,13 @@
 import Foundation
 
 enum APIError: Error, LocalizedError {
-    case http(status: Int, message: String?)
+    case http(status: Int, message: String?, reason: String?)
     case decoding(Error)
     case network(Error)
 
     var errorDescription: String? {
         switch self {
-        case .http(_, let message): return message ?? "Erro ao falar com o servidor"
+        case .http(_, let message, _): return message ?? "Erro ao falar com o servidor"
         case .decoding: return "Resposta inesperada do servidor"
         case .network: return "Sem conexão com o servidor"
         }
@@ -46,7 +46,7 @@ final class APIClient {
         }
         guard (200..<300).contains(http.statusCode) else {
             let body = try? JSONDecoder().decode(APIErrorBody.self, from: data)
-            throw APIError.http(status: http.statusCode, message: body?.message)
+            throw APIError.http(status: http.statusCode, message: body?.message, reason: body?.reason)
         }
         do {
             return try JSONDecoder().decode(T.self, from: data)
