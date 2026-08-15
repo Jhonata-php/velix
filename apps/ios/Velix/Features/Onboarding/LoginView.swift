@@ -69,6 +69,10 @@ struct LoginView: View {
             // ver o catch abaixo), então isso aqui é só o fallback genérico.
             if let instance = Instance(baseURL: baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
+                // Registra o push já aqui em vez de esperar o próximo launch
+                // (VelixApp.task só cobre a instância ativa no boot) — senão
+                // uma segunda instância logada fica sem push até reabrir o app.
+                await PushManager.shared.registerCurrentToken(for: instance, apiClient: session.apiClient(for: instance))
                 onFinished()
             } else {
                 errorMessage = "Não foi possível entrar"

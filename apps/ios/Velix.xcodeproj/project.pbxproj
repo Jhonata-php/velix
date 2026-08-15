@@ -8,24 +8,27 @@
 
 /* Begin PBXBuildFile section */
 		048BCA860DB985CF1A4E2451 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 554453996F547F3188B1D342 /* KeychainStoreTests.swift */; };
+		0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E867F8558F110978FA06CD2 /* AddInstanceView.swift */; };
 		152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E389E9BC8864CB50E9690C87 /* APIClient.swift */; };
 		2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722498D34EF947CE3A08E53F /* Instance.swift */; };
 		2F2BD72FA40C58724DFC2889 /* APIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBA3E7F56410CA82D506026 /* APIClientTests.swift */; };
+		3F64A5E32563E6454B3FE22D /* ServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB0EC5667AF196CDFCA107C /* ServerRow.swift */; };
+		4328DD26FE75AFB0A01AB1B1 /* ThresholdEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D6993E1161AC30A9E883AC /* ThresholdEditorView.swift */; };
+		49FF35E722F446907E367F8D /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456863276AAD7BA17EC5BB6E /* MainTabView.swift */; };
 		4B5822B6FA15D28D6A13E4CA /* VelixApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270E8D06C636DA79508B29FD /* VelixApp.swift */; };
 		5F3D8E5E6BDB0571D9ACEA27 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */; };
+		67664A10D06B27BF348BDAA0 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C19247BC950C35657CF7A7 /* AppDelegate.swift */; };
+		756CE477901F5F67622C69EB /* AppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E16469227352F17A93684D /* AppSession.swift */; };
 		7A6523892DEB3CE142E17167 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4DC84F585D65384BF06820 /* Models.swift */; };
+		7F29FEF009E315BE924AFD53 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */; };
 		8FF49F1F00C8B80B1B9D0B69 /* InstanceStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */; };
-		F1E2D3C4B5A6978869A05400 /* AppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */; };
-		56465D72E0AB4142AB674A78 /* AddInstanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE12D77C4F43CDAB382180 /* AddInstanceView.swift */; };
-		6DD830AF46F049EF8FDF209E /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8557F74E45044CF39A0FC061 /* LoginView.swift */; };
-		111141B0D3AD42518235560D /* TwoFactorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6246F87DF40248F7BBDBB6A5 /* TwoFactorView.swift */; };
-		B47934E6CA864F1A9870806C /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455D51EDBFA1408A851C5E29 /* MainTabView.swift */; };
-		DA58F0E0B1A24D3F9A0C2222 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C1111 /* DashboardView.swift */; };
-		DA58F0E0B1A24D3F9A0C4444 /* ServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C3333 /* ServerRow.swift */; };
-		DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */; };
-		5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */; };
-		57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */; };
-		E943C0854D99419EB9FA0FBA /* InstanceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */; };
+		9FE2817803B851209C6545BF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A12E1D776E45DD99D24742E /* LoginView.swift */; };
+		CDDAAA09892550D6E20CE4C7 /* PushManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F51A674FDB4A4648A35604 /* PushManager.swift */; };
+		DA3C700149AF83DE75FDC701 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB4F29BF081C328920F0432 /* DashboardView.swift */; };
+		EDBA8D5660DF919F3A03CD9F /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8376F4D6147F10648552916 /* NotificationSettingsView.swift */; };
+		EFEDB52C49DC90AD6D29CD91 /* TwoFactorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 754EF5A3F49DE4769991F178 /* TwoFactorView.swift */; };
+		F6774F62DCD04D8E5374BD6D /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 0D67C9C1EC6B3468588A938B /* FirebaseMessaging */; };
+		FDD72E0DC0EE735F124B9765 /* InstanceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E162B48EE388298BA0A90108 /* InstanceListView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,32 +42,66 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		02F51A674FDB4A4648A35604 /* PushManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
+		0E867F8558F110978FA06CD2 /* AddInstanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddInstanceView.swift; sourceTree = "<group>"; };
 		136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceStoreTests.swift; sourceTree = "<group>"; };
 		182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		1B4DC84F585D65384BF06820 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		207EA0EADDA66ECE30917579 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		270E8D06C636DA79508B29FD /* VelixApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VelixApp.swift; sourceTree = "<group>"; };
+		456863276AAD7BA17EC5BB6E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		47A33D8B0AEBD507703C87B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		4AB4F29BF081C328920F0432 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		54FFD3C7AF444BE7531D4C6B /* Velix.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Velix.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		554453996F547F3188B1D342 /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStoreTests.swift; sourceTree = "<group>"; };
+		55C19247BC950C35657CF7A7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		55D6993E1161AC30A9E883AC /* ThresholdEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdEditorView.swift; sourceTree = "<group>"; };
 		722498D34EF947CE3A08E53F /* Instance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Instance.swift; sourceTree = "<group>"; };
+		754EF5A3F49DE4769991F178 /* TwoFactorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoFactorView.swift; sourceTree = "<group>"; };
+		7A12E1D776E45DD99D24742E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		9DBA3E7F56410CA82D506026 /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
+		B8376F4D6147F10648552916 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		BA618BF4B79D700D7412A10F /* VelixTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VelixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DFB0EC5667AF196CDFCA107C /* ServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRow.swift; sourceTree = "<group>"; };
+		E162B48EE388298BA0A90108 /* InstanceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceListView.swift; sourceTree = "<group>"; };
 		E389E9BC8864CB50E9690C87 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSession.swift; sourceTree = "<group>"; };
-		0BAE12D77C4F43CDAB382180 /* AddInstanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddInstanceView.swift; sourceTree = "<group>"; };
-		8557F74E45044CF39A0FC061 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		6246F87DF40248F7BBDBB6A5 /* TwoFactorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoFactorView.swift; sourceTree = "<group>"; };
-		455D51EDBFA1408A851C5E29 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
-		DA58F0E0B1A24D3F9A0C1111 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		DA58F0E0B1A24D3F9A0C3333 /* ServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRow.swift; sourceTree = "<group>"; };
-		DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDetailView.swift; sourceTree = "<group>"; };
-		5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdEditorView.swift; sourceTree = "<group>"; };
-		02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
-		FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceListView.swift; sourceTree = "<group>"; };
+		E4E16469227352F17A93684D /* AppSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSession.swift; sourceTree = "<group>"; };
+		F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDetailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		B9EB9C8672ADF394385162D9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F6774F62DCD04D8E5374BD6D /* FirebaseMessaging in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
+		094B1C5E07A71C3966E27694 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				9EDB18D9118C338EC5E80644 /* Dashboard */,
+				441E433C68117050A84B4387 /* Instances */,
+				1C74AAEA1522879E14E47C2B /* Notifications */,
+				F3B3639802D302DFAF3B571C /* Onboarding */,
+				F54F54630310D69A45861C41 /* ServerDetail */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		1C74AAEA1522879E14E47C2B /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				B8376F4D6147F10648552916 /* NotificationSettingsView.swift */,
+				55D6993E1161AC30A9E883AC /* ThresholdEditorView.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
 		293D2DA1AC05D7904FAE8E5C /* VelixTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -76,72 +113,25 @@
 			path = VelixTests;
 			sourceTree = "<group>";
 		};
+		441E433C68117050A84B4387 /* Instances */ = {
+			isa = PBXGroup;
+			children = (
+				E162B48EE388298BA0A90108 /* InstanceListView.swift */,
+			);
+			path = Instances;
+			sourceTree = "<group>";
+		};
 		56D711580BBF4547C0106964 /* Velix */ = {
 			isa = PBXGroup;
 			children = (
+				55C19247BC950C35657CF7A7 /* AppDelegate.swift */,
 				47A33D8B0AEBD507703C87B0 /* Info.plist */,
+				456863276AAD7BA17EC5BB6E /* MainTabView.swift */,
 				270E8D06C636DA79508B29FD /* VelixApp.swift */,
-				455D51EDBFA1408A851C5E29 /* MainTabView.swift */,
 				A9A04D3D23E79424F37E9672 /* Core */,
-				55447C7EEEEC46FEBBF85442 /* Features */,
+				094B1C5E07A71C3966E27694 /* Features */,
 			);
 			path = Velix;
-			sourceTree = "<group>";
-		};
-		55447C7EEEEC46FEBBF85442 /* Features */ = {
-			isa = PBXGroup;
-			children = (
-				1BB7F104FB574B0A983DDFCB /* Onboarding */,
-				DA58F0E0B1A24D3F9A0C7777 /* Dashboard */,
-				DA58F0E0B1A24D3F9A0C8888 /* ServerDetail */,
-				C94A3B5CC24F76BB710D08BA /* Notifications */,
-				19936DEC77954369956D487E /* Instances */,
-			);
-			path = Features;
-			sourceTree = "<group>";
-		};
-		1BB7F104FB574B0A983DDFCB /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				0BAE12D77C4F43CDAB382180 /* AddInstanceView.swift */,
-				8557F74E45044CF39A0FC061 /* LoginView.swift */,
-				6246F87DF40248F7BBDBB6A5 /* TwoFactorView.swift */,
-			);
-			path = Onboarding;
-			sourceTree = "<group>";
-		};
-		DA58F0E0B1A24D3F9A0C7777 /* Dashboard */ = {
-			isa = PBXGroup;
-			children = (
-				DA58F0E0B1A24D3F9A0C1111 /* DashboardView.swift */,
-				DA58F0E0B1A24D3F9A0C3333 /* ServerRow.swift */,
-			);
-			path = Dashboard;
-			sourceTree = "<group>";
-		};
-		DA58F0E0B1A24D3F9A0C8888 /* ServerDetail */ = {
-			isa = PBXGroup;
-			children = (
-				DA58F0E0B1A24D3F9A0C5555 /* ServerDetailView.swift */,
-			);
-			path = ServerDetail;
-			sourceTree = "<group>";
-		};
-		C94A3B5CC24F76BB710D08BA /* Notifications */ = {
-			isa = PBXGroup;
-			children = (
-				5F03D96105CE476BEFFAC130 /* ThresholdEditorView.swift */,
-				02A68633E81A99CB5E6F9D28 /* NotificationSettingsView.swift */,
-			);
-			path = Notifications;
-			sourceTree = "<group>";
-		};
-		19936DEC77954369956D487E /* Instances */ = {
-			isa = PBXGroup;
-			children = (
-				FD763D58EF9F4CFF84C49194 /* InstanceListView.swift */,
-			);
-			path = Instances;
 			sourceTree = "<group>";
 		};
 		76108B3A1EBE93B3F49F1C17 /* Products */ = {
@@ -153,14 +143,24 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		9EDB18D9118C338EC5E80644 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				4AB4F29BF081C328920F0432 /* DashboardView.swift */,
+				DFB0EC5667AF196CDFCA107C /* ServerRow.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
 		A9A04D3D23E79424F37E9672 /* Core */ = {
 			isa = PBXGroup;
 			children = (
 				E389E9BC8864CB50E9690C87 /* APIClient.swift */,
-				1A2B3C4D5E6F7A8B9C0D1E2F /* AppSession.swift */,
+				E4E16469227352F17A93684D /* AppSession.swift */,
 				722498D34EF947CE3A08E53F /* Instance.swift */,
 				182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */,
 				1B4DC84F585D65384BF06820 /* Models.swift */,
+				02F51A674FDB4A4648A35604 /* PushManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -174,6 +174,24 @@
 			);
 			sourceTree = "<group>";
 		};
+		F3B3639802D302DFAF3B571C /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				0E867F8558F110978FA06CD2 /* AddInstanceView.swift */,
+				7A12E1D776E45DD99D24742E /* LoginView.swift */,
+				754EF5A3F49DE4769991F178 /* TwoFactorView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		F54F54630310D69A45861C41 /* ServerDetail */ = {
+			isa = PBXGroup;
+			children = (
+				F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */,
+			);
+			path = ServerDetail;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -182,6 +200,7 @@
 			buildConfigurationList = CF4899C09BF765D6E69D7E50 /* Build configuration list for PBXNativeTarget "Velix" */;
 			buildPhases = (
 				82261DF0C9D72D4AEB95C28A /* Sources */,
+				B9EB9C8672ADF394385162D9 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -189,6 +208,7 @@
 			);
 			name = Velix;
 			packageProductDependencies = (
+				0D67C9C1EC6B3468588A938B /* FirebaseMessaging */,
 			);
 			productName = Velix;
 			productReference = 54FFD3C7AF444BE7531D4C6B /* Velix.app */;
@@ -232,6 +252,9 @@
 			);
 			mainGroup = AF24DC6ACD4856158AA779A0;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				15E93E388B356CC2564DD8FB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 76108B3A1EBE93B3F49F1C17 /* Products */;
 			projectDirPath = "";
@@ -249,21 +272,23 @@
 			buildActionMask = 2147483647;
 			files = (
 				152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */,
-				F1E2D3C4B5A6978869A05400 /* AppSession.swift in Sources */,
+				0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */,
+				67664A10D06B27BF348BDAA0 /* AppDelegate.swift in Sources */,
+				756CE477901F5F67622C69EB /* AppSession.swift in Sources */,
+				DA3C700149AF83DE75FDC701 /* DashboardView.swift in Sources */,
 				2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */,
+				FDD72E0DC0EE735F124B9765 /* InstanceListView.swift in Sources */,
 				5F3D8E5E6BDB0571D9ACEA27 /* KeychainStore.swift in Sources */,
+				9FE2817803B851209C6545BF /* LoginView.swift in Sources */,
+				49FF35E722F446907E367F8D /* MainTabView.swift in Sources */,
 				7A6523892DEB3CE142E17167 /* Models.swift in Sources */,
+				EDBA8D5660DF919F3A03CD9F /* NotificationSettingsView.swift in Sources */,
+				CDDAAA09892550D6E20CE4C7 /* PushManager.swift in Sources */,
+				7F29FEF009E315BE924AFD53 /* ServerDetailView.swift in Sources */,
+				3F64A5E32563E6454B3FE22D /* ServerRow.swift in Sources */,
+				4328DD26FE75AFB0A01AB1B1 /* ThresholdEditorView.swift in Sources */,
+				EFEDB52C49DC90AD6D29CD91 /* TwoFactorView.swift in Sources */,
 				4B5822B6FA15D28D6A13E4CA /* VelixApp.swift in Sources */,
-				B47934E6CA864F1A9870806C /* MainTabView.swift in Sources */,
-				56465D72E0AB4142AB674A78 /* AddInstanceView.swift in Sources */,
-				6DD830AF46F049EF8FDF209E /* LoginView.swift in Sources */,
-				111141B0D3AD42518235560D /* TwoFactorView.swift in Sources */,
-				DA58F0E0B1A24D3F9A0C2222 /* DashboardView.swift in Sources */,
-				DA58F0E0B1A24D3F9A0C4444 /* ServerRow.swift in Sources */,
-				DA58F0E0B1A24D3F9A0C6666 /* ServerDetailView.swift in Sources */,
-				5A46802008A2FABC81EAF0B5 /* ThresholdEditorView.swift in Sources */,
-				57184421388FF9771EBAD1B6 /* NotificationSettingsView.swift in Sources */,
-				E943C0854D99419EB9FA0FBA /* InstanceListView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -508,6 +533,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		15E93E388B356CC2564DD8FB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0D67C9C1EC6B3468588A938B /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 15E93E388B356CC2564DD8FB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F81C98185A5B9FFC6E4C9CF0 /* Project object */;
 }

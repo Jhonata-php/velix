@@ -17,7 +17,8 @@ targets:
       path: Velix/Info.plist
       properties:
         UIBackgroundModes: [remote-notification]
-    dependencies: []
+    dependencies:
+      - package: FirebaseMessaging
   VelixTests:
     type: bundle.unit-test
     platform: iOS
@@ -28,3 +29,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Velix
+packages:
+  FirebaseMessaging:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0

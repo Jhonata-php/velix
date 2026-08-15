@@ -70,6 +70,9 @@ struct TwoFactorView: View {
             )
             if let instance = Instance(baseURL: route.baseURL, loginResponse: response) {
                 session.instanceStore.add(instance)
+                // Ver LoginView.login() — mesma lógica: registra o push já
+                // aqui pra não depender do próximo launch do app.
+                await PushManager.shared.registerCurrentToken(for: instance, apiClient: session.apiClient(for: instance))
                 onFinished()
             } else {
                 errorMessage = "Código inválido"
