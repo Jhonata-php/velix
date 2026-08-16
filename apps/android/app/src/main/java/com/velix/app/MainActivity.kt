@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
                     // (instances deixa de estar vazia) — nada explícito a fazer aqui.
                     OnboardingNavHost(onFinished = {})
                 } else {
-                    // MainNavHost (bottom nav) — Task 6+
+                    MainNavHost()
                 }
             }
         }
