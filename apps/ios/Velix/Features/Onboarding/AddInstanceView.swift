@@ -13,37 +13,78 @@ struct AddInstanceView: View {
     @State private var isChecking = false
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
+    @FocusState private var fieldFocused: Bool
+
+    private var isEnabled: Bool {
+        !domainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isChecking
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
-            Form {
-                Section {
-                    TextField("dominio.com", text: $domainText)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Endereço da instância")
-                } footer: {
-                    Text("Com ou sem https://, tanto faz.")
-                }
+            ZStack {
+                VelixBackground()
 
-                if let errorMessage {
-                    Text(errorMessage).foregroundStyle(.red)
-                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        VelixAuthHeader(
+                            title: "Adicionar instância",
+                            subtitle: "Informe o domínio do painel Velix que você administra."
+                        )
 
-                Button {
-                    Task { await continueTapped() }
-                } label: {
-                    if isChecking {
-                        ProgressView()
-                    } else {
-                        Text("Continuar")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ENDEREÇO DA INSTÂNCIA")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .tracking(0.5)
+
+                            TextField("dominio.com", text: $domainText)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($fieldFocused)
+                                .textFieldStyle(VelixTextFieldStyle(isFocused: fieldFocused))
+                                .submitLabel(.go)
+                                .onSubmit { Task { await continueTapped() } }
+
+                            Text("Com ou sem https://, tanto faz.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let errorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(errorMessage)
+                            }
+                            .font(.system(size: 14))
+                            .foregroundStyle(.red)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+
+                        Button {
+                            Task { await continueTapped() }
+                        } label: {
+                            if isChecking {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("Continuar")
+                            }
+                        }
+                        .buttonStyle(VelixPrimaryButtonStyle(isEnabled: isEnabled))
+                        .disabled(!isEnabled)
+
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 32)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .disabled(domainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isChecking)
             }
-            .navigationTitle("Adicionar instância")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .principal) { Text("") } }
             .navigationDestination(for: URL.self) { baseURL in
                 LoginView(baseURL: baseURL, path: $path, onFinished: onFinished)
             }

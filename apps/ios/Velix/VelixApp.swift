@@ -15,6 +15,7 @@ struct VelixApp: App {
                 }
             }
             .environment(session)
+            .tint(VelixTheme.purple)
             .task {
                 PushManager.shared.instanceStore = session.instanceStore
                 if let active = session.instanceStore.activeInstance {
