@@ -208,7 +208,15 @@ export class ServersService {
     const samples = await this.prisma.serverMetricSample.findMany({
       where: { serverId: id, capturedAt: { gte: since } },
       orderBy: { capturedAt: 'asc' },
-      select: { loadAvg1: true, memUsedMb: true, memTotalMb: true, diskPercent: true, capturedAt: true },
+      select: {
+        loadAvg1: true,
+        memUsedMb: true,
+        memTotalMb: true,
+        diskPercent: true,
+        cpuPercent: true,
+        temperatureCelsius: true,
+        capturedAt: true,
+      },
     });
     return samples;
   }
