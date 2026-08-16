@@ -22,12 +22,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.velix.app.features.dashboard.DashboardScreen
+import com.velix.app.features.instances.InstanceListScreen
 import com.velix.app.features.notifications.NotificationSettingsScreen
+import com.velix.app.features.onboarding.OnboardingNavHost
 import com.velix.app.features.serverdetail.ServerDetailScreen
 import kotlinx.serialization.Serializable
 
 /** Rotas da árvore pós-onboarding: os 3 destinos da bottom nav mais o detalhe
- * de servidor (fora da bottom nav, alcançado a partir do dashboard). */
+ * de servidor (fora da bottom nav, alcançado a partir do dashboard) e o fluxo
+ * de onboarding reaproveitado (empilhado por cima da aba Conta, pra adicionar
+ * uma instância sem sair do NavController principal — ver InstanceListScreen). */
 sealed interface MainRoute {
     @Serializable
     data object Dashboard : MainRoute
@@ -40,6 +44,9 @@ sealed interface MainRoute {
 
     @Serializable
     data object Account : MainRoute
+
+    @Serializable
+    data object AddInstance : MainRoute
 }
 
 private data class BottomTab(val route: MainRoute, val label: String, val icon: ImageVector)
@@ -95,7 +102,14 @@ fun MainNavHost() {
                 NotificationSettingsScreen()
             }
             composable<MainRoute.Account> {
-                Text("TODO — Task 9")
+                InstanceListScreen(onAddInstance = { navController.navigate(MainRoute.AddInstance) })
+            }
+            composable<MainRoute.AddInstance> {
+                // Mesmo grafo de onboarding da Task 5, empilhado por cima desta tela
+                // no MESMO NavController da bottom nav — popBackStack() no callback de
+                // conclusão volta exatamente pra aba Conta (diferente do dismiss()
+                // ambíguo do SwiftUI, aqui não tem chance de fechar o destino errado).
+                OnboardingNavHost(onFinished = { navController.popBackStack() })
             }
         }
     }
