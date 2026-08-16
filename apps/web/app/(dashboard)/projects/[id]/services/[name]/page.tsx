@@ -795,7 +795,7 @@ function DomainsTab({
     setRemovingId(domainId);
     setError(null);
     try {
-      await apiFetch(`/traefik/domains/${domainId}`, { method: 'DELETE' });
+      await apiFetch(`/domains/${domainId}`, { method: 'DELETE' });
       onChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao remover domínio');
