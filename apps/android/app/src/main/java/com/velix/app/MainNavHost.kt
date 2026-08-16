@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.velix.app.features.dashboard.DashboardScreen
+import com.velix.app.features.notifications.NotificationSettingsScreen
 import com.velix.app.features.serverdetail.ServerDetailScreen
 import kotlinx.serialization.Serializable
 
@@ -91,7 +92,7 @@ fun MainNavHost() {
                 ServerDetailScreen(serverId = route.serverId)
             }
             composable<MainRoute.Notifications> {
-                Text("TODO — Task 8")
+                NotificationSettingsScreen()
             }
             composable<MainRoute.Account> {
                 Text("TODO — Task 9")
