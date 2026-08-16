@@ -21,6 +21,7 @@
 		756CE477901F5F67622C69EB /* AppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E16469227352F17A93684D /* AppSession.swift */; };
 		7A6523892DEB3CE142E17167 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4DC84F585D65384BF06820 /* Models.swift */; };
 		7F29FEF009E315BE924AFD53 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */; };
+		827B5CD4BB000E9A036D7267 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DDF9E29301AAD73E79E6ED8A /* Assets.xcassets */; };
 		8FF49F1F00C8B80B1B9D0B69 /* InstanceStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */; };
 		9FE2817803B851209C6545BF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A12E1D776E45DD99D24742E /* LoginView.swift */; };
 		CDDAAA09892550D6E20CE4C7 /* PushManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F51A674FDB4A4648A35604 /* PushManager.swift */; };
@@ -62,6 +63,7 @@
 		9DBA3E7F56410CA82D506026 /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
 		B8376F4D6147F10648552916 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		BA618BF4B79D700D7412A10F /* VelixTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VelixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DDF9E29301AAD73E79E6ED8A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DFB0EC5667AF196CDFCA107C /* ServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRow.swift; sourceTree = "<group>"; };
 		E162B48EE388298BA0A90108 /* InstanceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceListView.swift; sourceTree = "<group>"; };
 		E389E9BC8864CB50E9690C87 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -125,6 +127,7 @@
 			isa = PBXGroup;
 			children = (
 				55C19247BC950C35657CF7A7 /* AppDelegate.swift */,
+				DDF9E29301AAD73E79E6ED8A /* Assets.xcassets */,
 				47A33D8B0AEBD507703C87B0 /* Info.plist */,
 				456863276AAD7BA17EC5BB6E /* MainTabView.swift */,
 				270E8D06C636DA79508B29FD /* VelixApp.swift */,
@@ -200,6 +203,7 @@
 			buildConfigurationList = CF4899C09BF765D6E69D7E50 /* Build configuration list for PBXNativeTarget "Velix" */;
 			buildPhases = (
 				82261DF0C9D72D4AEB95C28A /* Sources */,
+				BB92D0C4279B0C4900268729 /* Resources */,
 				B9EB9C8672ADF394385162D9 /* Frameworks */,
 			);
 			buildRules = (
@@ -265,6 +269,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BB92D0C4279B0C4900268729 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				827B5CD4BB000E9A036D7267 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		82261DF0C9D72D4AEB95C28A /* Sources */ = {
