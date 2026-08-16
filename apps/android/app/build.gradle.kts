@@ -5,6 +5,13 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Só aplica o plugin do Google Services se existir um projeto Firebase real
+// (google-services.json baixado do console) — sem isso, o plugin falha o build
+// inteiro procurando um arquivo que não existe. Ver Task 10 / spec seção 2 item 4.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.velix.app"
     compileSdk = 35
@@ -48,5 +55,7 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.vico.compose)
     implementation(libs.vico.compose.m3)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging.ktx)
     testImplementation(libs.junit)
 }

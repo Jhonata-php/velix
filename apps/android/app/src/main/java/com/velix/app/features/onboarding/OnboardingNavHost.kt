@@ -8,6 +8,7 @@ import androidx.navigation.toRoute
 import com.velix.app.core.AppSession
 import com.velix.app.core.Instance
 import com.velix.app.core.LoginResponse
+import com.velix.app.core.PushManager
 import kotlinx.serialization.Serializable
 import java.net.URI
 import java.util.UUID
@@ -35,9 +36,11 @@ sealed interface OnboardingRoute {
 /** Monta a `Instance` a partir de uma resposta de `/auth/login` bem-sucedida e a
  * adiciona à sessão — chamada tanto pelo login direto (LoginScreen) quanto pelo
  * reenvio pós-2FA (TwoFactorScreen), pra não duplicar a lógica de conclusão do
- * onboarding. Retorna `null` se a resposta não trouxer token/usuário (não deveria
+ * onboarding (incluindo o registro do token de push logo em seguida — Task 10:
+ * um único ponto cobre os dois fluxos em vez de duplicar a chamada nas duas
+ * telas). Retorna `null` se a resposta não trouxer token/usuário (não deveria
  * acontecer num 2xx de verdade, mas cobre o caso defensivamente). */
-fun completeLogin(session: AppSession, baseUrl: String, response: LoginResponse): Instance? {
+suspend fun completeLogin(session: AppSession, baseUrl: String, response: LoginResponse): Instance? {
     val token = response.accessToken ?: return null
     val user = response.user ?: return null
     val displayName = try {
@@ -53,6 +56,7 @@ fun completeLogin(session: AppSession, baseUrl: String, response: LoginResponse)
         accessToken = token,
     )
     session.instanceStore.add(instance)
+    PushManager.registerCurrentToken(instance, session.apiClient(instance))
     return instance
 }
 
