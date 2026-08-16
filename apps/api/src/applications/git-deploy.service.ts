@@ -88,6 +88,46 @@ export class GitDeployService {
     return false;
   }
 
+  /** Melhor esforço: se o log de commit falhar por qualquer motivo, o deploy segue sem essa informação. */
+  private async getCommitInfo(options: SshConnectOptions, repoDir: string): Promise<{ sha?: string; message?: string }> {
+    const result = await this.ssh.runCommand(options, `cd ${repoDir} && git log -1 --pretty=format:%H%n%s`, 15_000);
+    if (!result.ok || !result.stdout.trim()) return {};
+    const [sha, ...rest] = result.stdout.split('\n');
+    return { sha: sha?.trim() || undefined, message: rest.join('\n').trim() || undefined };
+  }
+
+  /** Cria a linha de histórico "em andamento" — atualizada por {@link finishDeploymentRun} quando o deploy termina. */
+  async startDeploymentRun(
+    applicationId: string,
+    opts: { deploymentId?: string; trigger: 'manual' | 'webhook'; triggeredByUserId?: string },
+  ) {
+    return this.prisma.projectDeploymentRun.create({
+      data: {
+        applicationId,
+        deploymentId: opts.deploymentId ?? null,
+        trigger: opts.trigger,
+        triggeredByUserId: opts.triggeredByUserId ?? null,
+      },
+    });
+  }
+
+  async finishDeploymentRun(
+    runId: string,
+    result: { ok: boolean; error?: string; commitSha?: string; commitMessage?: string; log?: string },
+  ) {
+    await this.prisma.projectDeploymentRun.update({
+      where: { id: runId },
+      data: {
+        status: result.ok ? 'SUCCESS' : 'ERROR',
+        error: result.error ?? null,
+        commitSha: result.commitSha ?? null,
+        commitMessage: result.commitMessage ?? null,
+        log: result.log ?? null,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
   /** Nixpacks não vem com o Docker — instalado sob demanda, só quando escolhido. */
   private async ensureNixpacks(options: SshConnectOptions, onLog?: LogFn) {
     const check = await this.ssh.runCommand(options, 'command -v nixpacks', 15_000);
@@ -105,7 +145,12 @@ export class GitDeployService {
     if (!install.ok) throw new Error('Falha ao instalar o Nixpacks no servidor');
   }
 
-  async deploy(applicationId: string, dto: DeployFromGitInput, onLog?: LogFn) {
+  async deploy(
+    applicationId: string,
+    dto: DeployFromGitInput,
+    onLog?: LogFn,
+    meta?: { trigger?: 'manual' | 'webhook'; triggeredByUserId?: string },
+  ) {
     const app = await this.getApplication(applicationId);
     const { server, options } = await this.servers.getServerWithConnectOptions(app.serverId);
     if (!server.dockerInstalled) {
@@ -160,8 +205,14 @@ export class GitDeployService {
     const deploymentCompose = renderGitCompose({ slug, serviceName, image, port, env, volumes, proxyNetwork: PROXY_NETWORK });
 
     // Toda linha de log passa por aqui: o token vai embutido na URL de clone e
-    // o git costuma ecoá-la em mensagens de erro.
-    const log: LogFn | undefined = onLog && ((line: string) => onLog(redactToken(line, token)));
+    // o git costuma ecoá-la em mensagens de erro. Também acumulada em
+    // logBuffer pra virar o log gravado no histórico de implantação.
+    const logBuffer: string[] = [];
+    const log: LogFn = (line: string) => {
+      const clean = redactToken(line, token);
+      logBuffer.push(clean);
+      onLog?.(clean);
+    };
 
     const deployment = await this.prisma.projectDeployment.create({
       data: {
@@ -189,6 +240,14 @@ export class GitDeployService {
     const mergedCompose = await this.mergedComposeExcluding(applicationId);
     await this.prisma.application.update({ where: { id: applicationId }, data: { status: 'DEPLOYING', composeRendered: mergedCompose } });
 
+    const run = await this.startDeploymentRun(applicationId, {
+      deploymentId: deployment.id,
+      trigger: meta?.trigger ?? 'manual',
+      triggeredByUserId: meta?.triggeredByUserId,
+    });
+    let commitSha: string | undefined;
+    let commitMessage: string | undefined;
+
     try {
       log?.(`Preparando ${dir}...\n`);
       const mkdir = await this.ssh.runCommand(options, `sudo rm -rf ${repoDir} && sudo mkdir -p ${dir}`, 30_000);
@@ -209,6 +268,10 @@ export class GitDeployService {
           'Falha ao clonar o repositório. Confira a URL, a branch e — se for privado — o token de acesso.',
         );
       }
+
+      const commit = await this.getCommitInfo(options, repoDir);
+      commitSha = commit.sha;
+      commitMessage = commit.message;
 
       if (dto.buildMethod === 'dockerfile') {
         const check = await this.ssh.runCommand(options, `sudo test -f ${repoDir}/${dockerfilePath} && echo yes`, 15_000);
@@ -277,12 +340,14 @@ export class GitDeployService {
       await this.prisma.projectService.updateMany({ where: { deploymentId: deployment.id }, data: { status: 'RUNNING' } });
 
       log?.('Serviço implantado com sucesso.\n');
-      return { ok: true, applicationId, deploymentId: deployment.id, domain };
+      await this.finishDeploymentRun(run.id, { ok: true, commitSha, commitMessage, log: logBuffer.join('') });
+      return { ok: true, applicationId, deploymentId: deployment.id, domain, commitSha, commitMessage };
     } catch (err) {
       const message = redactToken(err instanceof Error ? err.message : 'Falha na implantação', token);
       await this.prisma.application.update({ where: { id: applicationId }, data: { status: 'ERROR', lastError: message.slice(0, 500) } });
       await this.prisma.projectService.updateMany({ where: { deploymentId: deployment.id }, data: { status: 'ERROR' } });
-      return { ok: false, applicationId, deploymentId: deployment.id, error: message };
+      await this.finishDeploymentRun(run.id, { ok: false, error: message, commitSha, commitMessage, log: logBuffer.join('') });
+      return { ok: false, applicationId, deploymentId: deployment.id, error: message, commitSha, commitMessage };
     }
   }
 
@@ -374,7 +439,11 @@ export class GitDeployService {
    * webhook chama quando chega um push.
    */
 
-  async redeploy(deploymentId: string, onLog?: LogFn) {
+  async redeploy(
+    deploymentId: string,
+    onLog?: LogFn,
+    meta?: { trigger?: 'manual' | 'webhook'; triggeredByUserId?: string },
+  ) {
     const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
     if (!deployment) throw new NotFoundException('Implantação não encontrada');
     if (deployment.sourceType !== 'git' || !deployment.repoUrl) {
@@ -394,9 +463,22 @@ export class GitDeployService {
       : deployment.repoTokenEnc
         ? decryptCredential(deployment.repoTokenEnc)
         : undefined;
-    const log: LogFn | undefined = onLog && ((line: string) => onLog(redactToken(line, token)));
+    const logBuffer: string[] = [];
+    const log: LogFn = (line: string) => {
+      const clean = redactToken(line, token);
+      logBuffer.push(clean);
+      onLog?.(clean);
+    };
 
     await this.prisma.application.update({ where: { id: app.id }, data: { status: 'DEPLOYING' } });
+
+    const run = await this.startDeploymentRun(app.id, {
+      deploymentId: deployment.id,
+      trigger: meta?.trigger ?? 'manual',
+      triggeredByUserId: meta?.triggeredByUserId,
+    });
+    let commitSha: string | undefined;
+    let commitMessage: string | undefined;
 
     try {
       const ref = deployment.gitRef ?? 'main';
@@ -418,6 +500,10 @@ export class GitDeployService {
         log && ((chunk) => log(chunk)),
       );
       if (!fetch.ok) throw new Error(`Falha ao atualizar o repositório no servidor: ${fetch.stderr || fetch.message}`);
+
+      const commit = await this.getCommitInfo(options, repoDir);
+      commitSha = commit.sha;
+      commitMessage = commit.message;
 
       log?.('Reconstruindo a imagem...\n');
       const buildCmd =
@@ -441,11 +527,13 @@ export class GitDeployService {
 
       await this.prisma.application.update({ where: { id: app.id }, data: { status: 'RUNNING', lastError: null } });
       log?.('Reimplantado com sucesso.\n');
-      return { ok: true, applicationId: app.id };
+      await this.finishDeploymentRun(run.id, { ok: true, commitSha, commitMessage, log: logBuffer.join('') });
+      return { ok: true, applicationId: app.id, commitSha, commitMessage };
     } catch (err) {
       const message = redactToken(err instanceof Error ? err.message : 'Falha ao reimplantar', token);
       await this.prisma.application.update({ where: { id: app.id }, data: { status: 'ERROR', lastError: message.slice(0, 500) } });
-      return { ok: false, applicationId: app.id, error: message };
+      await this.finishDeploymentRun(run.id, { ok: false, error: message, commitSha, commitMessage, log: logBuffer.join('') });
+      return { ok: false, applicationId: app.id, error: message, commitSha, commitMessage };
     }
   }
 }

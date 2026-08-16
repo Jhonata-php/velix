@@ -183,9 +183,9 @@ async function handleConnection(
         result = await deps.applications.deployManifestIntoProject(applicationId, dto, onLog);
       } else if (msg.op === 'service-deploy-git') {
         const { applicationId, ...dto } = msg.params;
-        result = await deps.gitDeploy.deploy(applicationId, dto, onLog);
+        result = await deps.gitDeploy.deploy(applicationId, dto, onLog, { trigger: 'manual', triggeredByUserId: userId });
       } else if (msg.op === 'service-redeploy-git') {
-        result = await deps.gitDeploy.redeploy(msg.params.deploymentId, onLog);
+        result = await deps.gitDeploy.redeploy(msg.params.deploymentId, onLog, { trigger: 'manual', triggeredByUserId: userId });
       } else if (msg.op === 'container-logs') {
         // Fica aberto até o usuário fechar a aba — não tem "concluído".
         result = await deps.servers.streamContainerLogs(serverId, msg.params.containerId, onLog, ws);

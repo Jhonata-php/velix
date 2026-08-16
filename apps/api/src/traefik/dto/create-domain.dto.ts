@@ -16,4 +16,9 @@ export class CreateDomainDto {
   @IsOptional()
   @IsBoolean()
   createDnsRecord?: boolean;
+
+  /** Proxy da Cloudflare (nuvem laranja) no registro DNS — ver mesmo campo em CreateApplicationDomainDto. */
+  @IsOptional()
+  @IsBoolean()
+  proxied?: boolean;
 }

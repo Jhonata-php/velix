@@ -125,6 +125,24 @@ export interface ProjectDeployment {
   updatedAt: string;
 }
 
+export interface ProjectDeploymentRun {
+  id: string;
+  deploymentId: string | null;
+  trigger: string;
+  status: 'RUNNING' | 'SUCCESS' | 'ERROR';
+  commitSha: string | null;
+  commitMessage: string | null;
+  triggeredByUserId: string | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface ProjectDeploymentRunDetail extends ProjectDeploymentRun {
+  applicationId: string;
+  log: string | null;
+}
+
 export interface ProjectDomain {
   id: string;
   hostname: string;

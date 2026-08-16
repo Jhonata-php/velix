@@ -247,6 +247,9 @@ model Domain {
   serviceName        String?
   targetPort         Int
   createDnsRecord    Boolean      @default(true)
+  /// Proxy da Cloudflare (nuvem laranja) no registro DNS criado — false é
+  /// "somente DNS" (nuvem cinza), o padrão de sempre antes deste campo existir.
+  proxied            Boolean      @default(false)
   cloudflareRecordId String?
   cloudflareZoneId   String?
   status             DomainStatus @default(PENDING)
@@ -304,8 +307,33 @@ model Application {
   domains          Domain[]
   services         ProjectService[]
   deployments      ProjectDeployment[]
+  deploymentRuns   ProjectDeploymentRun[]
 
   @@index([serverId])
+}
+
+/// Histórico de execuções de deploy/redeploy de uma Application — cada
+/// clique em "Implantar" (ou push que dispara o webhook) vira uma linha
+/// aqui, com o log acumulado, pra dar pra ver o que rodou depois do fato.
+model ProjectDeploymentRun {
+  id                String      @id @default(uuid())
+  applicationId     String
+  application       Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  deploymentId      String?
+
+  /// "manual" | "webhook"
+  trigger           String
+  /// "RUNNING" | "SUCCESS" | "ERROR"
+  status            String      @default("RUNNING")
+  commitSha         String?
+  commitMessage     String?
+  triggeredByUserId String?
+  error             String?
+  log               String?
+  startedAt         DateTime    @default(now())
+  finishedAt        DateTime?
+
+  @@index([applicationId, startedAt])
 }
 
 /// Uma implantação — de UM manifesto do catálogo ou de UM repositório Git —

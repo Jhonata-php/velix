@@ -18,4 +18,11 @@ export class CreateApplicationDomainDto {
   @IsOptional()
   @IsBoolean()
   createDnsRecord?: boolean;
+
+  /** Proxy da Cloudflare (nuvem laranja) no registro DNS — esconde o IP real
+   * e passa o tráfego pela CDN/WAF da Cloudflare. Só faz sentido junto com
+   * `createDnsRecord`; ignorado se o registro não for criado por aqui. */
+  @IsOptional()
+  @IsBoolean()
+  proxied?: boolean;
 }
