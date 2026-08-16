@@ -11,6 +11,7 @@ import com.velix.app.core.AppSession
 import com.velix.app.core.InstanceStore
 import com.velix.app.core.LocalAppSession
 import com.velix.app.core.SecureStore
+import com.velix.app.features.onboarding.OnboardingNavHost
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,7 +22,10 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalAppSession provides session) {
                 val instances by session.instanceStore.instances.collectAsState()
                 if (instances.isEmpty()) {
-                    // AddInstanceScreen — Task 5
+                    // onFinished no-op: instanceStore.add() já dispara a
+                    // recomposição acima pra sair da árvore de onboarding
+                    // (instances deixa de estar vazia) — nada explícito a fazer aqui.
+                    OnboardingNavHost(onFinished = {})
                 } else {
                     // MainNavHost (bottom nav) — Task 6+
                 }
