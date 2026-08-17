@@ -477,6 +477,26 @@ export class GitDeployService {
       return { ok: false, reason: 'Criação automática só é suportada para repositórios no GitHub' };
     }
 
+    // A API clássica de webhooks (usada abaixo) não aceita token de
+    // instalação de GitHub App de jeito nenhum — devolve sempre "Resource
+    // not accessible by integration", mesmo com a permissão de Administration
+    // concedida. Isso não é sobre permissão, é sobre o tipo de token: só PAT
+    // (authMethod "token") funciona aqui. Checa antes de nem tentar, pra não
+    // mandar a pessoa reconectar a conta achando que vai resolver.
+    if (deployment.gitAccountId) {
+      const account = await this.prisma.gitAccount.findUnique({
+        where: { id: deployment.gitAccountId },
+        select: { authMethod: true },
+      });
+      if (account?.authMethod === 'github_app') {
+        return {
+          ok: false,
+          reason:
+            'Contas conectadas via "Conectar com GitHub" não conseguem criar webhook por essa API (limitação do GitHub, não de permissão) — use uma conta com token pessoal (PAT) em Configurações → Repositórios',
+        };
+      }
+    }
+
     let token: string | null;
     try {
       token = await this.resolveDeploymentToken(deployment);
@@ -501,7 +521,7 @@ export class GitDeployService {
         ok: false,
         reason:
           res.status === 403 || res.status === 404
-            ? `${message} — a conexão com o GitHub pode precisar de permissão extra (reconecte em Configurações → Contas Git)`
+            ? `${message} — confere se o token em Configurações → Repositórios tem o escopo "repo"`
             : message,
       };
     }

@@ -30,15 +30,18 @@ export function buildManifest({ label, randomSuffix, webOrigin }: ManifestOption
     setup_on_update: true,
     public: false,
     default_events: [],
+    // ponytail: "administration" já foi pedido aqui pra tentar criar webhook
+    // de autodeploy via API pra contas GitHub App — não adianta, a API
+    // clássica de webhooks (POST /repos/:owner/:repo/hooks) rejeita token de
+    // instalação de App com "Resource not accessible by integration"
+    // independente de permissão concedida (limitação do GitHub, não nossa).
+    // GitDeployService.tryCreateGitHubWebhook já pula a tentativa pra contas
+    // github_app, então não tem motivo pra pedir uma permissão mais ampla
+    // que o Velix nunca usa — token pessoal (PAT) é o único caminho pra essa
+    // automação hoje.
     default_permissions: {
       contents: 'read',
       metadata: 'read',
-      // Necessário pra criar o webhook de autodeploy automaticamente
-      // (POST /repos/:owner/:repo/hooks — ver GitDeployService.tryCreateGitHubWebhook).
-      // Contas já instaladas com o manifest antigo (só contents+metadata)
-      // precisam reconectar pra ganhar essa permissão; o GitHub não
-      // atualiza instalações existentes sozinho quando o manifest muda.
-      administration: 'write',
     },
     // Nenhum evento assinado (default_events vazio) — active:false garante
     // que o GitHub nunca tenta entregar nada aqui, a URL só precisa existir
