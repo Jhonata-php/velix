@@ -53,6 +53,27 @@ struct VelixTextFieldStyle: TextFieldStyle {
     }
 }
 
+/// Substitui o placeholder nativo de um TextField/SecureField por um Text
+/// controlado pelo app. Sem isso, campos com `textContentType` (login, senha)
+/// ficam com o placeholder pintado da cor de tint do sistema (azul, já que o
+/// app não define um tint global) — o iOS trata o placeholder como sugestão
+/// de AutoFill mesmo com o campo vazio. Uso: passe `text: ""` pro
+/// TextField/SecureField em si e aplique este modifier por cima.
+struct VelixPlaceholder: ViewModifier {
+    let text: String
+    let isEmpty: Bool
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .leading) {
+            if isEmpty {
+                Text(text)
+                    .foregroundStyle(.secondary)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 /// Botão de ação principal — roxo cheio quando habilitado, cinza neutro (não
 /// um roxo lavado) quando desabilitado, pra ficar óbvio que não vai reagir ao
 /// toque.
