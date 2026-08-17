@@ -5,9 +5,17 @@ import { useRouter } from 'next/navigation';
 import { clearToken, type StoredUser } from '@/lib/api';
 import { BottomSheet } from './BottomSheet';
 import { ThemeToggle } from '../ThemeToggle';
-import { IconSettings, IconShield, IconLogout } from '../icons';
+import { IconSettings, IconShield, IconLogout, IconDevice } from '../icons';
 
-export function MoreMenuDrawer({ user, onClose }: { user: StoredUser | null; onClose: () => void }) {
+export function MoreMenuDrawer({
+  user,
+  onClose,
+  onOpenMobilePairing,
+}: {
+  user: StoredUser | null;
+  onClose: () => void;
+  onOpenMobilePairing: () => void;
+}) {
   const router = useRouter();
 
   function logout() {
@@ -51,6 +59,14 @@ export function MoreMenuDrawer({ user, onClose }: { user: StoredUser | null; onC
           Tema
           <ThemeToggle />
         </div>
+
+        <button
+          onClick={onOpenMobilePairing}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          <IconDevice className="h-4 w-4 text-slate-400" aria-hidden />
+          App móvel
+        </button>
 
         <button
           onClick={logout}

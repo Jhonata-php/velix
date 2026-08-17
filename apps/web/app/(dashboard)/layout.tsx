@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileHeader } from '@/components/navigation/MobileHeader';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { MoreMenuDrawer } from '@/components/navigation/MoreMenuDrawer';
+import { MobilePairingModal } from '@/components/MobilePairingModal';
 import { UpdatingScreen } from '@/components/UpdatingScreen';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { SelfUpdateProvider, useSelfUpdate } from '@/lib/useSelfUpdate';
@@ -94,6 +95,7 @@ function DashboardShell({
   children: React.ReactNode;
 }) {
   const selfUpdate = useSelfUpdate();
+  const [mobilePairingOpen, setMobilePairingOpen] = useState(false);
 
   return (
     <div className="flex">
@@ -111,7 +113,17 @@ function DashboardShell({
       </div>
 
       <MobileBottomNav onOpenMore={() => setMoreOpen(true)} moreActive={moreOpen} />
-      {moreOpen && <MoreMenuDrawer user={user} onClose={() => setMoreOpen(false)} />}
+      {moreOpen && (
+        <MoreMenuDrawer
+          user={user}
+          onClose={() => setMoreOpen(false)}
+          onOpenMobilePairing={() => {
+            setMoreOpen(false);
+            setMobilePairingOpen(true);
+          }}
+        />
+      )}
+      {mobilePairingOpen && <MobilePairingModal onClose={() => setMobilePairingOpen(false)} />}
 
       {/* Fora do <main>: a atualização derruba o painel inteiro, então a tela
           cobre qualquer página em que o usuário estiver. */}
