@@ -37,10 +37,11 @@ import {
   IconTerminal,
   IconPencil,
   IconPlay,
+  IconClock,
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, ProjectDomain, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
-type TabKey = 'overview' | 'source' | 'environment' | 'domains' | 'security' | 'resources' | 'terminal';
+type TabKey = 'overview' | 'source' | 'history' | 'environment' | 'domains' | 'security' | 'resources' | 'terminal';
 
 /** Mesma heurística de `apps/api/src/terminal/container-shell.util.ts` (não
  * dá pra reaproveitar entre front e back) — só decide se mostra o botão
@@ -151,6 +152,7 @@ export default function ServicePage() {
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Visão geral', icon: <IconActivity className="h-4 w-4" /> },
     ...(fromGit ? [{ key: 'source' as const, label: 'Fonte', icon: <IconGithub className="h-4 w-4" /> }] : []),
+    ...(fromGit ? [{ key: 'history' as const, label: 'Histórico', icon: <IconClock className="h-4 w-4" /> }] : []),
     { key: 'environment', label: 'Ambiente', icon: <IconKey className="h-4 w-4" /> },
     { key: 'domains', label: 'Domínios', icon: <IconGlobe className="h-4 w-4" /> },
     { key: 'security', label: 'Segurança', icon: <IconShield className="h-4 w-4" /> },
@@ -272,10 +274,11 @@ export default function ServicePage() {
         ))}
       </div>
 
-      {tab === 'overview' && (
-        <OverviewTab project={project} service={service} onChange={load} historyReloadKey={historyReloadKey} showHistory={fromGit} />
-      )}
+      {tab === 'overview' && <OverviewTab project={project} service={service} onChange={load} />}
       {tab === 'source' && deployment && <SourceTab project={project} deployment={deployment} onChange={load} />}
+      {tab === 'history' && (
+        <DeploymentHistoryCard applicationId={project.id} deploymentId={service.deploymentId} reloadKey={historyReloadKey} />
+      )}
       {tab === 'environment' && deployment && (
         <EnvironmentTab applicationId={project.id} deploymentId={deployment.id} sourceType={deployment.sourceType} onChange={load} />
       )}
@@ -320,14 +323,10 @@ function OverviewTab({
   project,
   service,
   onChange,
-  historyReloadKey,
-  showHistory,
 }: {
   project: ProjectDetail;
   service: ProjectService;
   onChange: () => void;
-  historyReloadKey: unknown;
-  showHistory: boolean;
 }) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
 
@@ -342,10 +341,6 @@ function OverviewTab({
 
   return (
     <div className="space-y-4">
-      {showHistory && (
-        <DeploymentHistoryCard applicationId={project.id} deploymentId={service.deploymentId} reloadKey={historyReloadKey} />
-      )}
-
       <div className="card grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2">
         <div>
           <p className="text-xs text-slate-400">Imagem</p>
