@@ -351,7 +351,8 @@ export class GitDeployService {
     }
   }
 
-  /** Estado do autodeploy + a URL que o usuário cola na forja. */
+  /** Estado do autodeploy + a URL que o usuário cola na forja (só quando a
+   * criação automática não rolou — ver tryCreateGitHubWebhook). */
   async getAutoDeploy(deploymentId: string) {
     const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
     if (!deployment) throw new NotFoundException('Implantação não encontrada');
@@ -364,6 +365,7 @@ export class GitDeployService {
       enabled: deployment.autoDeploy,
       gitRef: deployment.gitRef,
       webhookUrl: deployment.webhookSecret ? `${base}/api/webhooks/git/${deployment.webhookSecret}` : null,
+      autoCreated: !!deployment.githubWebhookId,
     };
   }
 
@@ -372,11 +374,130 @@ export class GitDeployService {
     if (!deployment) throw new NotFoundException('Implantação não encontrada');
     if (deployment.sourceType !== 'git') throw new BadRequestException('Este serviço não veio de um repositório');
 
+    if (!enabled) {
+      await this.tryDeleteGitHubWebhook(deployment);
+      await this.prisma.projectDeployment.update({
+        where: { id: deployment.id },
+        data: { autoDeploy: false, githubWebhookId: null },
+      });
+      return { ...(await this.getAutoDeploy(deploymentId)), warning: null };
+    }
+
     // Implantações criadas antes deste recurso não têm segredo — gerar aqui
     // evita obrigar a reimplantar só pra ligar o autodeploy.
     const webhookSecret = deployment.webhookSecret ?? randomBytes(24).toString('base64url');
-    await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { autoDeploy: enabled, webhookSecret } });
-    return this.getAutoDeploy(deploymentId);
+    await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { autoDeploy: true, webhookSecret } });
+
+    // Já tenta criar o webhook direto no GitHub — se o token usado (conta
+    // salva ou avulso) tiver permissão, a pessoa não precisa colar URL
+    // nenhuma. Só tenta se ainda não existe um (reativar não duplica).
+    let warning: string | null = null;
+    if (!deployment.githubWebhookId) {
+      const base = (process.env.WEB_ORIGIN ?? '').replace(/\/$/, '');
+      if (!base) {
+        warning = 'Endereço público do painel (WEB_ORIGIN) não configurado — não dá pra montar a URL do webhook.';
+      } else {
+        const webhookUrl = `${base}/api/webhooks/git/${webhookSecret}`;
+        const result = await this.tryCreateGitHubWebhook(deployment, webhookUrl);
+        if (result.ok) {
+          await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { githubWebhookId: result.hookId } });
+        } else {
+          warning = result.reason;
+        }
+      }
+    }
+
+    return { ...(await this.getAutoDeploy(deploymentId)), warning };
+  }
+
+  /** Owner/repo de uma URL já validada por validateRepoUrl — só GitHub tem a
+   * API de webhook usada aqui, outras forjas caem no aviso e a pessoa cola a
+   * URL manualmente (fluxo que já existia antes desse recurso). */
+  private parseGitHubOwnerRepo(repoUrl: string): { owner: string; repo: string } | null {
+    let parsed: URL;
+    try {
+      parsed = new URL(repoUrl);
+    } catch {
+      return null;
+    }
+    if (parsed.hostname !== 'github.com') return null;
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+    const [owner, repo] = path.split('/');
+    return owner && repo ? { owner, repo } : null;
+  }
+
+  private async resolveDeploymentToken(deployment: { gitAccountId: string | null; repoTokenEnc: string | null }): Promise<string | null> {
+    if (deployment.gitAccountId) return this.gitAccounts.resolveToken(deployment.gitAccountId);
+    if (deployment.repoTokenEnc) return decryptCredential(deployment.repoTokenEnc);
+    return null;
+  }
+
+  /** Cria o webhook direto no GitHub via API, usando o mesmo token já
+   * guardado pra clonar o repositório (conta salva ou avulso). Nunca lança:
+   * falhar aqui só significa que a pessoa precisa colar a URL manualmente —
+   * o autodeploy continua ativado do lado do Velix de qualquer forma. */
+  private async tryCreateGitHubWebhook(
+    deployment: { repoUrl: string | null; gitAccountId: string | null; repoTokenEnc: string | null },
+    webhookUrl: string,
+  ): Promise<{ ok: true; hookId: number } | { ok: false; reason: string }> {
+    const parsed = deployment.repoUrl ? this.parseGitHubOwnerRepo(deployment.repoUrl) : null;
+    if (!parsed) {
+      return { ok: false, reason: 'Criação automática só é suportada para repositórios no GitHub' };
+    }
+
+    let token: string | null;
+    try {
+      token = await this.resolveDeploymentToken(deployment);
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : 'Falha ao obter token de acesso' };
+    }
+    if (!token) {
+      return { ok: false, reason: 'Nenhum token de acesso associado a esta implantação' };
+    }
+
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/hooks`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'web', active: true, events: ['push'], config: { url: webhookUrl, content_type: 'json' } }),
+    }).catch(() => null);
+
+    if (!res) return { ok: false, reason: 'Não foi possível contatar a API do GitHub' };
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      const message: string = body?.message ?? `GitHub recusou (HTTP ${res.status})`;
+      return {
+        ok: false,
+        reason:
+          res.status === 403 || res.status === 404
+            ? `${message} — a conexão com o GitHub pode precisar de permissão extra (reconecte em Configurações → Contas Git)`
+            : message,
+      };
+    }
+    const data = (await res.json()) as { id: number };
+    return { ok: true, hookId: data.id };
+  }
+
+  /** Melhor esforço: se falhar, sobra um webhook órfão no GitHub apontando
+   * pra uma URL que vai responder "autodeploy desligado" e ignorar — inofensivo. */
+  private async tryDeleteGitHubWebhook(deployment: {
+    repoUrl: string | null;
+    gitAccountId: string | null;
+    repoTokenEnc: string | null;
+    githubWebhookId: number | null;
+  }) {
+    if (!deployment.githubWebhookId) return;
+    const parsed = deployment.repoUrl ? this.parseGitHubOwnerRepo(deployment.repoUrl) : null;
+    if (!parsed) return;
+    try {
+      const token = await this.resolveDeploymentToken(deployment);
+      if (!token) return;
+      await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/hooks/${deployment.githubWebhookId}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } },
+      );
+    } catch {
+      // best-effort — ver comentário do método
+    }
   }
 
   /**

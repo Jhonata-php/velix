@@ -406,6 +406,12 @@ model ProjectDeployment {
   /// não há sessão de usuário nesse caminho. Único por implantação: vazar um
   /// não dá acesso a redeployar as outras.
   webhookSecret    String?     @unique
+  /// Id do webhook criado automaticamente no GitHub (ver
+  /// GitDeployService.tryCreateGitHubWebhook) — guardado só pra remover de lá
+  /// quando o autodeploy é desligado. Nulo quando a criação automática falhou
+  /// (repositório não é do GitHub, token sem permissão, etc.) e a pessoa colou
+  /// a URL manualmente — nesse caso não há nada nosso pra limpar no GitHub.
+  githubWebhookId  Int?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 

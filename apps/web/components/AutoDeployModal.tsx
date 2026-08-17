@@ -11,6 +11,11 @@ interface AutoDeployState {
   enabled: boolean;
   gitRef: string | null;
   webhookUrl: string | null;
+  autoCreated: boolean;
+  /** Só vem preenchido na resposta de ligar o autodeploy — motivo de a
+   * criação automática do webhook no GitHub não ter rolado (ver
+   * GitDeployService.tryCreateGitHubWebhook). */
+  warning?: string | null;
 }
 
 /**
@@ -104,7 +109,19 @@ export function AutoDeployModal({
             </span>
           </label>
 
-          {state.enabled && state.webhookUrl && (
+          {state.enabled && state.autoCreated && (
+            <Alert variant="success">
+              Webhook criado automaticamente no repositório — não precisa colar nada no GitHub, já está funcionando.
+            </Alert>
+          )}
+
+          {state.enabled && state.warning && !state.autoCreated && (
+            <Alert variant="warning">
+              Não consegui criar o webhook automaticamente no GitHub: {state.warning}. Cole a URL abaixo manualmente.
+            </Alert>
+          )}
+
+          {state.enabled && state.webhookUrl && !state.autoCreated && (
             <div>
               <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                 Cole esta URL no repositório, em Settings → Webhooks → Add webhook, com tipo de conteúdo{' '}

@@ -24,7 +24,7 @@ assert.equal(manifest.redirect_url, 'https://velix.exemplo.com/api/git-accounts/
 assert.equal(manifest.setup_url, 'https://velix.exemplo.com/api/git-accounts/github/installed');
 assert.equal(manifest.public, false);
 assert.deepEqual(manifest.default_events, []);
-assert.deepEqual(manifest.default_permissions, { contents: 'read', metadata: 'read' });
+assert.deepEqual(manifest.default_permissions, { contents: 'read', metadata: 'read', administration: 'write' });
 assert.equal(manifest.hook_attributes.active, false);
 
 console.log('github-app.util self-check OK');

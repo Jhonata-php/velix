@@ -33,6 +33,12 @@ export function buildManifest({ label, randomSuffix, webOrigin }: ManifestOption
     default_permissions: {
       contents: 'read',
       metadata: 'read',
+      // Necessário pra criar o webhook de autodeploy automaticamente
+      // (POST /repos/:owner/:repo/hooks — ver GitDeployService.tryCreateGitHubWebhook).
+      // Contas já instaladas com o manifest antigo (só contents+metadata)
+      // precisam reconectar pra ganhar essa permissão; o GitHub não
+      // atualiza instalações existentes sozinho quando o manifest muda.
+      administration: 'write',
     },
     // Nenhum evento assinado (default_events vazio) — active:false garante
     // que o GitHub nunca tenta entregar nada aqui, a URL só precisa existir
