@@ -66,6 +66,21 @@ export function AutoDeployModal({
     setTimeout(() => setCopied(false), 2000);
   }
 
+  // O GitHub nunca alcança um host privado — se WEB_ORIGIN ficou configurado
+  // errado (IP interno, "localhost", detecção de IP público que falhou na
+  // instalação), a URL é montada normalmente e parece válida, mas o webhook
+  // nunca vai chegar. Isso não aparece em lugar nenhum hoje — só descobre
+  // quem souber ir checar "Recent Deliveries" no GitHub.
+  const unreachableHost = (() => {
+    if (!state?.webhookUrl) return false;
+    try {
+      const host = new URL(state.webhookUrl).hostname;
+      return host === 'localhost' || host === '127.0.0.1' || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host);
+    } catch {
+      return false;
+    }
+  })();
+
   return (
     <Modal title={`Autodeploy — ${appName}`} onClose={onClose} maxWidth="max-w-lg">
       {!state ? (
@@ -111,6 +126,15 @@ export function AutoDeployModal({
                 A URL contém um segredo que autentica a chamada — trate como senha. Quem a tiver pode disparar
                 reimplantações desta aplicação (e só desta).
               </p>
+              {unreachableHost && (
+                <div className="mt-2">
+                  <Alert variant="warning">
+                    Esse endereço ({new URL(state!.webhookUrl!).hostname}) é interno — o GitHub não consegue alcançá-lo
+                    de fora. Corrija o <code>WEB_ORIGIN</code> nas configurações do servidor pro domínio ou IP público
+                    real do painel antes de colar essa URL no GitHub.
+                  </Alert>
+                </div>
+              )}
             </div>
           )}
 
