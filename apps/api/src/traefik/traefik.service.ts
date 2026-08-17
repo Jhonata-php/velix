@@ -448,22 +448,40 @@ export class TraefikService {
     const createDns = opts.createDnsRecord ?? true;
     const proxied = opts.proxied ?? false;
 
+    // Já existe um domínio com esse hostname em OUTRO projeto: aí sim é
+    // conflito de verdade (roubar domínio alheio). Dentro do mesmo projeto —
+    // caso comum ao reimplantar depois de recriar o serviço, ou trocar pra
+    // qual serviço o domínio aponta — reaproveita o registro e só atualiza
+    // rota/IP em vez de falhar o deploy inteiro no último passo.
     const existing = await this.prisma.domain.findUnique({ where: { hostname: opts.hostname } });
-    if (existing) {
-      throw new ConflictException(`O domínio ${opts.hostname} já está cadastrado no Velix`);
+    if (existing && existing.applicationId !== applicationId) {
+      throw new ConflictException(`O domínio ${opts.hostname} já está cadastrado em outro projeto no Velix`);
     }
 
-    const domain = await this.prisma.domain.create({
-      data: {
-        serverId,
-        applicationId,
-        hostname: opts.hostname,
-        serviceName: opts.serviceName,
-        targetPort: opts.containerPort,
-        createDnsRecord: createDns,
-        proxied,
-      },
-    });
+    const domain = existing
+      ? await this.prisma.domain.update({
+          where: { id: existing.id },
+          data: {
+            serverId,
+            serviceName: opts.serviceName,
+            targetPort: opts.containerPort,
+            createDnsRecord: createDns,
+            proxied,
+            status: 'PENDING',
+            lastError: null,
+          },
+        })
+      : await this.prisma.domain.create({
+          data: {
+            serverId,
+            applicationId,
+            hostname: opts.hostname,
+            serviceName: opts.serviceName,
+            targetPort: opts.containerPort,
+            createDnsRecord: createDns,
+            proxied,
+          },
+        });
 
     const name = routerName(domain.id);
     try {
