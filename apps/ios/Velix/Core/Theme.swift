@@ -24,19 +24,32 @@ struct VelixBackground: View {
     }
 }
 
-struct VelixTextFieldStyle: TextFieldStyle {
+/// Moldura visual compartilhada por `VelixTextFieldStyle` (campo isolado) e por
+/// campos compostos com ícone (ex.: domínio em `AddInstanceContent`), que não
+/// dá pra estilizar via `TextFieldStyle` porque o `HStack` inteiro (ícone +
+/// campo) precisa da mesma moldura, não só o `TextField`.
+struct VelixFieldContainer: ViewModifier {
     var isFocused: Bool = false
 
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
+    func body(content: Content) -> some View {
+        content
             .padding(.horizontal, 14)
             .padding(.vertical, 14)
             .background(Color(uiColor: .secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: VelixTheme.cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: VelixTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(isFocused ? VelixTheme.purple : Color.clear, lineWidth: 1.5)
+                    .strokeBorder(isFocused ? VelixTheme.purple : Color.primary.opacity(0.08), lineWidth: isFocused ? 1.5 : 1)
             )
+            .shadow(color: .black.opacity(isFocused ? 0.06 : 0.03), radius: isFocused ? 8 : 4, y: 2)
+    }
+}
+
+struct VelixTextFieldStyle: TextFieldStyle {
+    var isFocused: Bool = false
+
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration.modifier(VelixFieldContainer(isFocused: isFocused))
     }
 }
 

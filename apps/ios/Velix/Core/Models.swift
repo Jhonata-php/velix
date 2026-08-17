@@ -12,11 +12,16 @@ struct LoggedUser: Decodable {
     let role: String
 }
 
+// Snapshot bruto guardado em `Server.metrics` (coluna Json) — formato de
+// `parseMetrics` em apps/api/src/servers/metrics.util.ts, diferente do
+// histórico agregado em `ServerMetricSample` (ver `MetricSample` abaixo):
+// `diskPercent` vem como string ("42%"), não número, e o load average é
+// uma lista de 3 posições, não um campo `loadAvg1` solto.
 struct ServerMetrics: Decodable {
-    let loadAvg1: Double?
+    let loadAvg: [Double]?
     let memUsedMb: Int?
     let memTotalMb: Int?
-    let diskPercent: Double?
+    let diskPercent: String?
     let cpuPercent: Double?
     let temperatureCelsius: Double?
 }

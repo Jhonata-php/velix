@@ -12,12 +12,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.velix.app
         MARKETING_VERSION: "1.0.0"
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        DEVELOPMENT_TEAM: 6L7Y2947XZ
+        INFOPLIST_KEY_CFBundleDisplayName: Velix
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
     info:
       path: Velix/Info.plist
       properties:
         UIBackgroundModes: [remote-notification]
+        UILaunchScreen: {}
+        NSCameraUsageDescription: "Usada só para escanear o QR code de pareamento de uma instância Velix."
     dependencies:
       - package: FirebaseMessaging
   VelixTests:

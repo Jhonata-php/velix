@@ -24,7 +24,10 @@ final class APIClient {
     }
 
     func makeRequest(path: String, method: String) -> URLRequest {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        // O backend expõe tudo sob /api (ver `app.setGlobalPrefix('api')` em
+        // apps/api/src/main.ts) — sem isso toda chamada cai no Next.js do
+        // painel web e volta 404, inclusive o próprio /auth/login.
+        var request = URLRequest(url: URL(string: "/api" + path, relativeTo: baseURL)!)
         request.httpMethod = method
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

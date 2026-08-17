@@ -63,7 +63,7 @@ struct ServerRow: View {
         ServerRow(server: ServerSummary(
             id: "1", name: "prod-01", status: "ONLINE", publicIp: nil, hostname: nil,
             dockerInstalled: true,
-            metrics: ServerMetrics(loadAvg1: nil, memUsedMb: 2048, memTotalMb: 4096, diskPercent: nil, cpuPercent: 42.3, temperatureCelsius: 55.1)
+            metrics: ServerMetrics(loadAvg: nil, memUsedMb: 2048, memTotalMb: 4096, diskPercent: nil, cpuPercent: 42.3, temperatureCelsius: 55.1)
         ))
         ServerRow(server: ServerSummary(
             id: "2", name: "staging", status: "PENDING", publicIp: nil, hostname: nil,
@@ -72,7 +72,7 @@ struct ServerRow: View {
         ServerRow(server: ServerSummary(
             id: "3", name: "backup", status: "ERROR", publicIp: nil, hostname: nil,
             dockerInstalled: true,
-            metrics: ServerMetrics(loadAvg1: nil, memUsedMb: nil, memTotalMb: nil, diskPercent: nil, cpuPercent: 91.0, temperatureCelsius: nil)
+            metrics: ServerMetrics(loadAvg: nil, memUsedMb: nil, memTotalMb: nil, diskPercent: nil, cpuPercent: 91.0, temperatureCelsius: nil)
         ))
     }
 }

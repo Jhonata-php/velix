@@ -11,7 +11,7 @@ struct VelixApp: App {
                 if session.hasAnyInstance {
                     MainTabView()
                 } else {
-                    AddInstanceView()
+                    WelcomeView()
                 }
             }
             .environment(session)
