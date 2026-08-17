@@ -4,22 +4,33 @@ struct ServerRow: View {
     let server: ServerSummary
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 10, height: 10)
-                .padding(.top, 5)
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.15))
+                    .frame(width: 38, height: 38)
+                Image(systemName: "server.rack")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(statusColor)
+            }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(server.name)
-                    .font(.body)
+                    .font(.system(size: 16, weight: .semibold))
                 if let metricsText {
                     Text(metricsText)
-                        .font(.caption)
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Spacer()
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
         }
+        .padding(.vertical, 4)
     }
 
     private var statusColor: Color {

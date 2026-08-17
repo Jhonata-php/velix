@@ -19,42 +19,88 @@ struct TwoFactorView: View {
     @State private var useRecoveryCode = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @FocusState private var fieldFocused: Bool
+
+    private var isEnabled: Bool {
+        !code.isEmpty && !isLoading
+    }
 
     var body: some View {
-        Form {
-            Section {
-                if useRecoveryCode {
-                    TextField("Código de recuperação", text: $code)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } else {
-                    TextField("Código de 6 dígitos", text: $code)
-                        .keyboardType(.numberPad)
-                }
+        ZStack {
+            VelixBackground()
 
-                Button(useRecoveryCode ? "Usar código do autenticador" : "Usar código de recuperação") {
-                    useRecoveryCode.toggle()
-                    code = ""
-                    errorMessage = nil
-                }
-            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    VelixAuthHeader(
+                        title: "Verificação em duas etapas",
+                        subtitle: useRecoveryCode
+                            ? "Digite um dos seus códigos de recuperação."
+                            : "Digite o código de 6 dígitos do seu autenticador."
+                    )
 
-            if let errorMessage {
-                Text(errorMessage).foregroundStyle(.red)
-            }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(useRecoveryCode ? "CÓDIGO DE RECUPERAÇÃO" : "CÓDIGO")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .tracking(0.5)
 
-            Button {
-                Task { await confirm() }
-            } label: {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text("Confirmar")
+                        if useRecoveryCode {
+                            TextField("xxxxx-xxxxx", text: $code)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($fieldFocused)
+                                .textFieldStyle(VelixTextFieldStyle(isFocused: fieldFocused))
+                        } else {
+                            TextField("000000", text: $code)
+                                .keyboardType(.numberPad)
+                                .focused($fieldFocused)
+                                .textFieldStyle(VelixTextFieldStyle(isFocused: fieldFocused))
+                        }
+
+                        Button(useRecoveryCode ? "Usar código do autenticador" : "Usar código de recuperação") {
+                            useRecoveryCode.toggle()
+                            code = ""
+                            errorMessage = nil
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(VelixTheme.purple)
+                        .padding(.top, 2)
+                    }
+
+                    if let errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(errorMessage)
+                        }
+                        .font(.system(size: 14))
+                        .foregroundStyle(.red)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    Button {
+                        Task { await confirm() }
+                    } label: {
+                        if isLoading {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Confirmar")
+                        }
+                    }
+                    .buttonStyle(VelixPrimaryButtonStyle(isEnabled: isEnabled))
+                    .disabled(!isEnabled)
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .disabled(code.isEmpty || isLoading)
         }
-        .navigationTitle("Verificação em duas etapas")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func confirm() async {

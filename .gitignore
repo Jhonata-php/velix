@@ -10,4 +10,4 @@ docker-compose.override.yml
 *.log
 .DS_Store
 
-.superpowers/
+.superpowers/xcuserdata/

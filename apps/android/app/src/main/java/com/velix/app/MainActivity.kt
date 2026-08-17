@@ -15,6 +15,7 @@ import com.velix.app.core.LocalAppSession
 import com.velix.app.core.PushManager
 import com.velix.app.core.SecureStore
 import com.velix.app.features.onboarding.OnboardingNavHost
+import com.velix.app.ui.theme.VelixTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -31,15 +32,17 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            CompositionLocalProvider(LocalAppSession provides session) {
-                val instances by session.instanceStore.instances.collectAsState()
-                if (instances.isEmpty()) {
-                    // onFinished no-op: instanceStore.add() já dispara a
-                    // recomposição acima pra sair da árvore de onboarding
-                    // (instances deixa de estar vazia) — nada explícito a fazer aqui.
-                    OnboardingNavHost(onFinished = {})
-                } else {
-                    MainNavHost()
+            VelixTheme {
+                CompositionLocalProvider(LocalAppSession provides session) {
+                    val instances by session.instanceStore.instances.collectAsState()
+                    if (instances.isEmpty()) {
+                        // onFinished no-op: instanceStore.add() já dispara a
+                        // recomposição acima pra sair da árvore de onboarding
+                        // (instances deixa de estar vazia) — nada explícito a fazer aqui.
+                        OnboardingNavHost(onFinished = {})
+                    } else {
+                        MainNavHost()
+                    }
                 }
             }
         }

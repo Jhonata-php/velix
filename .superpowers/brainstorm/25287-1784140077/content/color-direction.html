@@ -1,0 +1,30 @@
+<h2>E a cor de destaque (botões, status, links)?</h2>
+<p class="subtitle">O EasyPanel usa verde como cor de ação/status. O Velix hoje usa índigo/roxo como marca. Quanto disso você quer trazer?</p>
+
+<div class="options">
+  <div class="option" data-choice="keep-indigo" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Manter índigo, só escurecer o fundo</h3>
+      <p>Preserva a identidade atual do Velix (botões, links, ícone ativo em índigo). Só deixa os cards/painéis mais escuros e neutros, tipo EasyPanel, sem trocar a cor de marca.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="switch-green" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Trocar para verde (clone mais fiel do EasyPanel)</h3>
+      <p>Botão primário, links e destaques passam a verde. Fica visualmente quase idêntico ao EasyPanel. Índigo só sobra pra pontos residuais (avatar, logo).</p>
+    </div>
+  </div>
+  <div class="option" data-choice="neutral-status-color" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Neutro por padrão, cor só no status</h3>
+      <p>Botões/UI ficam em tons de cinza (branco sobre cinza-900, como o "Editar" do EasyPanel). Cor entra só pra dizer estado: verde = online/ativo, vermelho = erro/excluir, âmbar = atenção. Índigo desaparece quase todo.</p>
+    </div>
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" onclick="submitSelection()">Confirmar escolha</button>
+</div>
