@@ -55,6 +55,10 @@ struct ServerDetailView: View {
             }
         }
         .navigationTitle(server.name)
+        // A barra de abas própria daqui embaixo é a barra da tela — some a do
+        // app (Dashboard/Notificações/Conta) enquanto ela está visível, senão
+        // ficam duas empilhadas.
+        .toolbar(.hidden, for: .tabBar)
         .task {
             await load()
         }
@@ -121,12 +125,11 @@ struct ServerDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(projects) { project in
-                    Button {
-                        openInBrowser()
+                    NavigationLink {
+                        ProjectDetailView(project: project)
                     } label: {
                         ProjectRow(project: project)
                     }
-                    .foregroundStyle(.primary)
                 }
             }
         }
@@ -240,13 +243,19 @@ private struct ProjectRow: View {
                 }
             }
             Spacer()
-            statusBadge
+            StatusChip(status: project.status)
         }
         .padding(.vertical, 4)
     }
+}
 
-    private var statusColor: Color {
-        switch project.status {
+/// "RUNNING"/"ERROR"/... (ApplicationStatus do backend) → cor + rótulo em
+/// português. Compartilhado entre a lista de projetos e o detalhe.
+struct StatusChip: View {
+    let status: String
+
+    private var color: Color {
+        switch status {
         case "RUNNING": return .green
         case "ERROR": return .red
         case "DEPLOYING": return .orange
@@ -254,8 +263,8 @@ private struct ProjectRow: View {
         }
     }
 
-    private var statusLabel: String {
-        switch project.status {
+    private var label: String {
+        switch status {
         case "RUNNING": return "Rodando"
         case "ERROR": return "Erro"
         case "DEPLOYING": return "Implantando"
@@ -265,13 +274,13 @@ private struct ProjectRow: View {
         }
     }
 
-    private var statusBadge: some View {
-        Text(statusLabel)
+    var body: some View {
+        Text(label)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(statusColor)
+            .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(statusColor.opacity(0.12))
+            .background(color.opacity(0.12))
             .clipShape(Capsule())
     }
 }

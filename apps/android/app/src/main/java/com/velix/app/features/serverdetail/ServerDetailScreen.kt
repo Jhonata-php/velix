@@ -75,7 +75,7 @@ private enum class DetailTab(val label: String) {
  * embaixo (NavigationBar nativo) em vez de tudo empilhado numa tela só.
  */
 @Composable
-fun ServerDetailScreen(serverId: String) {
+fun ServerDetailScreen(serverId: String, onProjectClick: (ProjectSummary) -> Unit) {
     val session = LocalAppSession.current
     val client = session.activeApiClient
     val context = LocalContext.current
@@ -139,7 +139,7 @@ fun ServerDetailScreen(serverId: String) {
                     metrics = metrics,
                     onOpenInBrowser = ::openInBrowser,
                 )
-                else -> ProjectsContent(projects = projects, onProjectClick = { openInBrowser() })
+                else -> ProjectsContent(projects = projects, onProjectClick = onProjectClick)
             }
         }
 
@@ -243,14 +243,15 @@ private fun ProjectRow(project: ProjectSummary, onClick: () -> Unit) {
     }
 }
 
-private fun statusColor(status: String): Color = when (status) {
+// Não-private: reaproveitado em ProjectDetailScreen também.
+fun statusColor(status: String): Color = when (status) {
     "RUNNING" -> Color(0xFF22C55E)
     "ERROR" -> Color(0xFFEF4444)
     "DEPLOYING" -> Color(0xFFF97316)
     else -> Color(0xFF9CA3AF)
 }
 
-private fun statusLabel(status: String): String = when (status) {
+fun statusLabel(status: String): String = when (status) {
     "RUNNING" -> "Rodando"
     "ERROR" -> "Erro"
     "DEPLOYING" -> "Implantando"
@@ -260,7 +261,7 @@ private fun statusLabel(status: String): String = when (status) {
 }
 
 @Composable
-private fun StatusChip(status: String) {
+fun StatusChip(status: String) {
     val color = statusColor(status)
     Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = 0.15f)) {
         Text(

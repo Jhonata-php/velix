@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		048BCA860DB985CF1A4E2451 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 554453996F547F3188B1D342 /* KeychainStoreTests.swift */; };
+		0D4B39722D484E869CBDCCC8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033BF930534EAD09992ACE95 /* ProjectDetailView.swift */; };
 		0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E867F8558F110978FA06CD2 /* AddInstanceView.swift */; };
 		152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E389E9BC8864CB50E9690C87 /* APIClient.swift */; };
 		2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722498D34EF947CE3A08E53F /* Instance.swift */; };
@@ -47,6 +48,7 @@
 
 /* Begin PBXFileReference section */
 		02F51A674FDB4A4648A35604 /* PushManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
+		033BF930534EAD09992ACE95 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		0E867F8558F110978FA06CD2 /* AddInstanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddInstanceView.swift; sourceTree = "<group>"; };
 		136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceStoreTests.swift; sourceTree = "<group>"; };
 		182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 		F54F54630310D69A45861C41 /* ServerDetail */ = {
 			isa = PBXGroup;
 			children = (
+				033BF930534EAD09992ACE95 /* ProjectDetailView.swift */,
 				F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */,
 			);
 			path = ServerDetail;
@@ -310,6 +313,7 @@
 				49FF35E722F446907E367F8D /* MainTabView.swift in Sources */,
 				7A6523892DEB3CE142E17167 /* Models.swift in Sources */,
 				EDBA8D5660DF919F3A03CD9F /* NotificationSettingsView.swift in Sources */,
+				0D4B39722D484E869CBDCCC8 /* ProjectDetailView.swift in Sources */,
 				CDDAAA09892550D6E20CE4C7 /* PushManager.swift in Sources */,
 				CF8AAEED46F8C1606E3423ED /* QRScannerView.swift in Sources */,
 				7F29FEF009E315BE924AFD53 /* ServerDetailView.swift in Sources */,

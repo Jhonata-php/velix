@@ -25,6 +25,7 @@ import com.velix.app.features.dashboard.DashboardScreen
 import com.velix.app.features.instances.InstanceListScreen
 import com.velix.app.features.notifications.NotificationSettingsScreen
 import com.velix.app.features.onboarding.OnboardingNavHost
+import com.velix.app.features.serverdetail.ProjectDetailScreen
 import com.velix.app.features.serverdetail.ServerDetailScreen
 import kotlinx.serialization.Serializable
 
@@ -38,6 +39,9 @@ sealed interface MainRoute {
 
     @Serializable
     data class ServerDetail(val serverId: String) : MainRoute
+
+    @Serializable
+    data class ProjectDetail(val projectId: String) : MainRoute
 
     @Serializable
     data object Notifications : MainRoute
@@ -64,22 +68,28 @@ fun MainNavHost() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
+    // Detalhe de servidor tem a própria barra de abas embaixo (Visão geral/
+    // Projetos) — mostrar essa daqui junto empilharia duas barras.
+    val onServerDetail = backStackEntry?.destination?.hasRoute(MainRoute.ServerDetail::class) == true
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                bottomTabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = backStackEntry?.destination?.hasRoute(tab.route::class) == true,
-                        onClick = {
-                            navController.navigate(tab.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
+            if (!onServerDetail) {
+                NavigationBar {
+                    bottomTabs.forEach { tab ->
+                        NavigationBarItem(
+                            selected = backStackEntry?.destination?.hasRoute(tab.route::class) == true,
+                            onClick = {
+                                navController.navigate(tab.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) },
+                        )
+                    }
                 }
             }
         },
@@ -96,7 +106,14 @@ fun MainNavHost() {
             }
             composable<MainRoute.ServerDetail> { backStackEntry ->
                 val route = backStackEntry.toRoute<MainRoute.ServerDetail>()
-                ServerDetailScreen(serverId = route.serverId)
+                ServerDetailScreen(
+                    serverId = route.serverId,
+                    onProjectClick = { project -> navController.navigate(MainRoute.ProjectDetail(project.id)) },
+                )
+            }
+            composable<MainRoute.ProjectDetail> { backStackEntry ->
+                val route = backStackEntry.toRoute<MainRoute.ProjectDetail>()
+                ProjectDetailScreen(projectId = route.projectId)
             }
             composable<MainRoute.Notifications> {
                 NotificationSettingsScreen()

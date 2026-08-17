@@ -68,6 +68,12 @@ final class APIClient {
         return try await send(request)
     }
 
+    /// Ações sem corpo (start/stop/restart) — sem isso cada chamador teria
+    /// que inventar seu próprio `struct Empty: Encodable {}`.
+    func post<T: Decodable>(_ path: String) async throws -> T {
+        try await send(makeRequest(path: path, method: "POST"))
+    }
+
     func put<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
         var request = makeRequest(path: path, method: "PUT")
         request.httpBody = try JSONEncoder().encode(body)
