@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { ServersService } from '../servers/servers.service';
@@ -30,6 +31,8 @@ type LogFn = (line: string) => void;
 
 @Injectable()
 export class TraefikService {
+  private readonly logger = new Logger(TraefikService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ssh: SshService,
@@ -448,22 +451,40 @@ export class TraefikService {
     const createDns = opts.createDnsRecord ?? true;
     const proxied = opts.proxied ?? false;
 
+    // Já existe um domínio com esse hostname em OUTRO projeto: aí sim é
+    // conflito de verdade (roubar domínio alheio). Dentro do mesmo projeto —
+    // caso comum ao reimplantar depois de recriar o serviço, ou trocar pra
+    // qual serviço o domínio aponta — reaproveita o registro e só atualiza
+    // rota/IP em vez de falhar o deploy inteiro no último passo.
     const existing = await this.prisma.domain.findUnique({ where: { hostname: opts.hostname } });
-    if (existing) {
-      throw new ConflictException(`O domínio ${opts.hostname} já está cadastrado no Velix`);
+    if (existing && existing.applicationId !== applicationId) {
+      throw new ConflictException(`O domínio ${opts.hostname} já está cadastrado em outro projeto no Velix`);
     }
 
-    const domain = await this.prisma.domain.create({
-      data: {
-        serverId,
-        applicationId,
-        hostname: opts.hostname,
-        serviceName: opts.serviceName,
-        targetPort: opts.containerPort,
-        createDnsRecord: createDns,
-        proxied,
-      },
-    });
+    const domain = existing
+      ? await this.prisma.domain.update({
+          where: { id: existing.id },
+          data: {
+            serverId,
+            serviceName: opts.serviceName,
+            targetPort: opts.containerPort,
+            createDnsRecord: createDns,
+            proxied,
+            status: 'PENDING',
+            lastError: null,
+          },
+        })
+      : await this.prisma.domain.create({
+          data: {
+            serverId,
+            applicationId,
+            hostname: opts.hostname,
+            serviceName: opts.serviceName,
+            targetPort: opts.containerPort,
+            createDnsRecord: createDns,
+            proxied,
+          },
+        });
 
     const name = routerName(domain.id);
     try {
@@ -552,6 +573,33 @@ export class TraefikService {
           lastCheckedAt: new Date(),
         },
       });
+    }
+  }
+
+  /**
+   * `verifyDomain` é quem de fato atualiza o status (PENDING → ACTIVE/ERROR)
+   * — sem chamar ela, um domínio criado fica PENDING pra sempre no banco,
+   * porque nada mais escreve nesse campo. Antes disso só existia um botão
+   * manual "Verificar agora" na tela de domínios do servidor; a aba de
+   * Domínios dentro do projeto não tinha nada equivalente, então quem
+   * associava um domínio por ali ficava olhando "PENDING" parado sem saber
+   * que precisava ir noutra tela clicar em outro botão. Roda a cada 2
+   * minutos pra todo domínio ainda não confirmado — DNS recém-propagado ou
+   * certificado ainda sendo emitido leva minutos, não faz sentido cobrar do
+   * usuário ficar clicando até resolver sozinho.
+   */
+  @Cron('*/2 * * * *')
+  async reverifyPendingDomains() {
+    const pending = await this.prisma.domain.findMany({
+      where: { status: { in: ['PENDING', 'ERROR'] } },
+      select: { id: true },
+    });
+    for (const { id } of pending) {
+      try {
+        await this.verifyDomain(id);
+      } catch (err) {
+        this.logger.warn(`Falha ao reverificar domínio ${id}: ${err instanceof Error ? err.message : err}`);
+      }
     }
   }
 

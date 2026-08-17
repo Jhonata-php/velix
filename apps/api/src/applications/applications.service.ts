@@ -29,7 +29,7 @@ import { DeployServiceDto } from './dto/deploy-service.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
 import { consumeSqlImportUpload } from './sql-import-uploads.util';
-import { resolveEngine } from '../database-console/database-console.util';
+import { resolveEngine, enginePort, engineUser } from '../database-console/database-console.util';
 
 type LogFn = (line: string) => void;
 
@@ -438,6 +438,36 @@ export class ApplicationsService {
     if (!deployment) throw new NotFoundException('Implantação não encontrada');
     if (!deployment.secretsEnc) return {};
     return JSON.parse(decryptCredential(deployment.secretsEnc));
+  }
+
+  /**
+   * Host/porta/usuário/banco pra conectar de fora no banco de uma
+   * implantação — o único jeito de saber isso hoje era adivinhar (usuário
+   * "postgres"? "root"? porta publicada ou interna?). O usuário/porta são
+   * fixos por engine (a imagem oficial nunca cria outro usuário, ver
+   * `engineUser`/`enginePort`), e o nome do banco segue a mesma resolução
+   * usada por `importDatabase` — nada disso é segredo, mas sem juntar os
+   * dois pontos (`getCredentials`/`getEnv`) num só lugar o usuário faz de
+   * conta que host e usuário não existem e força a porta padrão do driver.
+   */
+  async getConnectionInfo(deploymentId: string) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    const service = await this.prisma.projectService.findFirst({ where: { deploymentId } });
+    if (!service) throw new NotFoundException('Container deste serviço não encontrado');
+
+    const engine = resolveEngine(service.image);
+    if (!engine) return { host: service.containerName, port: null, username: null, database: null };
+
+    const variablesMap = deployment.variablesJson ? (JSON.parse(deployment.variablesJson) as Record<string, string>) : {};
+    const manifest = deployment.manifestSlug ? this.catalog.getManifestSafe(deployment.manifestSlug) : null;
+
+    return {
+      host: service.containerName,
+      port: enginePort(engine),
+      username: engineUser(engine),
+      database: resolvedDatabaseName(manifest, service.name, variablesMap),
+    };
   }
 
   /** Variáveis de ambiente não sensíveis de uma implantação vinda de

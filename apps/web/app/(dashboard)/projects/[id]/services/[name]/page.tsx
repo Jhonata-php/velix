@@ -723,6 +723,7 @@ function DomainsTab({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<EndpointServiceInfo[]>(`/applications/${project.id}/endpoints`)
@@ -804,6 +805,19 @@ function DomainsTab({
     }
   }
 
+  async function verify(domainId: string) {
+    setVerifyingId(domainId);
+    setError(null);
+    try {
+      await apiFetch(`/domains/${domainId}/verify`);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao verificar domínio');
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {error && <Alert variant="error">{error}</Alert>}
@@ -819,6 +833,9 @@ function DomainsTab({
                   <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{d.hostname}</p>
                   <p className="text-xs text-slate-400">porta {d.targetPort}</p>
                   {d.status === 'ERROR' && d.lastError && <p className="truncate text-xs text-red-500 dark:text-red-400">{d.lastError}</p>}
+                  {d.status === 'PENDING' && (
+                    <p className="truncate text-xs text-slate-400">Aguardando DNS/certificado — verificado automaticamente a cada poucos minutos</p>
+                  )}
                 </div>
                 <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</StatusBadge>
               </div>
@@ -833,6 +850,17 @@ function DomainsTab({
                 >
                   <IconExternalLink className="h-4 w-4" aria-hidden />
                 </a>
+                {d.status !== 'ACTIVE' && (
+                  <button
+                    onClick={() => verify(d.id)}
+                    disabled={verifyingId === d.id}
+                    title="Verificar agora"
+                    className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50 dark:hover:bg-slate-700"
+                    aria-label="Verificar domínio"
+                  >
+                    <IconRefresh className={`h-4 w-4 ${verifyingId === d.id ? 'animate-spin' : ''}`} aria-hidden />
+                  </button>
+                )}
                 <button
                   onClick={() => openEdit(d)}
                   className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-700"

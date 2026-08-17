@@ -31,6 +31,37 @@ function toConnectionError(err: unknown): never {
 }
 
 /**
+ * `pg` trata `stream` como um `net.Socket` de verdade e chama métodos que só
+ * existem lá (`setNoDelay`, `connect`, `setKeepAlive`) dentro de `Connection.
+ * connect()` — mesmo quando quem forneceu o stream já está conectado. O
+ * `Duplex` que vem do túnel SSH (`ssh2` `Channel`) não implementa nada disso,
+ * e sem esse shim `client.connect()` quebra com "this.stream.setNoDelay is
+ * not a function" antes mesmo de tentar falar com o Postgres. Como o canal
+ * SSH já está aberto quando chega aqui, `connect()` só precisa emitir o
+ * evento 'connect' que o `pg` espera pra seguir o handshake — mysql2 não
+ * precisa disso porque só chama métodos de socket quando é ele mesmo quem
+ * cria o stream (ver database-tunnel.service.ts mais abaixo).
+ */
+function patchStreamForPg(stream: Duplex): Duplex {
+  const socket = stream as Duplex & {
+    setNoDelay?: (...args: unknown[]) => unknown;
+    setKeepAlive?: (...args: unknown[]) => unknown;
+    connect?: (...args: unknown[]) => unknown;
+    ref?: () => unknown;
+    unref?: () => unknown;
+  };
+  socket.setNoDelay = () => socket;
+  socket.setKeepAlive = () => socket;
+  socket.connect = () => {
+    process.nextTick(() => socket.emit('connect'));
+    return socket;
+  };
+  socket.ref = () => socket;
+  socket.unref = () => socket;
+  return stream;
+}
+
+/**
  * Abre uma conexão real ao banco de um `ProjectService` — a API não tem rota
  * de rede até a rede Docker `velix-proxy` do servidor gerenciado, então o
  * caminho é: resolver o IP do container ali dentro via SSH, abrir um túnel
@@ -133,7 +164,7 @@ export class DatabaseTunnelService {
 
     try {
       if (engine === 'postgresql') {
-        const client = new PgClient({ stream: stream as never, user: engineUser(engine), password, database });
+        const client = new PgClient({ stream: patchStreamForPg(stream) as never, user: engineUser(engine), password, database });
         try {
           await client.connect();
         } catch (err) {
