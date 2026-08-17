@@ -42,6 +42,7 @@ model User {
   databaseQueryLogs DatabaseQueryLog[]
   deviceTokens      DeviceToken[]
   alertThresholds   AlertThresholdPreference[]
+  pairingTokens     DevicePairingToken[]
 }
 
 // Uma linha por login bem-sucedido — o JWT carrega `sid` apontando pra cá.
@@ -76,6 +77,23 @@ model PasswordResetToken {
   createdAt   DateTime  @default(now())
   requestedIp String?
   userAgent   String?
+
+  @@index([userId, createdAt])
+}
+
+// Pareamento do app móvel (iOS/Android) via QR code: a pessoa já logada no
+// painel web gera um token de vida curta (ver PairingTokenService), o app
+// escaneia o QR (domínio + token) e troca por uma sessão de verdade —
+// equivalente a um login, sem digitar e-mail/senha no celular. Mesmo padrão
+// de PasswordResetToken (hash no banco, uso único, expira rápido).
+model DevicePairingToken {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([userId, createdAt])
 }

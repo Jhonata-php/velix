@@ -15,6 +15,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,9 +24,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.velix.app.core.ApiClient
 import com.velix.app.core.ApiException
+import com.velix.app.core.LocalAppSession
 import com.velix.app.ui.theme.ErrorBanner
 import com.velix.app.ui.theme.VelixAuthHeader
 import com.velix.app.ui.theme.VelixPurple
@@ -33,11 +36,17 @@ import kotlinx.coroutines.launch
 
 /** Primeira tela do onboarding: usuário digita o domínio da instância Velix
  * própria. Em caso de sucesso na checagem de alcance, `onReachable` navega pra
- * LoginScreen com a base URL resolvida (ver OnboardingNavHost). */
+ * LoginScreen com a base URL resolvida (ver OnboardingNavHost). `onFinished`
+ * é só pro atalho de "Escanear QR code", que pula direto pro fim do
+ * onboarding sem passar por Login/TwoFactor (ver `MobilePairingCard` no
+ * painel web). */
 @Composable
-fun AddInstanceScreen(onReachable: (baseUrl: String) -> Unit) {
+fun AddInstanceScreen(onReachable: (baseUrl: String) -> Unit, onFinished: () -> Unit) {
+    val session = LocalAppSession.current
+    val context = LocalContext.current
     var domainText by remember { mutableStateOf("") }
     var isChecking by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -114,6 +123,32 @@ fun AddInstanceScreen(onReachable: (baseUrl: String) -> Unit) {
             } else {
                 Text("Continuar")
             }
+        }
+
+        TextButton(
+            onClick = {
+                if (isScanning) return@TextButton
+                isScanning = true
+                scope.launch {
+                    try {
+                        val (baseUrl, response) = scanAndRedeemPairing(context)
+                        val instance = completeLogin(session, baseUrl, response)
+                        if (instance != null) onFinished() else errorMessage = "Não foi possível parear pelo QR code"
+                    } catch (e: PairingCancelledException) {
+                        // usuário fechou o scanner — sem erro, ele só desistiu.
+                    } catch (e: ApiException.Http) {
+                        errorMessage = e.serverMessage ?: "Não foi possível parear pelo QR code"
+                    } catch (e: Exception) {
+                        errorMessage = e.message ?: "Não foi possível parear pelo QR code"
+                    } finally {
+                        isScanning = false
+                    }
+                }
+            },
+            enabled = !isScanning,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Escanear QR code")
         }
     }
 }

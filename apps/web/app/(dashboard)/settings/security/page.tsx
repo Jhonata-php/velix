@@ -10,6 +10,7 @@ import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import { Spinner } from '@/components/ui/Spinner';
 import { IconDevice, IconShield, IconLock } from '@/components/icons';
 import { TwoFactorCard } from '@/components/TwoFactorCard';
+import { MobilePairingCard } from '@/components/MobilePairingCard';
 
 interface SessionInfo {
   id: string;
@@ -193,6 +194,8 @@ export default function SecurityPage() {
       </section>
 
       <TwoFactorCard />
+
+      <MobilePairingCard />
 
       <p className="flex items-center gap-1.5 text-xs text-slate-400">
         <IconLock className="h-3.5 w-3.5" />

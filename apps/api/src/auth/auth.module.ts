@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { PasswordRecoveryController } from './password-recovery.controller';
 import { PasswordRecoveryService } from './password-recovery.service';
 import { PasswordResetTokenService } from './password-reset-token.service';
+import { DevicePairingTokenService } from './device-pairing-token.service';
 import { SessionService } from './session.service';
 import { RolesGuard } from './roles.guard';
 import { AccountLockService } from './account-lock.service';
@@ -35,6 +36,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     TotpService,
     PasswordResetTokenService,
     PasswordRecoveryService,
+    DevicePairingTokenService,
     RolesGuard,
   ],
   controllers: [AuthController, PasswordRecoveryController],

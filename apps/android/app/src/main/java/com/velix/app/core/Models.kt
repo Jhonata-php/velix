@@ -13,12 +13,19 @@ data class LoginResponse(
 @Serializable
 data class LoggedUser(val name: String, val email: String, val role: String)
 
+// Snapshot bruto guardado em `Server.metrics` (coluna Json) — formato de
+// `parseMetrics` em apps/api/src/servers/metrics.util.ts, diferente do
+// histórico agregado em `ServerMetricSample` (ver `MetricSample` abaixo):
+// `diskPercent` vem como string ("42%"), não número, e o load average é
+// uma lista de 3 posições, não um campo `loadAvg1` solto. Divergir disso faz
+// o deserializer de `ServerSummary` quebrar assim que um servidor já tiver
+// métrica coletada (mesmo bug corrigido no iOS).
 @Serializable
 data class ServerMetrics(
-    val loadAvg1: Double? = null,
+    val loadAvg: List<Double>? = null,
     val memUsedMb: Int? = null,
     val memTotalMb: Int? = null,
-    val diskPercent: Double? = null,
+    val diskPercent: String? = null,
     val cpuPercent: Double? = null,
     val temperatureCelsius: Double? = null,
 )

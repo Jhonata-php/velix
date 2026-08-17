@@ -36,7 +36,10 @@ class ApiClient(
         body: Any? = null,
     ): T {
         val response = try {
-            client.request("$baseUrl$path") {
+            // O backend expõe tudo sob /api (ver `app.setGlobalPrefix('api')` em
+            // apps/api/src/main.ts) — sem isso toda chamada cai no Next.js do
+            // painel web e volta 404, inclusive o próprio /auth/login.
+            client.request("$baseUrl/api$path") {
                 this.method = method
                 token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
                 if (body != null) {

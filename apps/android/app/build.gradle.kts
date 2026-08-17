@@ -57,5 +57,6 @@ dependencies {
     implementation(libs.vico.compose.m3)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
+    implementation(libs.play.services.code.scanner)
     testImplementation(libs.junit)
 }

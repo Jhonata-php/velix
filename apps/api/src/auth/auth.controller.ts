@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { TotpService } from './totp.service';
+import { DevicePairingTokenService } from './device-pairing-token.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RedeemPairingDto } from './dto/redeem-pairing.dto';
 import { JwtAuthGuard, AuthenticatedUser } from './jwt-auth.guard';
 import { clientIp } from './client-ip.util';
 
@@ -15,6 +17,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly totp: TotpService,
+    private readonly pairingTokens: DevicePairingTokenService,
   ) {}
 
   // 10 tentativas/min por IP — generoso pro uso normal (erro de digitação),
@@ -105,6 +108,37 @@ export class AuthController {
   async revokeOtherSessions(@Req() req: AuthedRequest) {
     await this.authService.revokeOtherSessions(req.user.sub, req.user.sid ?? '', clientIp(req), req.headers['user-agent'] ?? '');
     return { message: 'As outras sessões foram encerradas.' };
+  }
+
+  // --- pareamento de app móvel via QR code ---
+
+  // Gerado com a pessoa já logada no painel web (ver seção "App móvel" das
+  // configurações) — o QR carrega esse token + o domínio, o app escaneia e
+  // troca pelo login em /auth/pairing/redeem.
+  @UseGuards(JwtAuthGuard)
+  @Post('pairing/start')
+  async pairingStart(@Req() req: AuthedRequest) {
+    const { rawToken, expiresAt } = await this.pairingTokens.issue(req.user.sub);
+    return { token: rawToken, expiresAt, ttlSeconds: this.pairingTokens.ttlMinutes * 60 };
+  }
+
+  // Sem guard — quem chama ainda não tem sessão, é exatamente o que essa
+  // rota concede. A segurança vem do token de uso único e vida curta, não de
+  // autenticação prévia (mesmo modelo de /auth/reset-password).
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('pairing/redeem')
+  async pairingRedeem(@Body() dto: RedeemPairingDto, @Req() req: Request) {
+    const validation = await this.pairingTokens.validate(dto.token);
+    if (!validation.valid) {
+      throw new UnauthorizedException(
+        validation.reason === 'expired'
+          ? 'Este QR code expirou. Gere um novo no painel.'
+          : 'QR code inválido. Gere um novo no painel.',
+      );
+    }
+    await this.pairingTokens.consume(validation.tokenId);
+    return this.authService.pairingLogin(validation.userId, clientIp(req), req.headers['user-agent'] ?? '');
   }
 
   @UseGuards(JwtAuthGuard)

@@ -73,6 +73,26 @@ export class AuthService {
 
     await this.lock.registerSuccess(email);
 
+    return this.issueSession(user, ip, userAgent, rememberMe);
+  }
+
+  /** Troca um token de pareamento (ver DevicePairingTokenService) por uma sessão de verdade —
+   * mesmo formato de resposta do login, sem senha/2FA porque quem gerou o QR já provou
+   * identidade no navegador. Sessão de longa duração (como "lembrar de mim"): o ponto do
+   * pareamento é não pedir login de novo toda hora no celular. */
+  async pairingLogin(userId: string, ip: string, userAgent: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Sua sessão expirou. Entre novamente.');
+    await this.audit.record({ event: 'LOGIN_SUCCESS', userId: user.id, email: user.email, ip, userAgent, metadata: { via: 'device_pairing' } });
+    return this.issueSession(user, ip, userAgent, true);
+  }
+
+  private async issueSession(
+    user: { id: string; email: string; name: string; role: string },
+    ip: string,
+    userAgent: string,
+    rememberMe: boolean,
+  ) {
     const session = await this.sessions.create(user.id, ip, userAgent);
     const expiresIn = rememberMe ? SESSION_TTL_REMEMBER_ME : SESSION_TTL_DEFAULT;
     const token = await this.jwt.signAsync({ sub: user.id, email: user.email, role: user.role, sid: session.id }, { expiresIn });

@@ -26,6 +26,20 @@ class ApiClientTest {
         assertNull(decoded.metrics)
     }
 
+    // Formato real de `Server.metrics` (parseMetrics, apps/api/src/servers/metrics.util.ts):
+    // diskPercent vem como string ("42%") e loadAvg é uma lista, não um Double solto.
+    @Test
+    fun decodesServerSummaryWithRawMetricsShape() {
+        val decoded = json.decodeFromString<ServerSummary>(
+            """{"id":"s1","name":"srv1","status":"ONLINE","dockerInstalled":true,
+               "metrics":{"uptimeText":"3 days","loadAvg":[0.1,0.2,0.3],"memTotalMb":1024,
+               "memUsedMb":512,"diskTotal":"20G","diskUsed":"8G","diskPercent":"42%",
+               "cpuPercent":12.5,"temperatureCelsius":45.0}}"""
+        )
+        assertEquals("42%", decoded.metrics?.diskPercent)
+        assertEquals(listOf(0.1, 0.2, 0.3), decoded.metrics?.loadAvg)
+    }
+
     @Test
     fun decodesErrorBodyWithReason() {
         val decoded = json.decodeFromString<ApiErrorBody>(

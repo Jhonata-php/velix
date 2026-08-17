@@ -67,6 +67,7 @@ fun OnboardingNavHost(onFinished: () -> Unit) {
         composable<OnboardingRoute.AddInstance> {
             AddInstanceScreen(
                 onReachable = { baseUrl -> navController.navigate(OnboardingRoute.Login(baseUrl)) },
+                onFinished = onFinished,
             )
         }
         composable<OnboardingRoute.Login> { backStackEntry ->
