@@ -16,6 +16,7 @@ import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
+import { DeploymentHistoryCard } from '@/components/DeploymentHistoryCard';
 import {
   IconActivity,
   IconGithub,
@@ -35,6 +36,7 @@ import {
   IconEyeOff,
   IconTerminal,
   IconPencil,
+  IconPlay,
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, ProjectDomain, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
@@ -74,12 +76,12 @@ const RISK_TONE: Record<CatalogSecurityFinding['level'], StatusTone> = {
  * Painel de UM serviço dentro do projeto — abas equivalentes ao que existia
  * espalhado em modais (ProjectServicesModal/DomainManagerModal/
  * AppCredentialsModal) antes da reestruturação em projetos, mais uma barra
- * de ações sempre visível no topo (iniciar/parar, reiniciar, reimplantar,
- * abrir, remover) em vez de escondidas dentro de uma aba — pedido explícito
- * do usuário pra bater mais com o que ele já usava antes. "Implantações"
- * (histórico/rollback), "Redirecionamentos" e "Scripts" do EasyPanel ficam
- * pra uma fase seguinte — combinado com o usuário, não são reorganização de
- * UI, são recursos novos do zero.
+ * de ações sempre visível no topo (implantar, iniciar/parar, reiniciar,
+ * terminal, abrir, remover) e uma linha de CPU/Memória/Rede logo abaixo, em
+ * vez de escondidas dentro de aba. O histórico de implantação
+ * (`DeploymentHistoryCard`, alimentado por `ProjectDeploymentRun` no
+ * backend) mostra cada deploy/redeploy com log completo — "Redirecionamentos"
+ * e "Scripts" do EasyPanel continuam fora de escopo por enquanto.
  */
 export default function ServicePage() {
   const params = useParams<{ id: string; name: string }>();
@@ -91,6 +93,7 @@ export default function ServicePage() {
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [redeploying, setRedeploying] = useState(false);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
 
   function load() {
     apiFetch<ProjectDetail>(`/applications/${params.id}`)
@@ -165,58 +168,85 @@ export default function ServicePage() {
         ]}
       />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h1 className="page-title">{service.name}</h1>
-          <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
-        </div>
+      <div className="mb-4 flex items-center gap-2">
+        <h1 className="page-title">{service.name}</h1>
+        <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {running ? (
-            <button onClick={() => lifecycleAction('stop')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-              <IconPower className="h-4 w-4" aria-hidden />
-              Parar
-            </button>
-          ) : (
-            <button onClick={() => lifecycleAction('start')} disabled={busy} className="btn-primary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-              <IconPower className="h-4 w-4" aria-hidden />
-              Iniciar
-            </button>
-          )}
-          <button onClick={() => lifecycleAction('restart')} disabled={busy} className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm disabled:opacity-50">
-            <IconRefresh className="h-4 w-4" aria-hidden />
-            Reiniciar
-          </button>
-          {fromGit && (
-            <button
-              onClick={() => setRedeploying(true)}
-              disabled={busy}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-            >
-              <IconGithub className="h-4 w-4" aria-hidden />
-              Reimplantar
-            </button>
-          )}
-          {activeDomain && (
-            <a
-              href={`https://${activeDomain.hostname}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-secondary flex items-center gap-1.5 px-3.5 py-2 text-sm"
-            >
-              <IconExternalLink className="h-4 w-4" aria-hidden />
-              Abrir
-            </a>
-          )}
+      <div className="card mb-4 flex flex-wrap items-center gap-2 p-2.5">
+        {fromGit && (
           <button
-            onClick={() => setConfirmRemove(true)}
-            aria-label="Remover serviço"
-            title="Remover serviço"
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+            onClick={() => setRedeploying(true)}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
           >
-            <IconTrash className="h-4 w-4" aria-hidden />
+            <IconPlay className="h-3.5 w-3.5" aria-hidden />
+            Implantar
           </button>
-        </div>
+        )}
+        <span className="mx-0.5 h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-700" aria-hidden />
+        {running ? (
+          <button
+            onClick={() => lifecycleAction('stop')}
+            disabled={busy}
+            aria-label="Parar serviço"
+            title="Parar serviço"
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <IconPower className="h-4 w-4" aria-hidden />
+          </button>
+        ) : (
+          <button
+            onClick={() => lifecycleAction('start')}
+            disabled={busy}
+            aria-label="Iniciar serviço"
+            title="Iniciar serviço"
+            className="rounded-lg p-2 text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
+          >
+            <IconPower className="h-4 w-4" aria-hidden />
+          </button>
+        )}
+        <button
+          onClick={() => lifecycleAction('restart')}
+          disabled={busy}
+          aria-label="Reiniciar serviço"
+          title="Reiniciar serviço"
+          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        >
+          <IconRefresh className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          onClick={() => setTab('terminal')}
+          aria-label="Abrir terminal"
+          title="Terminal"
+          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        >
+          <IconTerminal className="h-4 w-4" aria-hidden />
+        </button>
+        {activeDomain && (
+          <a
+            href={`https://${activeDomain.hostname}`}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Abrir domínio"
+            title="Abrir domínio"
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <IconExternalLink className="h-4 w-4" aria-hidden />
+          </a>
+        )}
+        <button
+          onClick={() => setConfirmRemove(true)}
+          aria-label="Remover serviço"
+          title="Remover serviço"
+          className="ml-auto rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+        >
+          <IconTrash className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+
+      <div className="mb-4">
+        <ServiceStatsBar applicationId={project.id} serviceName={service.name} />
       </div>
 
       {error && (
@@ -242,7 +272,9 @@ export default function ServicePage() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab project={project} service={service} onChange={load} />}
+      {tab === 'overview' && (
+        <OverviewTab project={project} service={service} onChange={load} historyReloadKey={historyReloadKey} showHistory={fromGit} />
+      )}
       {tab === 'source' && deployment && <SourceTab project={project} deployment={deployment} onChange={load} />}
       {tab === 'environment' && deployment && (
         <EnvironmentTab applicationId={project.id} deploymentId={deployment.id} sourceType={deployment.sourceType} onChange={load} />
@@ -262,7 +294,10 @@ export default function ServicePage() {
             setRedeploying(false);
             load();
           }}
-          onDone={load}
+          onDone={() => {
+            load();
+            setHistoryReloadKey((k) => k + 1);
+          }}
         />
       )}
 
@@ -281,7 +316,19 @@ export default function ServicePage() {
   );
 }
 
-function OverviewTab({ project, service, onChange }: { project: ProjectDetail; service: ProjectService; onChange: () => void }) {
+function OverviewTab({
+  project,
+  service,
+  onChange,
+  historyReloadKey,
+  showHistory,
+}: {
+  project: ProjectDetail;
+  service: ProjectService;
+  onChange: () => void;
+  historyReloadKey: unknown;
+  showHistory: boolean;
+}) {
   const [endpoints, setEndpoints] = useState<EndpointServiceInfo[] | null>(null);
 
   useEffect(() => {
@@ -295,6 +342,10 @@ function OverviewTab({ project, service, onChange }: { project: ProjectDetail; s
 
   return (
     <div className="space-y-4">
+      {showHistory && (
+        <DeploymentHistoryCard applicationId={project.id} deploymentId={service.deploymentId} reloadKey={historyReloadKey} />
+      )}
+
       <div className="card grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2">
         <div>
           <p className="text-xs text-slate-400">Imagem</p>
@@ -668,6 +719,7 @@ function DomainsTab({
   const [hostname, setHostname] = useState('');
   const [port, setPort] = useState<number | null>(null);
   const [createDnsRecord, setCreateDnsRecord] = useState(true);
+  const [proxied, setProxied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -698,6 +750,7 @@ function DomainsTab({
     const recommended = endpoint?.ports.find((p) => p.recommended) ?? endpoint?.ports[0];
     setPort(recommended?.port ?? null);
     setCreateDnsRecord(true);
+    setProxied(false);
     setFormTarget('new');
   }
 
@@ -726,7 +779,7 @@ function DomainsTab({
       } else {
         await apiFetch(`/applications/${project.id}/domains`, {
           method: 'POST',
-          body: JSON.stringify({ hostname: hostname.trim(), serviceName: service.name, port, createDnsRecord }),
+          body: JSON.stringify({ hostname: hostname.trim(), serviceName: service.name, port, createDnsRecord, proxied }),
         });
       }
       setFormTarget(null);
@@ -742,7 +795,7 @@ function DomainsTab({
     setRemovingId(domainId);
     setError(null);
     try {
-      await apiFetch(`/traefik/domains/${domainId}`, { method: 'DELETE' });
+      await apiFetch(`/domains/${domainId}`, { method: 'DELETE' });
       onChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao remover domínio');
@@ -753,6 +806,7 @@ function DomainsTab({
 
   return (
     <div className="space-y-4">
+      {error && <Alert variant="error">{error}</Alert>}
       {domains.length === 0 ? (
         <p className="text-sm text-slate-400">Nenhum domínio associado a este serviço.</p>
       ) : (
@@ -854,7 +908,13 @@ function DomainsTab({
               Criar registro DNS na Cloudflare automaticamente
             </label>
           )}
-          {error && <Alert variant="error">{error}</Alert>}
+          {!isEditing && createDnsRecord && (
+            <label className="flex items-center gap-2 pl-6 text-sm text-slate-600 dark:text-slate-300">
+              <input type="checkbox" checked={proxied} onChange={(e) => setProxied(e.target.checked)} />
+              Ativar proxy da Cloudflare (nuvem laranja)
+              <span className="text-xs text-slate-400">— esconde o IP real e passa pela CDN/WAF</span>
+            </label>
+          )}
           <div className="flex justify-end gap-2">
             <button onClick={() => setFormTarget(null)} className="btn-secondary px-3.5 py-2 text-sm">
               Cancelar
@@ -891,6 +951,38 @@ function SecurityTab({ applicationId, deploymentId }: { applicationId: string; d
           <p className="text-sm text-slate-700 dark:text-slate-200">{risk.message}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Mesmos dados de `ResourcesTab`, só que sempre visível abaixo da barra de
+ * ações — em vez de escondido dentro da aba "Recursos" — pra dar a visão
+ * rápida de CPU/Memória/Rede que o print de referência mostrava. */
+function ServiceStatsBar({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
+  const [stats, setStats] = useState<{ cpu: string | null; memory: string | null; network: string | null } | null>(null);
+
+  function load() {
+    apiFetch<{ cpu: string | null; memory: string | null; network: string | null }>(
+      `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`,
+    )
+      .then(setStats)
+      .catch(() => {});
+  }
+
+  useEffect(load, [applicationId, serviceName]);
+  useAutoRefresh(load, 5_000);
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <MetricCard icon={<IconActivity className="h-3.5 w-3.5" />} label="CPU">
+        <MetricValue>{stats?.cpu ?? '—'}</MetricValue>
+      </MetricCard>
+      <MetricCard icon={<IconDisk className="h-3.5 w-3.5" />} label="Memória">
+        <MetricValue>{stats?.memory ?? '—'}</MetricValue>
+      </MetricCard>
+      <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
+        <MetricValue>{stats?.network ?? '—'}</MetricValue>
+      </MetricCard>
     </div>
   );
 }

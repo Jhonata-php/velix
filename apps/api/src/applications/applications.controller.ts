@@ -88,6 +88,17 @@ export class ApplicationsController {
     return this.applications.getServiceStats(appId, name);
   }
 
+  /** Histórico de implantações — sem o log completo, que é pesado; ver o endpoint de detalhe pra isso. */
+  @Get('applications/:appId/deployment-runs')
+  listDeploymentRuns(@Param('appId') appId: string) {
+    return this.applications.listDeploymentRuns(appId);
+  }
+
+  @Get('applications/:appId/deployment-runs/:runId')
+  getDeploymentRun(@Param('appId') appId: string, @Param('runId') runId: string) {
+    return this.applications.getDeploymentRun(appId, runId);
+  }
+
   @Post('applications/:appId/services/:name/start')
   @MinRole('operator')
   startService(@Param('appId') appId: string, @Param('name') name: string) {

@@ -413,6 +413,7 @@ export class ApplicationsService {
       containerName: service.containerName,
       containerPort: dto.port,
       createDnsRecord: dto.createDnsRecord,
+      proxied: dto.proxied,
     });
   }
 
@@ -609,6 +610,35 @@ export class ApplicationsService {
   async getServices(applicationId: string) {
     await this.getOne(applicationId);
     return this.prisma.projectService.findMany({ where: { applicationId }, orderBy: { createdAt: 'asc' } });
+  }
+
+  /** Sem `log`, que pode ser grande — a lista é só pra renderizar as linhas do histórico. */
+  async listDeploymentRuns(applicationId: string) {
+    await this.getOne(applicationId);
+    return this.prisma.projectDeploymentRun.findMany({
+      where: { applicationId },
+      orderBy: { startedAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        deploymentId: true,
+        trigger: true,
+        status: true,
+        commitSha: true,
+        commitMessage: true,
+        triggeredByUserId: true,
+        error: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    });
+  }
+
+  async getDeploymentRun(applicationId: string, runId: string) {
+    await this.getOne(applicationId);
+    const run = await this.prisma.projectDeploymentRun.findUnique({ where: { id: runId } });
+    if (!run || run.applicationId !== applicationId) throw new NotFoundException('Execução de implantação não encontrada');
+    return run;
   }
 
   /** Ação num único serviço do projeto — diferente de `composeAction`, que mexe no projeto inteiro. */

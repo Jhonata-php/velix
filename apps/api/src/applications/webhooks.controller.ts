@@ -50,7 +50,7 @@ export class WebhooksController {
     }
 
     // Dispara e devolve na hora — ver o comentário da classe.
-    void this.gitDeploy.redeploy(deployment.id).catch(() => {});
+    void this.gitDeploy.redeploy(deployment.id, undefined, { trigger: 'webhook' }).catch(() => {});
     return generic;
   }
 }

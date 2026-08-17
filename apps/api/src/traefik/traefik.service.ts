@@ -281,7 +281,7 @@ export class TraefikService {
     return this.prisma.domain.findMany({ where: { serverId }, orderBy: { createdAt: 'desc' } });
   }
 
-  private async upsertCloudflareRecord(hostname: string, ip: string) {
+  private async upsertCloudflareRecord(hostname: string, ip: string, proxied: boolean) {
     const zones = await this.cloudflare.listZones();
     const zone = zones
       .filter((z) => hostname === z.name || hostname.endsWith(`.${z.name}`))
@@ -290,8 +290,8 @@ export class TraefikService {
     const records = await this.cloudflare.listRecords(zone.id);
     const existing = records.find((r) => r.name === hostname && r.type === 'A');
     const record = existing
-      ? await this.cloudflare.updateRecord(zone.id, existing.id, { content: ip })
-      : await this.cloudflare.createRecord(zone.id, { type: 'A', name: hostname, content: ip, proxied: false });
+      ? await this.cloudflare.updateRecord(zone.id, existing.id, { content: ip, proxied })
+      : await this.cloudflare.createRecord(zone.id, { type: 'A', name: hostname, content: ip, proxied });
     return { recordId: record.id, zoneId: zone.id };
   }
 
@@ -359,8 +359,9 @@ export class TraefikService {
       throw new ConflictException(`O domínio ${dto.hostname} já está cadastrado no Velix`);
     }
 
+    const proxied = dto.proxied ?? false;
     const domain = await this.prisma.domain.create({
-      data: { serverId, hostname: dto.hostname, targetPort: dto.targetPort, createDnsRecord: createDns },
+      data: { serverId, hostname: dto.hostname, targetPort: dto.targetPort, createDnsRecord: createDns, proxied },
     });
 
     // Escreve o arquivo dinâmico do Traefik (roteia hostname -> porta no host).
@@ -380,13 +381,19 @@ export class TraefikService {
       throw err;
     }
 
-    await this.attachDnsRecordIfRequested(domain.id, dto.hostname, createDns, server.publicIp);
+    await this.attachDnsRecordIfRequested(domain.id, dto.hostname, createDns, server.publicIp, proxied);
 
     return this.prisma.domain.findUnique({ where: { id: domain.id } });
   }
 
   /** Registro DNS na Cloudflare (opcional). Falha vira lastError no domínio, não derruba o cadastro. */
-  private async attachDnsRecordIfRequested(domainId: string, hostname: string, createDns: boolean, publicIp: string | null) {
+  private async attachDnsRecordIfRequested(
+    domainId: string,
+    hostname: string,
+    createDns: boolean,
+    publicIp: string | null,
+    proxied: boolean,
+  ) {
     if (!createDns) return;
     if (!publicIp) {
       await this.prisma.domain.update({
@@ -403,7 +410,7 @@ export class TraefikService {
       return;
     }
     try {
-      const { recordId, zoneId } = await this.upsertCloudflareRecord(hostname, publicIp);
+      const { recordId, zoneId } = await this.upsertCloudflareRecord(hostname, publicIp, proxied);
       await this.prisma.domain.update({
         where: { id: domainId },
         data: { cloudflareRecordId: recordId, cloudflareZoneId: zoneId, lastError: null },
@@ -424,7 +431,14 @@ export class TraefikService {
   async createApplicationDomain(
     serverId: string,
     applicationId: string,
-    opts: { hostname: string; serviceName: string; containerName: string; containerPort: number; createDnsRecord?: boolean },
+    opts: {
+      hostname: string;
+      serviceName: string;
+      containerName: string;
+      containerPort: number;
+      createDnsRecord?: boolean;
+      proxied?: boolean;
+    },
   ) {
     const { server, options } = await this.servers.getServerWithConnectOptions(serverId);
     if (!server.traefikInstalled) {
@@ -432,6 +446,7 @@ export class TraefikService {
     }
     await this.ensureSharedProxyCloudflareToken(server, options);
     const createDns = opts.createDnsRecord ?? true;
+    const proxied = opts.proxied ?? false;
 
     const existing = await this.prisma.domain.findUnique({ where: { hostname: opts.hostname } });
     if (existing) {
@@ -446,6 +461,7 @@ export class TraefikService {
         serviceName: opts.serviceName,
         targetPort: opts.containerPort,
         createDnsRecord: createDns,
+        proxied,
       },
     });
 
@@ -465,7 +481,7 @@ export class TraefikService {
       throw err;
     }
 
-    await this.attachDnsRecordIfRequested(domain.id, opts.hostname, createDns, server.publicIp);
+    await this.attachDnsRecordIfRequested(domain.id, opts.hostname, createDns, server.publicIp, proxied);
 
     return this.prisma.domain.findUnique({ where: { id: domain.id } });
   }
