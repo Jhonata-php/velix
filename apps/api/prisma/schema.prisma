@@ -522,6 +522,20 @@ model BackupSettings {
   retentionDays Int    @default(14)
 }
 
+/// Autoatualização por push — sempre uma linha só (id fixo "default"), mesmo
+/// padrão de BackupSettings. Complementa SelfUpdateService: em vez de esperar
+/// uma release publicada e a pessoa clicar em "Atualizar", qualquer push na
+/// branch configurada já dispara o mesmo request() (ver PlatformWebhookService).
+model PlatformUpdateWebhook {
+  id        String   @id @default("default")
+  enabled   Boolean  @default(false)
+  /// Único: o controller busca a linha por ele, mesmo padrão de
+  /// ProjectDeployment.webhookSecret. Nulo até a primeira vez que for ativado.
+  secret    String?  @unique
+  gitRef    String   @default("main")
+  updatedAt DateTime @updatedAt
+}
+
 /// Bloqueio de conta por tentativas falhas. Separado de LoginAttempt (que é
 /// trilha de auditoria, append-only) porque aqui o estado é mutável e
 /// consultado a cada login.
