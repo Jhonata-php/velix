@@ -157,6 +157,15 @@ export class ApplicationsController {
     return this.gitDeploy.setAutoDeploy(deploymentId, !!enabled);
   }
 
+  /** Associa uma conta de forja salva a uma implantação já existente — cobre
+   * quem implantou de um repositório público sem token e só agora precisa de
+   * um (pra criar o webhook automaticamente, ver GitDeployService). */
+  @Patch('applications/:appId/deployments/:deploymentId/git-account')
+  @MinRole('operator')
+  setGitAccount(@Param('deploymentId') deploymentId: string, @Body('gitAccountId') gitAccountId: string) {
+    return this.gitDeploy.setGitAccount(deploymentId, gitAccountId);
+  }
+
   @Get('applications/:appId/deployments/:deploymentId/credentials')
   getCredentials(@Param('deploymentId') deploymentId: string) {
     return this.applications.getCredentials(deploymentId);

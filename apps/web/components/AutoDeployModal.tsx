@@ -18,6 +18,12 @@ interface AutoDeployState {
   warning?: string | null;
 }
 
+interface GitAccount {
+  id: string;
+  label: string;
+  authMethod: string;
+}
+
 /**
  * Autodeploy: a forja avisa, o Velix reconstrói.
  *
@@ -40,12 +46,43 @@ export function AutoDeployModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [accounts, setAccounts] = useState<GitAccount[] | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [linking, setLinking] = useState(false);
 
   useEffect(() => {
     apiFetch<AutoDeployState>(`/applications/${applicationId}/deployments/${deploymentId}/auto-deploy`)
       .then(setState)
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
   }, [applicationId, deploymentId]);
+
+  // Só busca as contas salvas quando realmente pode precisar oferecer a opção
+  // de associar uma — não vale o request extra quando já deu tudo certo.
+  useEffect(() => {
+    if (state?.enabled && !state.autoCreated && state.warning && accounts === null) {
+      apiFetch<GitAccount[]>('/git-accounts')
+        .then(setAccounts)
+        .catch(() => {});
+    }
+  }, [state, accounts]);
+
+  async function linkAccount() {
+    if (!selectedAccountId) return;
+    setLinking(true);
+    setError(null);
+    try {
+      setState(
+        await apiFetch<AutoDeployState>(`/applications/${applicationId}/deployments/${deploymentId}/git-account`, {
+          method: 'PATCH',
+          body: JSON.stringify({ gitAccountId: selectedAccountId }),
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao associar conta');
+    } finally {
+      setLinking(false);
+    }
+  }
 
   async function toggle(enabled: boolean) {
     setSaving(true);
@@ -119,6 +156,35 @@ export function AutoDeployModal({
             <Alert variant="warning">
               Não consegui criar o webhook automaticamente no GitHub: {state.warning}. Cole a URL abaixo manualmente.
             </Alert>
+          )}
+
+          {state.enabled && state.warning && !state.autoCreated && accounts && accounts.length > 0 && (
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Ou associa uma conta salva e tenta de novo automaticamente:
+              </p>
+              <div className="flex gap-2">
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  className="input flex-1 text-sm"
+                >
+                  <option value="">Escolha uma conta...</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label} {a.authMethod === 'github_app' ? '(Conectar com GitHub)' : '(token)'}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={linkAccount}
+                  disabled={!selectedAccountId || linking}
+                  className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
+                >
+                  {linking ? 'Associando...' : 'Associar'}
+                </button>
+              </div>
+            </div>
           )}
 
           {state.enabled && state.webhookUrl && !state.autoCreated && (

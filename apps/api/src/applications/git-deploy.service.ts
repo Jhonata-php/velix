@@ -391,23 +391,55 @@ export class GitDeployService {
     // Já tenta criar o webhook direto no GitHub — se o token usado (conta
     // salva ou avulso) tiver permissão, a pessoa não precisa colar URL
     // nenhuma. Só tenta se ainda não existe um (reativar não duplica).
-    let warning: string | null = null;
-    if (!deployment.githubWebhookId) {
-      const base = (process.env.WEB_ORIGIN ?? '').replace(/\/$/, '');
-      if (!base) {
-        warning = 'Endereço público do painel (WEB_ORIGIN) não configurado — não dá pra montar a URL do webhook.';
-      } else {
-        const webhookUrl = `${base}/api/webhooks/git/${webhookSecret}`;
-        const result = await this.tryCreateGitHubWebhook(deployment, webhookUrl);
-        if (result.ok) {
-          await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { githubWebhookId: result.hookId } });
-        } else {
-          warning = result.reason;
-        }
-      }
-    }
+    const warning = deployment.githubWebhookId ? null : await this.attemptWebhookCreation(deployment, webhookSecret);
 
     return { ...(await this.getAutoDeploy(deploymentId)), warning };
+  }
+
+  /** Associa (ou troca) a conta de forja usada pra clonar essa implantação —
+   * cobre implantações antigas, de repositório público sem token nenhum, que
+   * nunca conseguiriam criar o webhook automaticamente por falta de credencial
+   * (ver tryCreateGitHubWebhook). Se o autodeploy já estava ligado, tenta criar
+   * o webhook na hora com o token novo. */
+  async setGitAccount(deploymentId: string, gitAccountId: string) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'git') throw new BadRequestException('Este serviço não veio de um repositório');
+
+    // resolveToken lança NotFoundException se a conta não existir — confirma
+    // que a conta é válida antes de gravar a associação.
+    await this.gitAccounts.resolveToken(gitAccountId);
+    await this.prisma.projectDeployment.update({
+      where: { id: deployment.id },
+      data: { gitAccountId, repoTokenEnc: null },
+    });
+
+    const updated = await this.prisma.projectDeployment.findUnique({ where: { id: deployment.id } });
+    const warning =
+      updated?.autoDeploy && !updated.githubWebhookId && updated.webhookSecret
+        ? await this.attemptWebhookCreation(updated, updated.webhookSecret)
+        : null;
+
+    return { ...(await this.getAutoDeploy(deploymentId)), warning };
+  }
+
+  /** Tenta criar o webhook e, se der certo, já grava o id — usado tanto ao
+   * ligar o autodeploy quanto ao associar uma conta depois (ver setGitAccount). */
+  private async attemptWebhookCreation(
+    deployment: { id: string; repoUrl: string | null; gitAccountId: string | null; repoTokenEnc: string | null },
+    webhookSecret: string,
+  ): Promise<string | null> {
+    const base = (process.env.WEB_ORIGIN ?? '').replace(/\/$/, '');
+    if (!base) {
+      return 'Endereço público do painel (WEB_ORIGIN) não configurado — não dá pra montar a URL do webhook.';
+    }
+    const webhookUrl = `${base}/api/webhooks/git/${webhookSecret}`;
+    const result = await this.tryCreateGitHubWebhook(deployment, webhookUrl);
+    if (result.ok) {
+      await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { githubWebhookId: result.hookId } });
+      return null;
+    }
+    return result.reason;
   }
 
   /** Owner/repo de uma URL já validada por validateRepoUrl — só GitHub tem a
