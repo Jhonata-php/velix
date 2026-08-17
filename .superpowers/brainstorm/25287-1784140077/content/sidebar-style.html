@@ -1,0 +1,30 @@
+<h2>Qual estilo de barra lateral você prefere?</h2>
+<p class="subtitle">No EasyPanel a sidebar é uma trilha fina só de ícones (preta), sempre recolhida, com um segundo menu textual aparecendo só dentro de cada seção. No Velix hoje ela é larga, com texto e descrição, e pode ser recolhida manualmente.</p>
+
+<div class="options">
+  <div class="option" data-choice="rail" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Trilha de ícones (estilo EasyPanel)</h3>
+      <p>Sidebar sempre fina (~70px), só ícones com tooltip. Ganha espaço horizontal pro conteúdo. Menos "boas-vindas", mais denso e profissional.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="keep-expandable" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Manter expansível, só repintar</h3>
+      <p>Mantém a sidebar atual (larga, com texto e descrição, recolhível), mas com paleta e acabamento mais parecidos com o EasyPanel (fundo mais escuro/neutro, menos gradiente).</p>
+    </div>
+  </div>
+  <div class="option" data-choice="rail-plus-submenu" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Trilha de ícones + submenu contextual</h3>
+      <p>Igual à opção A, mas ao clicar numa seção (ex: Servidores) abre uma segunda coluna estreita com os itens daquela seção — como o EasyPanel faz dentro de um projeto (Visão Geral, Fonte, Domínios...).</p>
+    </div>
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" onclick="submitSelection()">Confirmar escolha</button>
+</div>

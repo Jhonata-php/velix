@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mockup v2 — uma sidebar só</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Inter, sans-serif; background:#0b0b0c; color:#e5e5e6; display:flex; height:100vh; overflow:hidden; }
+  .rail { width:64px; background:#0b0b0c; border-right:1px solid #1e1e1f; display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:8px; }
+  .rail .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#4338ca); margin-bottom:12px; }
+  .rail .icon { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#7a7a7d; }
+  .rail .icon.active { background:#4338ca33; color:#818cf8; }
+  .rail .icon svg { width:18px; height:18px; }
+  .main { flex:1; display:flex; flex-direction:column; overflow-y:auto; position:relative; }
+  .topbar { padding:16px 24px; border-bottom:1px solid #1e1e1f; }
+  .crumb { font-size:12px; color:#6b6b6e; margin-bottom:2px; }
+  .title { font-size:20px; font-weight:600; color:#fff; }
+  .content { padding:20px 24px; display:flex; gap:20px; }
+  .tabnav { width:170px; flex-shrink:0; background:#141415; border:1px solid #1e1e1f; border-radius:12px; padding:8px; height:fit-content; }
+  .tabnav .item { padding:9px 10px; border-radius:8px; font-size:13.5px; color:#9a9a9d; cursor:pointer; margin-bottom:2px; }
+  .tabnav .item.active { background:#4338ca; color:#fff; }
+  .grid { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .card { background:#141415; border:1px solid #1e1e1f; border-radius:12px; padding:16px; }
+  .card .head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .card .avatar { width:34px; height:34px; border-radius:9px; background:#3a2b12; color:#f0ad4e; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .card .name { font-size:13.5px; font-weight:600; color:#fff; }
+  .card .sub { font-size:11px; color:#6b6b6e; }
+  .badge-ok { margin-left:auto; font-size:10.5px; background:#16a34a22; color:#4ade80; padding:3px 8px; border-radius:99px; display:flex; align-items:center; gap:4px; }
+  .badge-ok::before { content:''; width:5px; height:5px; border-radius:99px; background:#4ade80; }
+  .img { background:#0a0a0b; color:#8a8a8d; font-family:ui-monospace,monospace; font-size:11px; padding:6px 10px; border-radius:7px; margin-bottom:10px; }
+
+  .overlay { position:absolute; inset:0; background:#000000cc; display:flex; align-items:center; justify-content:center; }
+  .modal { width:560px; background:#141415; border:1px solid #262627; border-radius:14px; overflow:hidden; box-shadow:0 20px 60px #000a; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #1e1e1f; font-size:13.5px; font-weight:600; }
+  .modal-body { padding:14px 16px; }
+  .toolbar { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+  .btn-deploy { background:#16a34a; color:#fff; border:none; border-radius:8px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+  .icon-btn { width:32px; height:32px; border-radius:8px; border:none; background:#1e1e20; color:#9a9a9d; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .icon-btn svg { width:15px; height:15px; }
+  .stats { display:flex; gap:22px; font-size:12.5px; color:#8a8a8d; margin-bottom:12px; }
+  .stats b { color:#fff; }
+  .log { background:#0a0a0b; border-radius:8px; padding:12px; font-family:ui-monospace,monospace; font-size:11.5px; line-height:1.8; height:150px; overflow-y:auto; }
+  .log .ts { color:#6b6b6e; } .log .lvl { color:#34d399; }
+  .callout { position:absolute; top:14px; left:50%; transform:translateX(-50%); background:#1e1e20; border:1px solid #4338ca; color:#c7c7ff; font-size:12px; padding:6px 14px; border-radius:99px; }
+</style>
+</head>
+<body>
+  <div class="rail">
+    <div class="logo"></div>
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
+    <div class="icon active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg></div>
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/></svg></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Servidores</div>
+      <div class="title">teste2</div>
+    </div>
+    <div class="content">
+      <div class="tabnav">
+        <div class="item">Visão geral</div>
+        <div class="item">Atualizações</div>
+        <div class="item active">Docker</div>
+        <div class="item">EasyPanel</div>
+        <div class="item">Bancos</div>
+        <div class="item">Terminal</div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="head"><div class="avatar">AP</div><div><div class="name">apps_immich-db</div><div class="sub">immich-db.1.zr1qha9k...</div></div><span class="badge-ok">Ativo</span></div>
+          <div class="img">tensorchord/pgvecto-rs:pg14-v0.2.0</div>
+        </div>
+        <div class="card">
+          <div class="head"><div class="avatar" style="background:#1a2e4a;color:#7dc4ff">AP</div><div><div class="name">apps_immich-redis</div><div class="sub">immich-redis.1.0w9j...</div></div><span class="badge-ok">Ativo</span></div>
+          <div class="img">redis:7</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay">
+      <div class="callout">↑ clicou em "Ver logs" no card apps_immich-db</div>
+      <div class="modal">
+        <div class="modal-head">apps_immich-db <span style="color:#6b6b6e;font-weight:400;cursor:pointer">✕</span></div>
+        <div class="modal-body">
+          <div class="toolbar">
+            <button class="icon-btn" title="Parar" style="color:#4ade80"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+            <button class="icon-btn" title="Reiniciar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
+            <button class="icon-btn" title="Clonar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+            <button class="icon-btn" title="Remover" style="margin-left:auto;color:#f87171"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m-9 0 1 14a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-14"/></svg></button>
+          </div>
+          <div class="stats"><span>Imagem <b style="font-family:ui-monospace,monospace">tensorchord/pgvecto-rs:pg14-v0.2.0</b></span></div>
+          <div class="log">
+            <div><span class="ts">14:04:24</span> <span class="lvl">LOG:</span> database system is ready to accept connections</div>
+            <div><span class="ts">14:05:12</span> <span class="lvl">LOG:</span> checkpoint starting: time</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
