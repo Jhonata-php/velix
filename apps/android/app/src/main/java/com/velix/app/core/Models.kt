@@ -59,6 +59,12 @@ data class MetricSample(
 @Serializable
 data class ProjectDomain(val hostname: String)
 
+// `id` só vem preenchido em GET /applications/:id (detalhe) — a listagem por
+// servidor seleciona só sourceType/manifestSlug. Opcional pra decodificar os
+// dois formatos sem duplicar a classe.
+@Serializable
+data class ProjectDeploymentSummary(val id: String? = null, val sourceType: String)
+
 @Serializable
 data class ProjectSummary(
     val id: String,
@@ -66,6 +72,7 @@ data class ProjectSummary(
     val status: String,
     val tags: List<String> = emptyList(),
     val domains: List<ProjectDomain> = emptyList(),
+    val deployments: List<ProjectDeploymentSummary> = emptyList(),
 )
 
 @Serializable

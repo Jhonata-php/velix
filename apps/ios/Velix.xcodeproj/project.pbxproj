@@ -12,6 +12,7 @@
 		0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E867F8558F110978FA06CD2 /* AddInstanceView.swift */; };
 		152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E389E9BC8864CB50E9690C87 /* APIClient.swift */; };
 		2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722498D34EF947CE3A08E53F /* Instance.swift */; };
+		2C5265683C5A89757B2A8322 /* EnvironmentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666DE05362B875D4A8D4038 /* EnvironmentEditorView.swift */; };
 		2F2BD72FA40C58724DFC2889 /* APIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBA3E7F56410CA82D506026 /* APIClientTests.swift */; };
 		3F64A5E32563E6454B3FE22D /* ServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB0EC5667AF196CDFCA107C /* ServerRow.swift */; };
 		4328DD26FE75AFB0A01AB1B1 /* ThresholdEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D6993E1161AC30A9E883AC /* ThresholdEditorView.swift */; };
@@ -58,6 +59,7 @@
 		28E006CEE183B2DAB2C4A45C /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		3BA44750A59BD2A9B4B5CACF /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		456863276AAD7BA17EC5BB6E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		4666DE05362B875D4A8D4038 /* EnvironmentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentEditorView.swift; sourceTree = "<group>"; };
 		47A33D8B0AEBD507703C87B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4AB4F29BF081C328920F0432 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		54FFD3C7AF444BE7531D4C6B /* Velix.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Velix.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -201,6 +203,7 @@
 		F54F54630310D69A45861C41 /* ServerDetail */ = {
 			isa = PBXGroup;
 			children = (
+				4666DE05362B875D4A8D4038 /* EnvironmentEditorView.swift */,
 				033BF930534EAD09992ACE95 /* ProjectDetailView.swift */,
 				F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */,
 			);
@@ -306,6 +309,7 @@
 				67664A10D06B27BF348BDAA0 /* AppDelegate.swift in Sources */,
 				756CE477901F5F67622C69EB /* AppSession.swift in Sources */,
 				DA3C700149AF83DE75FDC701 /* DashboardView.swift in Sources */,
+				2C5265683C5A89757B2A8322 /* EnvironmentEditorView.swift in Sources */,
 				2BE9680E537E789F96CBBC4E /* Instance.swift in Sources */,
 				FDD72E0DC0EE735F124B9765 /* InstanceListView.swift in Sources */,
 				5F3D8E5E6BDB0571D9ACEA27 /* KeychainStore.swift in Sources */,

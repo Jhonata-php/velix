@@ -75,6 +75,19 @@ struct ProjectDetailView: View {
                 .foregroundStyle(.red)
             }
 
+            // Editar env só existe pra implantações vindas de repositório —
+            // as do catálogo usam as variáveis do próprio manifesto (ver
+            // GitDeployService.updateEnv).
+            if let gitDeploymentId {
+                Section {
+                    NavigationLink {
+                        EnvironmentEditorView(projectId: project.id, deploymentId: gitDeploymentId)
+                    } label: {
+                        Label("Variáveis de ambiente", systemImage: "list.bullet.rectangle")
+                    }
+                }
+            }
+
             if let errorMessage {
                 Section {
                     Text(errorMessage).foregroundStyle(.red)
@@ -82,6 +95,20 @@ struct ProjectDetailView: View {
             }
         }
         .navigationTitle(project.name)
+        .task {
+            await refresh()
+        }
+    }
+
+    private var gitDeploymentId: String? {
+        project.deployments.first(where: { $0.sourceType == "git" })?.id
+    }
+
+    private func refresh() async {
+        guard let client = session.activeAPIClient else { return }
+        if let fresh: ProjectSummary = try? await client.get("/applications/\(project.id)") {
+            project = fresh
+        }
     }
 
     private func openDomain(_ hostname: String) {
@@ -96,7 +123,7 @@ struct ProjectDetailView: View {
         defer { isBusy = false }
         do {
             let _: EmptyResponse = try await client.post("/applications/\(project.id)/\(action)")
-            project = try await client.get("/applications/\(project.id)")
+            await refresh()
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Falha ao executar ação"
         }
@@ -105,7 +132,11 @@ struct ProjectDetailView: View {
 
 #Preview {
     NavigationStack {
-        ProjectDetailView(project: ProjectSummary(id: "1", name: "vortex-admin", status: "RUNNING", tags: [], domains: [ProjectDomain(hostname: "vortex.exemplo.com")]))
+        ProjectDetailView(project: ProjectSummary(
+            id: "1", name: "vortex-admin", status: "RUNNING", tags: [],
+            domains: [ProjectDomain(hostname: "vortex.exemplo.com")],
+            deployments: [ProjectDeploymentSummary(id: "d1", sourceType: "git")]
+        ))
     }
     .environment(AppSession())
 }

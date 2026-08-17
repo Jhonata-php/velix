@@ -72,5 +72,6 @@ class ApiClient(
     /** Ações sem corpo (start/stop/restart). */
     suspend inline fun <reified T> post(path: String): T = request(path, HttpMethod.Post)
     suspend inline fun <reified T> put(path: String, body: Any): T = request(path, HttpMethod.Put, body)
+    suspend inline fun <reified T> patch(path: String, body: Any): T = request(path, HttpMethod.Patch, body)
     suspend fun delete(path: String) { request<Unit>(path, HttpMethod.Delete) }
 }

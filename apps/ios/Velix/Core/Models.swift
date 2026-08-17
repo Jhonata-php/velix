@@ -54,12 +54,21 @@ struct ProjectDomain: Decodable {
     let hostname: String
 }
 
+// `id` só vem preenchido em GET /applications/:id (detalhe) — a listagem por
+// servidor seleciona só sourceType/manifestSlug. Opcional pra decodificar os
+// dois formatos sem duplicar o struct.
+struct ProjectDeploymentSummary: Decodable {
+    let id: String?
+    let sourceType: String
+}
+
 struct ProjectSummary: Decodable, Identifiable {
     let id: String
     let name: String
     let status: String
     let tags: [String]
     let domains: [ProjectDomain]
+    let deployments: [ProjectDeploymentSummary]
 }
 
 struct AlertThresholdPreference: Codable {

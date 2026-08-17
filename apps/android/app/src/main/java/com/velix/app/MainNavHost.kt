@@ -25,6 +25,7 @@ import com.velix.app.features.dashboard.DashboardScreen
 import com.velix.app.features.instances.InstanceListScreen
 import com.velix.app.features.notifications.NotificationSettingsScreen
 import com.velix.app.features.onboarding.OnboardingNavHost
+import com.velix.app.features.serverdetail.EnvironmentEditorScreen
 import com.velix.app.features.serverdetail.ProjectDetailScreen
 import com.velix.app.features.serverdetail.ServerDetailScreen
 import kotlinx.serialization.Serializable
@@ -42,6 +43,9 @@ sealed interface MainRoute {
 
     @Serializable
     data class ProjectDetail(val projectId: String) : MainRoute
+
+    @Serializable
+    data class EnvironmentEditor(val projectId: String, val deploymentId: String) : MainRoute
 
     @Serializable
     data object Notifications : MainRoute
@@ -113,7 +117,14 @@ fun MainNavHost() {
             }
             composable<MainRoute.ProjectDetail> { backStackEntry ->
                 val route = backStackEntry.toRoute<MainRoute.ProjectDetail>()
-                ProjectDetailScreen(projectId = route.projectId)
+                ProjectDetailScreen(
+                    projectId = route.projectId,
+                    onEditEnv = { deploymentId -> navController.navigate(MainRoute.EnvironmentEditor(route.projectId, deploymentId)) },
+                )
+            }
+            composable<MainRoute.EnvironmentEditor> { backStackEntry ->
+                val route = backStackEntry.toRoute<MainRoute.EnvironmentEditor>()
+                EnvironmentEditorScreen(projectId = route.projectId, deploymentId = route.deploymentId)
             }
             composable<MainRoute.Notifications> {
                 NotificationSettingsScreen()

@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
  * no app, sem redirecionar pra tela web pra gerenciar o projeto.
  */
 @Composable
-fun ProjectDetailScreen(projectId: String) {
+fun ProjectDetailScreen(projectId: String, onEditEnv: (deploymentId: String) -> Unit) {
     val session = LocalAppSession.current
     val client = session.activeApiClient
     val context = LocalContext.current
@@ -110,6 +110,7 @@ fun ProjectDetailScreen(projectId: String) {
                 onOpenDomain = { hostname ->
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://$hostname")))
                 },
+                onEditEnv = project!!.deployments.firstOrNull { it.sourceType == "git" }?.id?.let { id -> { onEditEnv(id) } },
             )
         }
     }
@@ -124,6 +125,7 @@ private fun ProjectDetailContent(
     onRestart: () -> Unit,
     onStop: () -> Unit,
     onOpenDomain: (String) -> Unit,
+    onEditEnv: (() -> Unit)?,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         item { Text(project.name, style = MaterialTheme.typography.headlineSmall) }
@@ -170,6 +172,14 @@ private fun ProjectDetailContent(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) {
                     Text("Parar")
+                }
+            }
+        }
+
+        onEditEnv?.let { edit ->
+            item {
+                OutlinedButton(onClick = edit, modifier = Modifier.padding(top = 12.dp)) {
+                    Text("Variáveis de ambiente")
                 }
             }
         }
