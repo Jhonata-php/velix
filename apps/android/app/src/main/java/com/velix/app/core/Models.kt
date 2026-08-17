@@ -52,14 +52,20 @@ data class MetricSample(
     val capturedAt: String,
 )
 
+// GET /servers/:id/applications (applications.service.ts:63) — projetos
+// implantados nesse servidor. `domains`/`deployments` do backend carregam bem
+// mais campo do que precisamos aqui; kotlinx.serialization ignora o resto
+// sozinho (ignoreUnknownKeys, ver ApiClient).
 @Serializable
-data class ContainerStatus(val id: String, val image: String, val status: String, val names: String)
+data class ProjectDomain(val hostname: String)
 
 @Serializable
-data class DockerStatusResponse(
-    val installed: Boolean,
-    val version: String? = null,
-    val containers: List<ContainerStatus>? = null,
+data class ProjectSummary(
+    val id: String,
+    val name: String,
+    val status: String,
+    val tags: List<String> = emptyList(),
+    val domains: List<ProjectDomain> = emptyList(),
 )
 
 @Serializable

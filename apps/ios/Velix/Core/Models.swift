@@ -47,22 +47,19 @@ struct MetricSample: Decodable, Identifiable {
     let capturedAt: String
 }
 
-// GET /servers/:id/docker/status (dockerStatus, servers.service.ts:401) não devolve um array
-// solto de containers como o rascunho da tarefa assumia — devolve um objeto com
-// `installed` e, só quando o Docker está instalado e acessível, `version` +
-// `containers`. `parseContainers` (servers.service.ts:419) devolve
-// { id, image, status, names } por container — os 4 campos abaixo batem exatamente.
-struct DockerStatusResponse: Decodable {
-    let installed: Bool
-    let version: String?
-    let containers: [ContainerStatus]?
+// GET /servers/:id/applications (applications.service.ts:63) — projetos
+// implantados nesse servidor. `domains` e `deployments` do backend carregam
+// bem mais campo do que precisamos aqui; JSONDecoder ignora o resto sozinho.
+struct ProjectDomain: Decodable {
+    let hostname: String
 }
 
-struct ContainerStatus: Decodable, Identifiable {
+struct ProjectSummary: Decodable, Identifiable {
     let id: String
-    let image: String
+    let name: String
     let status: String
-    let names: String
+    let tags: [String]
+    let domains: [ProjectDomain]
 }
 
 struct AlertThresholdPreference: Codable {
