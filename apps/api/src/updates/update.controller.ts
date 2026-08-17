@@ -1,9 +1,8 @@
-import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard, AuthenticatedUser } from '../auth/jwt-auth.guard';
 import { UpdateService } from './update.service';
 import { SelfUpdateService } from './self-update.service';
-import { PlatformWebhookService } from './platform-webhook.service';
 
 @Controller('updates')
 @UseGuards(JwtAuthGuard)
@@ -11,7 +10,6 @@ export class UpdateController {
   constructor(
     private readonly updates: UpdateService,
     private readonly selfUpdate: SelfUpdateService,
-    private readonly platformWebhook: PlatformWebhookService,
   ) {}
 
   @Get('current')
@@ -46,17 +44,6 @@ export class UpdateController {
   @Get('releases')
   releases() {
     return this.updates.releases();
-  }
-
-  /** Autoatualização por push — configuração e URL do webhook (ver PlatformWebhookService). */
-  @Get('webhook')
-  getWebhook() {
-    return this.platformWebhook.getState();
-  }
-
-  @Patch('webhook')
-  setWebhook(@Body('enabled') enabled: boolean) {
-    return this.platformWebhook.setEnabled(!!enabled);
   }
 
   @Get('history')

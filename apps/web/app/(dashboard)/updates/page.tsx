@@ -8,7 +8,6 @@ import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
-import { PlatformWebhookCard } from '@/components/PlatformWebhookCard';
 import { ReleaseList, type ReleaseEntry } from '@/components/ReleaseList';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
 
@@ -218,8 +217,6 @@ export default function UpdatesPage() {
       </section>
 
       {status === null && <Skeleton className="h-24" />}
-
-      {selfUpdate?.available && <PlatformWebhookCard />}
 
       {releases.length > 0 && (
         <ReleaseList releases={releases} canInstall={!!selfUpdate?.available && !!available} onInstall={() => setModalOpen(true)} />
