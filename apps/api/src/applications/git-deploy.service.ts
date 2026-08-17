@@ -526,12 +526,14 @@ export class GitDeployService {
       if (!running) throw new Error('O container não ficou de pé a tempo — confira o log do serviço.');
 
       await this.prisma.application.update({ where: { id: app.id }, data: { status: 'RUNNING', lastError: null } });
+      await this.prisma.projectService.update({ where: { id: service.id }, data: { status: 'RUNNING' } });
       log?.('Reimplantado com sucesso.\n');
       await this.finishDeploymentRun(run.id, { ok: true, commitSha, commitMessage, log: logBuffer.join('') });
       return { ok: true, applicationId: app.id, commitSha, commitMessage };
     } catch (err) {
       const message = redactToken(err instanceof Error ? err.message : 'Falha ao reimplantar', token);
       await this.prisma.application.update({ where: { id: app.id }, data: { status: 'ERROR', lastError: message.slice(0, 500) } });
+      await this.prisma.projectService.update({ where: { id: service.id }, data: { status: 'ERROR' } });
       await this.finishDeploymentRun(run.id, { ok: false, error: message, commitSha, commitMessage, log: logBuffer.join('') });
       return { ok: false, applicationId: app.id, error: message, commitSha, commitMessage };
     }

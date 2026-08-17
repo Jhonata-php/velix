@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { ServersService } from '../servers/servers.service';
@@ -30,6 +31,8 @@ type LogFn = (line: string) => void;
 
 @Injectable()
 export class TraefikService {
+  private readonly logger = new Logger(TraefikService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ssh: SshService,
@@ -570,6 +573,33 @@ export class TraefikService {
           lastCheckedAt: new Date(),
         },
       });
+    }
+  }
+
+  /**
+   * `verifyDomain` é quem de fato atualiza o status (PENDING → ACTIVE/ERROR)
+   * — sem chamar ela, um domínio criado fica PENDING pra sempre no banco,
+   * porque nada mais escreve nesse campo. Antes disso só existia um botão
+   * manual "Verificar agora" na tela de domínios do servidor; a aba de
+   * Domínios dentro do projeto não tinha nada equivalente, então quem
+   * associava um domínio por ali ficava olhando "PENDING" parado sem saber
+   * que precisava ir noutra tela clicar em outro botão. Roda a cada 2
+   * minutos pra todo domínio ainda não confirmado — DNS recém-propagado ou
+   * certificado ainda sendo emitido leva minutos, não faz sentido cobrar do
+   * usuário ficar clicando até resolver sozinho.
+   */
+  @Cron('*/2 * * * *')
+  async reverifyPendingDomains() {
+    const pending = await this.prisma.domain.findMany({
+      where: { status: { in: ['PENDING', 'ERROR'] } },
+      select: { id: true },
+    });
+    for (const { id } of pending) {
+      try {
+        await this.verifyDomain(id);
+      } catch (err) {
+        this.logger.warn(`Falha ao reverificar domínio ${id}: ${err instanceof Error ? err.message : err}`);
+      }
     }
   }
 
