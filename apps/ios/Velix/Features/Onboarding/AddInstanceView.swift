@@ -83,6 +83,7 @@ struct AddInstanceView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .principal) { Text("") } }
             .navigationDestination(for: URL.self) { baseURL in

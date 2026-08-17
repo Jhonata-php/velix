@@ -1,13 +1,17 @@
 package com.velix.app.features.onboarding
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -30,6 +35,9 @@ import com.velix.app.core.ApiException
 import com.velix.app.core.LocalAppSession
 import com.velix.app.core.LoginRequestBody
 import com.velix.app.core.LoginResponse
+import com.velix.app.ui.theme.ErrorBanner
+import com.velix.app.ui.theme.VelixAuthHeader
+import com.velix.app.ui.theme.VelixPurple
 import kotlinx.coroutines.launch
 
 /** Segunda tela do onboarding: e-mail/senha pra `POST /auth/login`.
@@ -54,38 +62,57 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(VelixPurple.copy(alpha = 0.08f), MaterialTheme.colorScheme.background),
+                ),
+            )
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        Text("Entrar", style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(
-            value = email,
-            onValueChange = {
-                email = it
-                errorMessage = null
-            },
-            label = { Text("E-mail") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.fillMaxWidth(),
+        val host = remember(baseUrl) { baseUrl.substringAfter("://") }
+        VelixAuthHeader(
+            title = "Entrar",
+            subtitle = "Use as mesmas credenciais do painel web em $host.",
         )
-        OutlinedTextField(
-            value = password,
-            onValueChange = {
-                password = it
-                errorMessage = null
-            },
-            label = { Text("Senha") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it })
-            Text("Lembrar de mim")
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = {
+                    email = it
+                    errorMessage = null
+                },
+                label = { Text("E-mail") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    errorMessage = null
+                },
+                label = { Text("Senha") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it })
+                Text("Lembrar de mim")
+            }
         }
-        errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+        errorMessage?.let {
+            ErrorBanner(text = it)
+        }
+
         Button(
             onClick = {
                 errorMessage = null
@@ -119,7 +146,7 @@ fun LoginScreen(
                 }
             },
             enabled = email.isNotBlank() && password.isNotBlank() && !isLoading,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
         ) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp))

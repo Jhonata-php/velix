@@ -32,19 +32,31 @@ fun ServerRow(server: ServerSummary, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(10.dp)
-                .background(color = statusColor(server.status), shape = CircleShape),
-        )
-        Column {
+                .size(38.dp)
+                .background(color = statusColor(server.status).copy(alpha = 0.15f), shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                server.name.take(1).uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                color = statusColor(server.status),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
             Text(server.name, style = MaterialTheme.typography.bodyLarge)
             metricsText(server.metrics)?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color = statusColor(server.status), shape = CircleShape),
+        )
     }
 }
 

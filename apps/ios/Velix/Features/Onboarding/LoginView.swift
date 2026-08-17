@@ -107,6 +107,7 @@ struct LoginView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationBarTitleDisplayMode(.inline)
     }
 
