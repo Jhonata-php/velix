@@ -53,6 +53,29 @@ function engineLabel(image: string) {
   return image;
 }
 
+/** Mesma chave que o manifesto do catálogo declara como segredo pra cada
+ * engine (ver apps/api/src/catalog/manifests/*.ts) — é a senha do usuário
+ * devolvido por `connection-info`. */
+function rootPasswordKey(image: string): string | null {
+  const img = image.toLowerCase();
+  if (img.includes('postgres')) return 'POSTGRES_PASSWORD';
+  if (img.includes('mysql') || img.includes('mariadb')) return 'ROOT_PASSWORD';
+  return null;
+}
+
+function connectionScheme(image: string): string {
+  const img = image.toLowerCase();
+  if (img.includes('postgres')) return 'postgresql';
+  return 'mysql';
+}
+
+interface ConnectionInfo {
+  host: string;
+  port: number | null;
+  username: string | null;
+  database: string | null;
+}
+
 function formatBytes(bytes: number | null) {
   if (bytes == null) return '—';
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -68,6 +91,7 @@ export default function DatabaseDetailPage() {
   const [service, setService] = useState<ProjectService | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
+  const [connInfo, setConnInfo] = useState<ConnectionInfo | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [tab, setTab] = useState<'conexao' | 'dados' | 'logs' | 'backups'>('conexao');
@@ -102,6 +126,9 @@ export default function DatabaseDetailPage() {
             apiFetch<Record<string, string>>(`/applications/${app.id}/deployments/${deployment.id}/credentials`)
               .then(setCredentials)
               .catch(() => setCredentials({}));
+            apiFetch<ConnectionInfo>(`/applications/${app.id}/deployments/${deployment.id}/connection-info`)
+              .then(setConnInfo)
+              .catch(() => setConnInfo(null));
           }
         });
       })
@@ -148,6 +175,11 @@ export default function DatabaseDetailPage() {
   if (!project || !service) return <Skeleton className="h-64" />;
 
   const credEntries = credentials ? Object.entries(credentials) : [];
+  const rootPassword = credentials ? credentials[rootPasswordKey(service.image) ?? ''] : undefined;
+  const connectionString =
+    connInfo?.host && connInfo.port && connInfo.username && connInfo.database && rootPassword
+      ? `${connectionScheme(service.image)}://${connInfo.username}:${rootPassword}@${connInfo.host}:${connInfo.port}/${connInfo.database}`
+      : null;
 
   return (
     <div className="space-y-4">
@@ -228,16 +260,57 @@ export default function DatabaseDetailPage() {
       {tab === 'conexao' && (
       <div className="card space-y-3 p-4">
         <p className="section-label">Conexão</p>
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <p className="text-xs text-slate-400">
+          Pra conectar a partir de outro serviço no Velix (mesma rede Docker), use o host e a porta interna abaixo —
+          não a porta publicada, que só serve pra acessar de fora do servidor.
+        </p>
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-xs text-slate-400">Container</p>
+            <p className="text-xs text-slate-400">Host (container)</p>
             <p className="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{service.containerName}</p>
           </div>
+          <div>
+            <p className="text-xs text-slate-400">Porta interna</p>
+            <p className="font-mono text-xs text-slate-700 dark:text-slate-200">{connInfo?.port ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Usuário</p>
+            <p className="font-mono text-xs text-slate-700 dark:text-slate-200">{connInfo?.username ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Banco</p>
+            <p className="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{connInfo?.database ?? '—'}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-xs text-slate-400">Porta publicada</p>
             <p className="text-slate-700 dark:text-slate-200">{service.publishedPort ?? '— (só interna)'}</p>
           </div>
         </div>
+
+        {connectionString && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs text-slate-400">String de conexão</p>
+              <button onClick={() => setRevealed((v) => !v)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+                {revealed ? <IconEyeOff className="h-3.5 w-3.5" /> : <IconEye className="h-3.5 w-3.5" />}
+                {revealed ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-1.5 dark:border-slate-700">
+              <p className="truncate font-mono text-xs">
+                {revealed ? connectionString : connectionString.replace(/:[^:@]+@/, ':••••••••@')}
+              </p>
+              <button
+                onClick={() => copy('connection-string', connectionString)}
+                className="shrink-0 text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+              >
+                {copiedKey === 'connection-string' ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+        )}
 
         {credEntries.length > 0 && (
           <div>

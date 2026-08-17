@@ -162,6 +162,12 @@ export class ApplicationsController {
     return this.applications.getCredentials(deploymentId);
   }
 
+  /** Host/porta/usuário/banco pra montar a string de conexão — ver comentário no service. */
+  @Get('applications/:appId/deployments/:deploymentId/connection-info')
+  getConnectionInfo(@Param('deploymentId') deploymentId: string) {
+    return this.applications.getConnectionInfo(deploymentId);
+  }
+
   @Get('applications/:appId/deployments/:deploymentId/env')
   getEnv(@Param('deploymentId') deploymentId: string) {
     return this.applications.getEnv(deploymentId);
