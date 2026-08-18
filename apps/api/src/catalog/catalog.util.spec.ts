@@ -28,6 +28,7 @@ import { immichManifest } from './manifests/immich';
 import { mysqlManifest } from './manifests/mysql';
 import { mariadbManifest } from './manifests/mariadb';
 import { ghostManifest } from './manifests/ghost';
+import { zabbixManifest } from './manifests/zabbix';
 
 // validação: o manifesto oficial é válido
 assert.equal(validateManifest(uptimeKumaManifest).ok, true);
@@ -123,6 +124,11 @@ assert.equal(Object.keys(resolveSecrets(withSecrets, { CHAVE_QUE_NAO_EXISTE: 'x'
 // QUICK_MANIFESTS mais abaixo, que não inclui os manifestos "oficiais"
 assert.equal(validateManifest(mysqlManifest).ok, true);
 assert.equal(validateManifest(mariadbManifest).ok, true);
+
+// Zabbix: 3 serviços (db/server/web) com dependsOn encadeado — confirma que
+// as referências entre eles (nome do serviço, primaryService) batem.
+assert.equal(validateManifest(zabbixManifest).ok, true, JSON.stringify(validateManifest(zabbixManifest).errors));
+assert.equal(highestRiskLevel(scanSecurityRisks(zabbixManifest)), 'low', 'sem privileged/host network/docker socket');
 // usuário de app em branco: MYSQL_USER/MARIADB_USER vazios (a imagem oficial
 // pula a criação do usuário extra quando isso acontece)
 const mysqlComposeNoAppUser = renderCompose(mysqlManifest, 'meuapp');

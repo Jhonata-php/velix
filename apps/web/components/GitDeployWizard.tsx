@@ -166,6 +166,7 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
   const [envText, setEnvText] = useState('');
   const [wantsDomain, setWantsDomain] = useState(false);
   const [hostname, setHostname] = useState('');
+  const [createDnsRecord, setCreateDnsRecord] = useState(true);
   const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
 
   const [showLog, setShowLog] = useState(false);
@@ -240,7 +241,7 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
     autoDeploy,
     port,
     env,
-    ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord: true } } : {}),
+    ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord } } : {}),
   };
 
   // Sem `applicationId`: cria o projeto (nome desta etapa) antes de implantar
@@ -508,22 +509,28 @@ export function GitDeployWizard({ applicationId, projectServerId, onClose, onDep
                     <span className="font-medium text-slate-700 dark:text-slate-200">Publicar com domínio e HTTPS</span>
                   </label>
                   {wantsDomain && (
-                    <Field label="Domínio">
-                      <div className="flex gap-2">
-                        <input value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" placeholder="app.seudominio.com" />
-                        {zones.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setHostname(`${randomDomainLabel(name || repoName(repoUrl))}.${zones[0].name}`)}
-                            title={`Gerar domínio aleatório em ${zones[0].name}`}
-                            className="btn-secondary flex shrink-0 items-center gap-1.5 px-3 text-sm"
-                          >
-                            <IconRefresh className="h-4 w-4" aria-hidden />
-                            Aleatório
-                          </button>
-                        )}
-                      </div>
-                    </Field>
+                    <>
+                      <Field label="Domínio">
+                        <div className="flex gap-2">
+                          <input value={hostname} onChange={(e) => setHostname(e.target.value)} className="input" placeholder="app.seudominio.com" />
+                          {zones.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setHostname(`${randomDomainLabel(name || repoName(repoUrl))}.${zones[0].name}`)}
+                              title={`Gerar domínio aleatório em ${zones[0].name}`}
+                              className="btn-secondary flex shrink-0 items-center gap-1.5 px-3 text-sm"
+                            >
+                              <IconRefresh className="h-4 w-4" aria-hidden />
+                              Aleatório
+                            </button>
+                          )}
+                        </div>
+                      </Field>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={createDnsRecord} onChange={(e) => setCreateDnsRecord(e.target.checked)} />
+                        Criar registro DNS na Cloudflare automaticamente
+                      </label>
+                    </>
                   )}
                 </>
               )}
