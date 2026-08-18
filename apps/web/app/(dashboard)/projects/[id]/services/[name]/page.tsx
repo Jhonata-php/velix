@@ -8,7 +8,7 @@ import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
 import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
-import { ConfirmModal } from '@/components/Modal';
+import { Modal, ConfirmModal } from '@/components/Modal';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
 import { WebTerminal } from '@/components/WebTerminal';
 import { AutoDeployModal } from '@/components/AutoDeployModal';
@@ -38,6 +38,7 @@ import {
   IconPencil,
   IconPlay,
   IconClock,
+  IconArrowRightLeft,
 } from '@/components/icons';
 import type { ProjectDetail, ProjectService, ProjectDomain, EndpointServiceInfo, CatalogSecurityFinding } from '@/lib/types';
 
@@ -95,6 +96,9 @@ export default function ServicePage() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [redeploying, setRedeploying] = useState(false);
   const [historyReloadKey, setHistoryReloadKey] = useState(0);
+  const [showMovePicker, setShowMovePicker] = useState(false);
+  const [moveTargetAppId, setMoveTargetAppId] = useState('');
+  const [moving, setMoving] = useState(false);
 
   function load() {
     apiFetch<ProjectDetail>(`/applications/${params.id}`)
@@ -237,11 +241,21 @@ export default function ServicePage() {
             <IconExternalLink className="h-4 w-4" aria-hidden />
           </a>
         )}
+        {!fromGit && (
+          <button
+            onClick={() => setShowMovePicker(true)}
+            aria-label="Mover pra outro projeto"
+            title="Mover pra outro projeto"
+            className="ml-auto rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <IconArrowRightLeft className="h-4 w-4" aria-hidden />
+          </button>
+        )}
         <button
           onClick={() => setConfirmRemove(true)}
           aria-label="Remover serviço"
           title="Remover serviço"
-          className="ml-auto rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+          className={`rounded-lg p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500 ${fromGit ? 'ml-auto' : ''}`}
         >
           <IconTrash className="h-4 w-4" aria-hidden />
         </button>
@@ -315,7 +329,94 @@ export default function ServicePage() {
           onCancel={() => setConfirmRemove(false)}
         />
       )}
+
+      {showMovePicker && (
+        <MoveServiceModal
+          currentApplicationId={project.id}
+          currentServerId={project.server.id}
+          onPick={(targetId) => {
+            setMoveTargetAppId(targetId);
+            setShowMovePicker(false);
+            setMoving(true);
+          }}
+          onClose={() => setShowMovePicker(false)}
+        />
+      )}
+
+      {moving && (
+        <InstallLogModal
+          serverId={project.server.id}
+          op="service-move"
+          params={{ deploymentId: service.deploymentId, targetApplicationId: moveTargetAppId }}
+          title={`Movendo ${service.name}`}
+          onClose={() => setMoving(false)}
+          onDone={() => router.push(`/projects/${moveTargetAppId}/services/${encodeURIComponent(service.name)}`)}
+        />
+      )}
     </div>
+  );
+}
+
+interface MoveTargetProject {
+  id: string;
+  name: string;
+  server: { id: string };
+}
+
+/** Lista só projetos do MESMO servidor — mover entre servidores exigiria
+ * transferir dado de verdade (SSH-to-SSH), fora de escopo por enquanto (ver
+ * docstring de `moveDeployment` no backend). */
+function MoveServiceModal({
+  currentApplicationId,
+  currentServerId,
+  onPick,
+  onClose,
+}: {
+  currentApplicationId: string;
+  currentServerId: string;
+  onPick: (targetApplicationId: string) => void;
+  onClose: () => void;
+}) {
+  const [projects, setProjects] = useState<MoveTargetProject[] | null>(null);
+  const [selected, setSelected] = useState('');
+
+  useEffect(() => {
+    apiFetch<MoveTargetProject[]>('/applications')
+      .then((list) => setProjects(list.filter((p) => p.id !== currentApplicationId && p.server.id === currentServerId)))
+      .catch(() => setProjects([]));
+  }, [currentApplicationId, currentServerId]);
+
+  return (
+    <Modal title="Mover pra outro projeto" onClose={onClose} maxWidth="max-w-sm">
+      <div className="space-y-4">
+        <p className="text-xs text-slate-400">
+          O container é recriado no projeto de destino (nome e rede mudam) — os dados continuam, mas o serviço reinicia
+          rapidamente. Só entre projetos do mesmo servidor.
+        </p>
+        {!projects ? (
+          <Skeleton className="h-9" />
+        ) : projects.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhum outro projeto neste servidor.</p>
+        ) : (
+          <select value={selected} onChange={(e) => setSelected(e.target.value)} className="input" autoFocus>
+            <option value="">Selecione um projeto...</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary px-3.5 py-2 text-sm">
+            Cancelar
+          </button>
+          <button onClick={() => onPick(selected)} disabled={!selected} className="btn-primary px-3.5 py-2 text-sm disabled:opacity-50">
+            Mover
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

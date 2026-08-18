@@ -487,6 +487,17 @@ export function IconExternalLink({ className = base }: IconProps) {
   );
 }
 
+export function IconArrowRightLeft({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M16 3 20 7l-4 4" />
+      <path d="M4 7h16" />
+      <path d="M8 21 4 17l4-4" />
+      <path d="M20 17H4" />
+    </svg>
+  );
+}
+
 export function IconUsers({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>

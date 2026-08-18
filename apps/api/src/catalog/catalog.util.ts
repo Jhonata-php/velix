@@ -290,6 +290,12 @@ export function renderCompose(
   variablesMap: Record<string, string> = {},
   selectedOptional: string[] = [],
   hostPorts: Record<string, number> = {},
+  /** Nome real do volume Docker já existente a reaproveitar em vez de criar um
+   * novo (chave = nome do volume no manifesto, ex.: "db-data") — usado só ao
+   * mover um deployment pra outro projeto (`moveDeployment`). Sem isso, o
+   * volume nasceria vazio com o nome derivado do slug novo, perdendo acesso
+   * aos dados gravados sob o slug antigo. */
+  volumeNameOverrides: Record<string, string> = {},
 ): string {
   const usesSecrets = (manifest.secrets?.length ?? 0) > 0;
   const included = resolveIncludedServices(manifest, selectedOptional);
@@ -316,7 +322,12 @@ export function renderCompose(
   // Nome de volume repetido entre serviços (ex.: `app` e `cron` compartilhando o
   // mesmo diretório do Nextcloud) deve virar UM volume top-level só, não um por serviço.
   const volumeNames = Array.from(new Set(included.flatMap((s) => s.volumes ?? []).map((v) => v.name)));
-  const volumesBlock = volumeNames.length > 0 ? `\nvolumes:\n${volumeNames.map((n) => `  ${appSlug}_${n}:`).join('\n')}\n` : '';
+  const volumesBlock =
+    volumeNames.length > 0
+      ? `\nvolumes:\n${volumeNames
+          .map((n) => (volumeNameOverrides[n] ? `  ${appSlug}_${n}:\n    name: ${volumeNameOverrides[n]}` : `  ${appSlug}_${n}:`))
+          .join('\n')}\n`
+      : '';
 
   return `services:
 ${serviceBlocks}

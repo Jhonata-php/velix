@@ -47,6 +47,16 @@ assert.ok(compose.includes('meuapp_data:/app/data'));
 assert.ok(compose.includes('meuapp_data:\n'));
 assert.ok(compose.includes('velix-proxy:\n    external: true'));
 
+// volumeNameOverrides: pino o volume novo no volume real já existente (nome
+// resolvido do projeto ANTIGO) em vez de deixar nascer um vazio com o nome
+// derivado do slug novo — usado por moveDeployment (mover serviço entre projetos).
+const composeWithOverride = renderCompose(uptimeKumaManifest, 'projetonovo', {}, [], {}, { data: 'projetoantigo_projetoantigo_data' });
+assert.ok(composeWithOverride.includes('projetonovo_data:\n    name: projetoantigo_projetoantigo_data'), 'volume novo aponta pro nome real do volume antigo');
+assert.ok(composeWithOverride.includes('projetonovo_data:/app/data'), 'o mount dentro do serviço continua usando a chave do projeto novo, só o top-level ganha o pin');
+// sem override, comportamento continua idêntico a antes (não regressão) —
+// só container_name: existe, nunca um `name:` de volume pinado
+assert.ok(!renderCompose(uptimeKumaManifest, 'meuapp').includes('\n    name: '));
+
 // nome do container primário bate com o que o compose realmente gera
 assert.equal(primaryContainerName(uptimeKumaManifest, 'meuapp'), 'meuapp_app');
 

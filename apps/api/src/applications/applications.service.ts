@@ -846,6 +846,182 @@ export class ApplicationsService {
     return { ok: true };
   }
 
+  /**
+   * Move UMA implantação (com todos os serviços dela) pra outro projeto no
+   * MESMO servidor — diferente de `removeService`, não é descartável: o
+   * container é recriado com o nome/rede do projeto de destino (o slug do
+   * projeto está embutido no `container_name` e no caminho do compose no
+   * disco, não dá pra só trocar uma FK e fingir que moveu de verdade).
+   *
+   * Os dados sobrevivem porque o volume recriado é PINADO (`name:` no
+   * compose) no volume Docker real que já existia sob o projeto antigo —
+   * ver `volumeNameOverrides` em `renderCompose`. Sem isso, o container novo
+   * nasceria com um volume vazio (nome derivado do slug novo).
+   *
+   * Ordem importa pela segurança do dado: para os containers antigos ANTES
+   * de subir os novos (nunca os dois ao mesmo tempo) — dois processos de
+   * banco escrevendo no mesmo volume ao mesmo tempo corrompe o datadir. Isso
+   * custa um restart curto do serviço, aceito de propósito em troca de não
+   * arriscar rodar dois donos do mesmo volume simultaneamente.
+   *
+   * Só implantações do catálogo por enquanto — implantação Git tem o próprio
+   * jeito de montar compose (a partir do build, não de um manifesto), então
+   * mover ela exigiria replicar aquela lógica aqui; escopo deixado de fora
+   * até aparecer um pedido de verdade por isso.
+   */
+  async moveDeployment(deploymentId: string, targetApplicationId: string, onLog?: LogFn) {
+    const deployment = await this.prisma.projectDeployment.findUnique({ where: { id: deploymentId } });
+    if (!deployment) throw new NotFoundException('Implantação não encontrada');
+    if (deployment.sourceType !== 'catalog' || !deployment.manifestSlug) {
+      throw new BadRequestException('Mover implantação só é suportado pra serviços do catálogo por enquanto.');
+    }
+    if (deployment.applicationId === targetApplicationId) {
+      throw new BadRequestException('A implantação já está neste projeto.');
+    }
+
+    const sourceApp = await this.getOne(deployment.applicationId);
+    const destApp = await this.getOne(targetApplicationId);
+    if (sourceApp.serverId !== destApp.serverId) {
+      throw new BadRequestException('Só dá pra mover entre projetos do mesmo servidor.');
+    }
+
+    const services = sourceApp.services.filter((s) => s.deploymentId === deploymentId);
+    const destExistingNames = new Set(destApp.services.map((s) => s.name));
+    const conflict = services.find((s) => destExistingNames.has(s.name));
+    if (conflict) throw new BadRequestException(`O projeto de destino já tem um serviço chamado "${conflict.name}".`);
+
+    const manifest = this.catalog.getManifest(deployment.manifestSlug);
+    const included = resolveIncludedServices(manifest, deployment.selectedServices);
+    const secretsMap: Record<string, string> = deployment.secretsEnc ? JSON.parse(decryptCredential(deployment.secretsEnc)) : {};
+    const variablesMap: Record<string, string> = deployment.variablesJson ? JSON.parse(deployment.variablesJson) : {};
+
+    // Volume novo pinado no volume real do projeto antigo (ver docstring) —
+    // o nome real que docker compose gera é `${slug}_${slug}_${volume}`
+    // porque `renderCompose` já embute o slug na CHAVE do volume, e o
+    // `-p slug` do compose prefixa de novo por cima.
+    const volumeNames = Array.from(new Set(included.flatMap((s) => s.volumes ?? []).map((v) => v.name)));
+    const volumeNameOverrides = Object.fromEntries(volumeNames.map((n) => [n, `${sourceApp.slug}_${sourceApp.slug}_${n}`]));
+
+    const destDeploymentCompose = renderCompose(manifest, destApp.slug, variablesMap, deployment.selectedServices, {}, volumeNameOverrides);
+    const envFiles = renderServiceEnvFiles(manifest, destApp.slug, secretsMap, variablesMap, deployment.selectedServices);
+    const expectedNewNames = included.map((s) => `${destApp.slug}_${s.name}`);
+
+    const { options } = await this.servers.getServerWithConnectOptions(sourceApp.serverId);
+    const sourceDir = appDir(sourceApp.slug);
+    const destDir = appDir(destApp.slug);
+    const serviceNames = services.map((s) => s.name).join(' ');
+
+    onLog?.('Parando os containers no projeto atual (dados preservados no volume)...\n');
+    if (serviceNames) {
+      await this.ssh.runCommand(options, `cd ${sourceDir} && sudo docker compose -p ${sourceApp.slug} rm -sf ${serviceNames}`, 60_000, onLog && ((chunk) => onLog(chunk)));
+    }
+
+    onLog?.(`Preparando ${destDir}...\n`);
+    const mkdir = await this.ssh.runCommand(options, `sudo mkdir -p ${destDir}/secrets`, 15_000);
+    if (!mkdir.ok) throw new Error(`Falha ao criar diretório no servidor: ${mkdir.stderr || mkdir.message}`);
+
+    for (const [svcName, content] of Object.entries(envFiles)) {
+      onLog?.(`Gravando segredos de "${svcName}"...\n`);
+      const writeEnv = await this.ssh.writeRemoteFile(options, `${destDir}/secrets/${svcName}.env`, content, '600');
+      if (!writeEnv.ok) throw new Error(writeEnv.message);
+    }
+
+    // Compose final do destino JÁ incluindo esta implantação — o registro no
+    // banco ainda não mudou de projeto, então dá pra buscar "as outras
+    // implantações do destino" sem precisar excluir nada.
+    const destOtherDeployments = await this.prisma.projectDeployment.findMany({ where: { applicationId: targetApplicationId } });
+    const destMergedCompose = mergeComposeFragments([...destOtherDeployments.map((d) => d.composeRendered), destDeploymentCompose]);
+
+    onLog?.('Gravando docker-compose.yml do destino...\n');
+    const write = await this.ssh.writeRemoteFile(options, `${destDir}/docker-compose.yml`, destMergedCompose, '644');
+    if (!write.ok) throw new Error(write.message);
+
+    await this.ssh.runCommand(options, `sudo docker network create ${PROXY_NETWORK} 2>/dev/null || true`, 15_000);
+
+    onLog?.('Subindo os containers no projeto de destino...\n');
+    const up = await this.ssh.runCommand(options, `cd ${destDir} && sudo docker compose -p ${destApp.slug} up -d`, 300_000, onLog && ((chunk) => onLog(chunk)));
+    if (!up.ok) {
+      throw new Error(
+        (up.stdout + up.stderr || 'Falha ao subir os containers no destino') +
+          '\n\nOs containers antigos já foram parados — corrija o problema e tente mover de novo, ou reimplante no projeto original.',
+      );
+    }
+
+    onLog?.('Aguardando os containers ficarem de pé...\n');
+    const running = await this.waitForContainers(options, expectedNewNames, onLog);
+    if (!running) {
+      throw new Error('Os containers não ficaram de pé a tempo no destino — confira os logs. Os containers antigos já foram parados.');
+    }
+
+    // Backups locais (não enviados a destino remoto) deste serviço ficam na
+    // pasta compartilhada do projeto — só os arquivos deste serviço são
+    // movidos (glob âncora igual ao de pruneBackupsCommand), o resto da
+    // pasta do projeto antigo continua intocado.
+    const sourceBackupDir = `${sourceDir}/backups`;
+    const destBackupDir = `${destDir}/backups`;
+    for (const s of services) {
+      const pattern = `${s.name}-????-??-??T*.sql.gz`;
+      await this.ssh.runCommand(
+        options,
+        `sudo mkdir -p ${destBackupDir} && test -d ${shellSingleQuote(sourceBackupDir)} && sudo bash -c ${shellSingleQuote(`shopt -s nullglob; mv ${shellSingleQuote(sourceBackupDir)}/${pattern} ${shellSingleQuote(destBackupDir)}/ 2>/dev/null || true`)}`,
+        30_000,
+      ).catch(() => undefined);
+    }
+
+    // Domínios apontados pra algum serviço movido: reescreve a rota do
+    // Traefik pro container novo e migra o registro pro projeto novo.
+    const movedServiceNames = new Set(services.map((s) => s.name));
+    const domainsToMove = sourceApp.domains.filter((d) => d.serviceName && movedServiceNames.has(d.serviceName));
+    for (const d of domainsToMove) {
+      onLog?.(`Reapontando domínio ${d.hostname}...\n`);
+      await this.traefik.updateApplicationDomain(d.id, {
+        serviceName: d.serviceName!,
+        containerName: `${destApp.slug}_${d.serviceName}`,
+        containerPort: d.targetPort,
+      });
+      await this.prisma.domain.update({ where: { id: d.id }, data: { applicationId: targetApplicationId } });
+    }
+
+    // Só agora, com tudo confirmado no ar, regrava o compose do projeto
+    // antigo sem esta implantação (mesma lógica de removeService).
+    const sourceMergedCompose = await this.mergedComposeExcluding(deployment.applicationId, deploymentId);
+    await this.ssh.writeRemoteFile(options, `${sourceDir}/docker-compose.yml`, sourceMergedCompose, '644');
+    if (sourceMergedCompose.trim()) {
+      await this.ssh.runCommand(options, `cd ${sourceDir} && sudo docker compose -p ${sourceApp.slug} up -d --remove-orphans`, 60_000).catch(() => undefined);
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.projectDeployment.update({ where: { id: deploymentId }, data: { applicationId: targetApplicationId, composeRendered: destDeploymentCompose } }),
+      // Por nome, não por índice: `services` (linhas do banco) e `included`
+      // (resolvido do manifesto) não têm garantia de estar na mesma ordem.
+      ...services.map((s) =>
+        this.prisma.projectService.update({
+          where: { id: s.id },
+          data: { applicationId: targetApplicationId, containerName: `${destApp.slug}_${s.name}`, status: 'RUNNING' as const },
+        }),
+      ),
+      this.prisma.application.update({
+        where: { id: targetApplicationId },
+        data: {
+          containerNames: [...destApp.containerNames, ...expectedNewNames],
+          composeRendered: destMergedCompose,
+          status: 'RUNNING',
+          lastError: null,
+        },
+      }),
+      this.prisma.application.update({
+        where: { id: deployment.applicationId },
+        data: {
+          containerNames: sourceApp.containerNames.filter((name) => !services.some((s) => s.containerName === name)),
+          composeRendered: sourceMergedCompose,
+        },
+      }),
+    ]);
+
+    onLog?.('Serviço movido com sucesso.\n');
+    return { ok: true, applicationId: targetApplicationId };
+  }
+
   async remove(id: string, onLog?: LogFn) {
     const app = await this.getOne(id);
     await this.prisma.application.update({ where: { id }, data: { status: 'REMOVING' } });

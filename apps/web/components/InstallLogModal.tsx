@@ -17,6 +17,7 @@ export type Op =
   | 'service-redeploy-git'
   | 'container-logs'
   | 'service-add'
+  | 'service-move'
   | 'service-db-import'
   | 'database-backup-run'
   | 'updates-install'
