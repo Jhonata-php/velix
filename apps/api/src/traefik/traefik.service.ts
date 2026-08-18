@@ -549,10 +549,40 @@ export class TraefikService {
     return parseCertificate(base64Cert);
   }
 
-  /** Confere, do próprio Velix, se o domínio já responde em HTTPS (certificado emitido + rota ativa). */
+  /**
+   * Confere, do próprio Velix, se o domínio já responde em HTTPS (certificado
+   * emitido + rota ativa) — mas só depois de confirmar que o DNS resolve pro
+   * IP do servidor certo. Sem essa checagem, um domínio esquecido apontando
+   * pra outro servidor (ou nem apontando ainda) podia dar "ACTIVE" só porque
+   * o `fetch` https bateu em QUALQUER coisa respondendo naquele host — e o
+   * usuário via "ACTIVE" sem o domínio funcionar de verdade pra ele.
+   * Domínio com proxy da Cloudflare (nuvem laranja) é a exceção esperada: aí
+   * o DNS aponta pro edge da Cloudflare de propósito, não pro servidor.
+   */
   async verifyDomain(domainId: string) {
-    const domain = await this.prisma.domain.findUnique({ where: { id: domainId } });
+    const domain = await this.prisma.domain.findUnique({ where: { id: domainId }, include: { server: true } });
     if (!domain) throw new NotFoundException('Domínio não encontrado');
+
+    if (!domain.proxied) {
+      const dns = await checkDns(domain.hostname, domain.server.publicIp);
+      if (dns.state === 'NOT_CONFIGURED') {
+        return this.prisma.domain.update({
+          where: { id: domainId },
+          data: { status: 'PENDING', lastError: 'Sem registro DNS ainda — aponte o domínio pro IP do servidor.', lastCheckedAt: new Date() },
+        });
+      }
+      if (dns.state === 'INCORRECT') {
+        return this.prisma.domain.update({
+          where: { id: domainId },
+          data: {
+            status: 'ERROR',
+            lastError: `DNS aponta pra ${dns.records.join(', ')}, não pro IP do servidor (${domain.server.publicIp}).`,
+            lastCheckedAt: new Date(),
+          },
+        });
+      }
+    }
+
     try {
       const res = await fetch(`https://${domain.hostname}`, { method: 'GET', signal: AbortSignal.timeout(12_000) });
       const active = res.status < 500;
@@ -565,10 +595,15 @@ export class TraefikService {
         },
       });
     } catch (err) {
+      // DNS já resolveu certo (passou pela checagem acima) mas o HTTPS não
+      // respondeu — se o domínio já esteve ACTIVE antes, isso é uma
+      // regressão de verdade (certificado expirou, Traefik caiu, etc.), não
+      // "ainda configurando". PENDING fica só pro domínio que nunca chegou
+      // a ficar ACTIVE (emissão do certificado ainda rolando pela primeira vez).
       return this.prisma.domain.update({
         where: { id: domainId },
         data: {
-          status: 'PENDING',
+          status: domain.status === 'ACTIVE' ? 'ERROR' : 'PENDING',
           lastError: err instanceof Error ? err.message : 'Domínio ainda não responde em HTTPS',
           lastCheckedAt: new Date(),
         },
@@ -587,11 +622,17 @@ export class TraefikService {
    * minutos pra todo domínio ainda não confirmado — DNS recém-propagado ou
    * certificado ainda sendo emitido leva minutos, não faz sentido cobrar do
    * usuário ficar clicando até resolver sozinho.
+   *
+   * Inclui ACTIVE também: sem isso, um domínio que já ficou ACTIVE uma vez
+   * nunca era reverificado de novo, e uma regressão real (certificado que
+   * expirou, Traefik reiniciado com config quebrada, DNS trocado depois)
+   * ficava mostrando "ACTIVE" pra sempre mesmo com o domínio fora do ar —
+   * foi exatamente esse o bug reportado (domínio ACTIVE sem HTTPS de verdade).
    */
   @Cron('*/2 * * * *')
   async reverifyPendingDomains() {
     const pending = await this.prisma.domain.findMany({
-      where: { status: { in: ['PENDING', 'ERROR'] } },
+      where: { status: { in: ['PENDING', 'ERROR', 'ACTIVE'] } },
       select: { id: true },
     });
     for (const { id } of pending) {

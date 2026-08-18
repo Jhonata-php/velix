@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { VersionService } from '../version/version.service';
 import { GitHubReleaseService, ReleaseInfo, UpdateChannel } from './github-release.service';
@@ -79,6 +80,21 @@ export class UpdateService implements OnModuleInit {
 
   getCurrent() {
     return this.version.getInfo();
+  }
+
+  /**
+   * Sem isso, uma release nova só era percebida quando alguém tinha o painel
+   * aberto pra disparar a consulta (o cache de 10min do GitHubReleaseService
+   * só é renovado por uma chamada de verdade) — sessão fechada = badge de
+   * atualização nunca aparece, por mais tempo que passe. Roda de hora em
+   * hora, force:true, garantindo que o cache e o histórico (`UpdateCheck`)
+   * fiquem frescos mesmo sem ninguém com o painel aberto.
+   */
+  @Cron('0 * * * *')
+  async scheduledCheck() {
+    await this.check({ force: true }).catch((err) =>
+      this.logger.warn(`Verificação agendada de atualização falhou: ${err instanceof Error ? err.message : err}`),
+    );
   }
 
   async check(opts: { force?: boolean } = {}): Promise<UpdateCheckSummary> {
