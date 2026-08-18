@@ -36,6 +36,13 @@ struct ServerSummary: Decodable, Identifiable {
     let metrics: ServerMetrics?
 }
 
+/// Resposta de POST /servers/:id/reboot — `message` explica o resultado
+/// (ex.: "Comando enviado" ou o motivo de uma falha), sem outros campos.
+struct ServerActionResponse: Decodable {
+    let ok: Bool
+    let message: String
+}
+
 struct MetricSample: Decodable, Identifiable {
     var id: String { capturedAt }
     let loadAvg1: Double?

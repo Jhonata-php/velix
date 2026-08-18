@@ -13,6 +13,9 @@ struct ServerDetailView: View {
     @State private var errorMessage: String?
     @State private var hasLoadedOnce = false
     @State private var selectedTab: Tab = .overview
+    @State private var isRebooting = false
+    @State private var showRebootConfirm = false
+    @State private var rebootMessage: String?
 
     private enum Tab: String, CaseIterable {
         case overview = "Visão geral"
@@ -93,10 +96,48 @@ struct ServerDetailView: View {
                 } label: {
                     Label("Abrir no navegador", systemImage: "safari")
                 }
+
+                Button {
+                    showRebootConfirm = true
+                } label: {
+                    Label(isRebooting ? "Reiniciando…" : "Reiniciar servidor", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(isRebooting)
+                .foregroundStyle(.red)
+            }
+
+            if let rebootMessage {
+                Section {
+                    Text(rebootMessage).foregroundStyle(.secondary)
+                }
             }
         }
         .refreshable {
             await load()
+        }
+        .confirmationDialog(
+            "Reiniciar este servidor agora?",
+            isPresented: $showRebootConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Reiniciar", role: .destructive) {
+                Task { await reboot() }
+            }
+        } message: {
+            Text("O servidor fica indisponível por alguns minutos até voltar.")
+        }
+    }
+
+    private func reboot() async {
+        guard let client = session.activeAPIClient else { return }
+        isRebooting = true
+        rebootMessage = nil
+        defer { isRebooting = false }
+        do {
+            let response: ServerActionResponse = try await client.post("/servers/\(server.id)/reboot")
+            rebootMessage = response.message
+        } catch {
+            rebootMessage = (error as? LocalizedError)?.errorDescription ?? "Falha ao reiniciar servidor"
         }
     }
 
