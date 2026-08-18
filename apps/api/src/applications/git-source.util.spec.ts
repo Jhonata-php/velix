@@ -12,6 +12,7 @@ import {
   renderGitCompose,
   validateEnvKey,
   parseGitComposeMeta,
+  parseGitHubOwnerRepo,
 } from './git-source.util';
 
 // --- URL do repositório -----------------------------------------------------
@@ -138,5 +139,12 @@ const noVolumesCompose = renderGitCompose({
   proxyNetwork: 'n',
 });
 assert.deepEqual(parseGitComposeMeta(noVolumesCompose, 'x'), { port: 8080, volumes: [] });
+
+// --- owner/repo do GitHub (webhook clássico + roteamento do GitHub App) -----
+
+assert.deepEqual(parseGitHubOwnerRepo('https://github.com/usuario/projeto.git'), { owner: 'usuario', repo: 'projeto' });
+assert.deepEqual(parseGitHubOwnerRepo('https://github.com/usuario/projeto'), { owner: 'usuario', repo: 'projeto' });
+assert.equal(parseGitHubOwnerRepo('https://gitlab.com/usuario/projeto'), null);
+assert.equal(parseGitHubOwnerRepo('não é uma url'), null);
 
 console.log('git-source.util self-check OK');

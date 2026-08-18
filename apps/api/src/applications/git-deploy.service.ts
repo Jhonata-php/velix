@@ -17,6 +17,7 @@ import {
   renderGitCompose,
   validateEnvKey,
   parseGitComposeMeta,
+  parseGitHubOwnerRepo,
   type BuildMethod,
 } from './git-source.util';
 
@@ -361,11 +362,24 @@ export class GitDeployService {
     // A base vem do WEB_ORIGIN porque é o endereço por onde a forja alcança o
     // painel — o container não sabe sozinho como é visto de fora.
     const base = (process.env.WEB_ORIGIN ?? '').replace(/\/$/, '');
+
+    // Conta GitHub App nunca tem githubWebhookId (não existe webhook clássico
+    // pra ela — ver tryCreateGitHubWebhook), mas ainda assim não precisa de
+    // URL colada manualmente: o webhook central da instalação já cobre.
+    let autoCreated = !!deployment.githubWebhookId;
+    if (!autoCreated && deployment.autoDeploy && deployment.gitAccountId) {
+      const account = await this.prisma.gitAccount.findUnique({
+        where: { id: deployment.gitAccountId },
+        select: { authMethod: true },
+      });
+      autoCreated = account?.authMethod === 'github_app';
+    }
+
     return {
       enabled: deployment.autoDeploy,
       gitRef: deployment.gitRef,
       webhookUrl: deployment.webhookSecret ? `${base}/api/webhooks/git/${deployment.webhookSecret}` : null,
-      autoCreated: !!deployment.githubWebhookId,
+      autoCreated,
     };
   }
 
@@ -436,26 +450,14 @@ export class GitDeployService {
     const webhookUrl = `${base}/api/webhooks/git/${webhookSecret}`;
     const result = await this.tryCreateGitHubWebhook(deployment, webhookUrl);
     if (result.ok) {
-      await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { githubWebhookId: result.hookId } });
+      // hookId nulo = conta GitHub App, coberta pelo webhook central da
+      // instalação — nada pra gravar, não existe webhook clássico nenhum.
+      if (result.hookId !== null) {
+        await this.prisma.projectDeployment.update({ where: { id: deployment.id }, data: { githubWebhookId: result.hookId } });
+      }
       return null;
     }
     return result.reason;
-  }
-
-  /** Owner/repo de uma URL já validada por validateRepoUrl — só GitHub tem a
-   * API de webhook usada aqui, outras forjas caem no aviso e a pessoa cola a
-   * URL manualmente (fluxo que já existia antes desse recurso). */
-  private parseGitHubOwnerRepo(repoUrl: string): { owner: string; repo: string } | null {
-    let parsed: URL;
-    try {
-      parsed = new URL(repoUrl);
-    } catch {
-      return null;
-    }
-    if (parsed.hostname !== 'github.com') return null;
-    const path = parsed.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
-    const [owner, repo] = path.split('/');
-    return owner && repo ? { owner, repo } : null;
   }
 
   private async resolveDeploymentToken(deployment: { gitAccountId: string | null; repoTokenEnc: string | null }): Promise<string | null> {
@@ -471,29 +473,27 @@ export class GitDeployService {
   private async tryCreateGitHubWebhook(
     deployment: { repoUrl: string | null; gitAccountId: string | null; repoTokenEnc: string | null },
     webhookUrl: string,
-  ): Promise<{ ok: true; hookId: number } | { ok: false; reason: string }> {
-    const parsed = deployment.repoUrl ? this.parseGitHubOwnerRepo(deployment.repoUrl) : null;
+  ): Promise<{ ok: true; hookId: number | null } | { ok: false; reason: string }> {
+    const parsed = deployment.repoUrl ? parseGitHubOwnerRepo(deployment.repoUrl) : null;
     if (!parsed) {
       return { ok: false, reason: 'Criação automática só é suportada para repositórios no GitHub' };
     }
 
-    // A API clássica de webhooks (usada abaixo) não aceita token de
-    // instalação de GitHub App de jeito nenhum — devolve sempre "Resource
-    // not accessible by integration", mesmo com a permissão de Administration
-    // concedida. Isso não é sobre permissão, é sobre o tipo de token: só PAT
-    // (authMethod "token") funciona aqui. Checa antes de nem tentar, pra não
-    // mandar a pessoa reconectar a conta achando que vai resolver.
+    // Conta GitHub App não passa pela API clássica de webhooks (POST
+    // /repos/:owner/:repo/hooks) — ela rejeita token de instalação sempre,
+    // mesmo com permissão de administration ("Resource not accessible by
+    // integration", limitação do GitHub, não de permissão). Mas não precisa:
+    // o App tem seu próprio webhook central, ativo desde a instalação (ver
+    // github-app.util.ts hook_attributes + GitHubAppWebhookController), que já
+    // entrega push de qualquer repositório da instalação. `hookId: null`
+    // sinaliza "coberto automaticamente, nada pra criar por implantação".
     if (deployment.gitAccountId) {
       const account = await this.prisma.gitAccount.findUnique({
         where: { id: deployment.gitAccountId },
         select: { authMethod: true },
       });
       if (account?.authMethod === 'github_app') {
-        return {
-          ok: false,
-          reason:
-            'Contas conectadas via "Conectar com GitHub" não conseguem criar webhook por essa API (limitação do GitHub, não de permissão) — use uma conta com token pessoal (PAT) em Configurações → Repositórios',
-        };
+        return { ok: true, hookId: null };
       }
     }
 
@@ -538,7 +538,7 @@ export class GitDeployService {
     githubWebhookId: number | null;
   }) {
     if (!deployment.githubWebhookId) return;
-    const parsed = deployment.repoUrl ? this.parseGitHubOwnerRepo(deployment.repoUrl) : null;
+    const parsed = deployment.repoUrl ? parseGitHubOwnerRepo(deployment.repoUrl) : null;
     if (!parsed) return;
     try {
       const token = await this.resolveDeploymentToken(deployment);

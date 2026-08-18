@@ -1,5 +1,6 @@
 /** Funções puras do fluxo de GitHub App via manifest — sem I/O, testáveis
  * sem rede. Ver github-app.util.spec.ts. */
+import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Nome do App visto no GitHub. Precisa ser único em TODO o GitHub (não só
@@ -29,26 +30,39 @@ export function buildManifest({ label, randomSuffix, webOrigin }: ManifestOption
     setup_url: `${base}/api/git-accounts/github/installed`,
     setup_on_update: true,
     public: false,
-    default_events: [],
-    // ponytail: "administration" já foi pedido aqui pra tentar criar webhook
-    // de autodeploy via API pra contas GitHub App — não adianta, a API
-    // clássica de webhooks (POST /repos/:owner/:repo/hooks) rejeita token de
-    // instalação de App com "Resource not accessible by integration"
-    // independente de permissão concedida (limitação do GitHub, não nossa).
-    // GitDeployService.tryCreateGitHubWebhook já pula a tentativa pra contas
-    // github_app, então não tem motivo pra pedir uma permissão mais ampla
-    // que o Velix nunca usa — token pessoal (PAT) é o único caminho pra essa
-    // automação hoje.
+    // "push" é o único evento que o autodeploy de contas GitHub App precisa
+    // (ver GitHubAppWebhookController) — GitHub Apps não conseguem criar
+    // webhook clássico por repositório (POST /repos/:owner/:repo/hooks
+    // devolve "Resource not accessible by integration" pra token de
+    // instalação, mesmo com permissão de administration concedida — testado
+    // e confirmado, não é falta de permissão). O jeito certo pra App é um
+    // único webhook por instalação, entregando eventos de todos os
+    // repositórios — daí esse default_events + hook_attributes.active aqui.
+    default_events: ['push'],
     default_permissions: {
       contents: 'read',
       metadata: 'read',
     },
-    // Nenhum evento assinado (default_events vazio) — active:false garante
-    // que o GitHub nunca tenta entregar nada aqui, a URL só precisa existir
-    // pra passar na validação do manifest.
     hook_attributes: {
-      url: `${base}/api/git-accounts/github/callback`,
-      active: false,
+      url: `${base}/api/webhooks/github-app`,
+      active: true,
     },
   };
+}
+
+/** HMAC-SHA256 do corpo bruto contra o header `X-Hub-Signature-256` — o
+ * `webhookSecret` é o que o próprio GitHub gera na criação do App
+ * (data.webhook_secret na conversão do manifest, ver GitHubAppService),
+ * autenticando os eventos entregues no webhook central da instalação sem
+ * precisar de um segredo nosso. `rawBody` precisa ser o corpo exatamente
+ * como chegou — reserializar o JSON já parseado quebraria a comparação
+ * (ver `rawBody: true` em main.ts e GitHubAppWebhookController).
+ */
+export function verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined, webhookSecret: string): boolean {
+  if (!signatureHeader?.startsWith('sha256=')) return false;
+  const expected = `sha256=${createHmac('sha256', webhookSecret).update(rawBody).digest('hex')}`;
+  const expectedBuf = Buffer.from(expected);
+  const actualBuf = Buffer.from(signatureHeader);
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return timingSafeEqual(expectedBuf, actualBuf);
 }

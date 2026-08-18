@@ -3,7 +3,8 @@
  *   npx ts-node src/git-accounts/github-app.util.spec.ts
  */
 import assert from 'node:assert';
-import { buildManifestName, buildManifest } from './github-app.util';
+import { createHmac } from 'node:crypto';
+import { buildManifestName, buildManifest, verifyWebhookSignature } from './github-app.util';
 
 // nome curto: rótulo + sufixo, sem truncar
 assert.equal(buildManifestName('Minha conta', 'ab12cd'), 'Velix Minha conta ab12cd');
@@ -23,8 +24,23 @@ const manifest = buildManifest({ label: 'Minha conta', randomSuffix: 'ab12cd', w
 assert.equal(manifest.redirect_url, 'https://velix.exemplo.com/api/git-accounts/github/callback');
 assert.equal(manifest.setup_url, 'https://velix.exemplo.com/api/git-accounts/github/installed');
 assert.equal(manifest.public, false);
-assert.deepEqual(manifest.default_events, []);
+assert.deepEqual(manifest.default_events, ['push']);
 assert.deepEqual(manifest.default_permissions, { contents: 'read', metadata: 'read' });
-assert.equal(manifest.hook_attributes.active, false);
+assert.equal(manifest.hook_attributes.url, 'https://velix.exemplo.com/api/webhooks/github-app');
+assert.equal(manifest.hook_attributes.active, true);
+
+// --- assinatura do webhook ---------------------------------------------------
+
+const secret = 'segredo-de-teste';
+const body = Buffer.from('{"ref":"refs/heads/main"}');
+const validSignature = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+
+assert.equal(verifyWebhookSignature(body, validSignature, secret), true);
+assert.equal(verifyWebhookSignature(body, validSignature, 'segredo-errado'), false);
+assert.equal(verifyWebhookSignature(body, 'sha256=00', secret), false);
+assert.equal(verifyWebhookSignature(body, undefined, secret), false);
+assert.equal(verifyWebhookSignature(body, 'md5=abc', secret), false);
+// corpo alterado depois de assinado — assinatura não pode continuar batendo
+assert.equal(verifyWebhookSignature(Buffer.from('{"ref":"refs/heads/outra"}'), validSignature, secret), false);
 
 console.log('github-app.util self-check OK');

@@ -17,7 +17,10 @@ import { GitDeployService } from './applications/git-deploy.service';
 import { DatabaseBackupService } from './database-backup/database-backup.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: true — GitHubAppWebhookController precisa do corpo exatamente
+  // como o GitHub mandou (bytes brutos) pra verificar a assinatura HMAC;
+  // reserializar o JSON já parseado quebraria a comparação.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
   // Sem isto, `req.ip` é o IP do container do frontend (::ffff:172.18.x.x) —
   // era o que aparecia em "Sessões ativas" e no que o rate limit de login

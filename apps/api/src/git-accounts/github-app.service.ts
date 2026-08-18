@@ -203,6 +203,23 @@ export class GitHubAppService {
     return data.map((b) => b.name);
   }
 
+  /** Conta dona de uma instalação — é assim que GitHubAppWebhookController
+   * descobre de qual conexão um evento veio, já que a URL do webhook é uma
+   * só (compartilhada por todas as instalações), diferente do webhook
+   * clássico por repositório que tem uma URL com segredo por implantação. */
+  async findAccountByInstallation(installationId: string) {
+    return this.prisma.gitAccount.findFirst({ where: { installationId, authMethod: 'github_app' } });
+  }
+
+  /** Segredo gerado pelo próprio GitHub na criação do App (data.webhook_secret
+   * na conversão do manifest) — autentica os eventos entregues no webhook
+   * central da instalação, sem precisar de um segredo próprio nosso. */
+  async resolveWebhookSecret(account: { credentialsEnc: string | null }): Promise<string | null> {
+    if (!account.credentialsEnc) return null;
+    const credentials = JSON.parse(decryptCredential(account.credentialsEnc)) as StoredCredentials;
+    return credentials.webhookSecret ?? null;
+  }
+
   private async getGitHubAppAccount(accountId: string) {
     const account = await this.prisma.gitAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new NotFoundException('Conta do GitHub não encontrada');

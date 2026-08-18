@@ -80,6 +80,24 @@ export function cloneUrlWithToken(url: string, token?: string): string {
   return `https://x-access-token:${encodeURIComponent(token.trim())}@${parsed.hostname}${parsed.pathname}`;
 }
 
+/** owner/repo de uma URL do GitHub já validada por validateRepoUrl — usado
+ * tanto pra criar/remover o webhook clássico (GitDeployService) quanto pra
+ * casar o `repository.full_name` de um evento do GitHub App com a
+ * implantação certa (GitHubAppWebhookController). Só GitHub tem qualquer um
+ * dos dois mecanismos de webhook usados aqui. */
+export function parseGitHubOwnerRepo(repoUrl: string): { owner: string; repo: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(repoUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.hostname !== 'github.com') return null;
+  const path = parsed.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+  const [owner, repo] = path.split('/');
+  return owner && repo ? { owner, repo } : null;
+}
+
 /** Esconde o token de qualquer linha de log antes dela chegar ao navegador. */
 export function redactToken(line: string, token?: string): string {
   if (!token?.trim()) return line;

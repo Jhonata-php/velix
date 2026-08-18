@@ -9,6 +9,6 @@ import { GitHubAppCallbackController } from './github-app-callback.controller';
   imports: [AuthModule],
   controllers: [GitAccountsController, GitHubAppCallbackController],
   providers: [GitAccountsService, GitHubAppService],
-  exports: [GitAccountsService],
+  exports: [GitAccountsService, GitHubAppService],
 })
 export class GitAccountsModule {}
