@@ -193,7 +193,7 @@ export default function ServerDetailPage() {
         actions={actions}
         meta={
           <>
-            {server.sshUser}@{server.publicIp ?? server.privateIp ?? server.hostname}:{server.sshPort}
+            {server.publicIp ?? server.privateIp ?? server.hostname}
             {server.osName && ` · ${server.osName} ${server.osVersion ?? ''}`}
             {server.lastCheckedAt && ` · verificado ${new Date(server.lastCheckedAt).toLocaleString('pt-BR')}`}
           </>

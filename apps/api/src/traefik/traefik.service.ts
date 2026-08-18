@@ -557,30 +557,32 @@ export class TraefikService {
    * o `fetch` https bateu em QUALQUER coisa respondendo naquele host — e o
    * usuário via "ACTIVE" sem o domínio funcionar de verdade pra ele.
    * Domínio com proxy da Cloudflare (nuvem laranja) é a exceção esperada: aí
-   * o DNS aponta pro edge da Cloudflare de propósito, não pro servidor.
+   * o DNS aponta pro edge da Cloudflare de propósito, não pro servidor —
+   * `checkDns`/`evaluateDnsState` já reconhece as faixas de IP da Cloudflare
+   * como válidas, então nem precisa confiar na flag `Domain.proxied` (que só
+   * reflete o que o próprio Velix criou; fica desatualizada se o proxy for
+   * ligado/desligado direto no painel da Cloudflare, fora do Velix).
    */
   async verifyDomain(domainId: string) {
     const domain = await this.prisma.domain.findUnique({ where: { id: domainId }, include: { server: true } });
     if (!domain) throw new NotFoundException('Domínio não encontrado');
 
-    if (!domain.proxied) {
-      const dns = await checkDns(domain.hostname, domain.server.publicIp);
-      if (dns.state === 'NOT_CONFIGURED') {
-        return this.prisma.domain.update({
-          where: { id: domainId },
-          data: { status: 'PENDING', lastError: 'Sem registro DNS ainda — aponte o domínio pro IP do servidor.', lastCheckedAt: new Date() },
-        });
-      }
-      if (dns.state === 'INCORRECT') {
-        return this.prisma.domain.update({
-          where: { id: domainId },
-          data: {
-            status: 'ERROR',
-            lastError: `DNS aponta pra ${dns.records.join(', ')}, não pro IP do servidor (${domain.server.publicIp}).`,
-            lastCheckedAt: new Date(),
-          },
-        });
-      }
+    const dns = await checkDns(domain.hostname, domain.server.publicIp);
+    if (dns.state === 'NOT_CONFIGURED') {
+      return this.prisma.domain.update({
+        where: { id: domainId },
+        data: { status: 'PENDING', lastError: 'Sem registro DNS ainda — aponte o domínio pro IP do servidor.', lastCheckedAt: new Date() },
+      });
+    }
+    if (dns.state === 'INCORRECT') {
+      return this.prisma.domain.update({
+        where: { id: domainId },
+        data: {
+          status: 'ERROR',
+          lastError: `DNS aponta pra ${dns.records.join(', ')}, não pro IP do servidor (${domain.server.publicIp}).`,
+          lastCheckedAt: new Date(),
+        },
+      });
     }
 
     try {
