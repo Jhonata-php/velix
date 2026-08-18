@@ -15,4 +15,8 @@ export class SetBackupConfigDto {
   @IsOptional()
   @IsString()
   destinationId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  database?: string | null;
 }

@@ -621,6 +621,12 @@ model DatabaseBackupConfig {
   scheduledAt      String?
   retentionDays    Int      @default(14)
 
+  /// Nome do banco/schema a dumpar — null = tenta resolver do manifesto/env
+  /// (resolvedDatabaseName), que cai pro nome fixo "app" quando não acha nada,
+  /// e esse nome pode não existir de verdade na instância (causa comum de
+  /// "Unknown database" no mysqldump). Selecionável na aba Backups.
+  database         String?
+
   destinationId    String?
   destination      BackupDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
 

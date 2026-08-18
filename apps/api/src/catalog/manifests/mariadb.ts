@@ -28,7 +28,12 @@ export const mariadbManifest: VelixManifest = {
         MARIADB_PASSWORD: '{{secret:APP_PASSWORD}}',
       },
       variables: [
-        { key: 'DATABASE_NAME', label: 'Nome do banco de dados', type: 'text', default: 'app', required: true },
+        {
+          key: 'DATABASE_NAME',
+          label: 'Nome do banco de dados (opcional)',
+          description: 'Deixe em branco pra não criar nenhum — crie e gerencie pelo painel, na aba Dados.',
+          type: 'text',
+        },
         {
           key: 'APP_USER',
           label: 'Usuário de aplicação (opcional)',

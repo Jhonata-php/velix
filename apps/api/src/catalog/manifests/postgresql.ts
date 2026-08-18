@@ -21,7 +21,14 @@ export const postgresqlManifest: VelixManifest = {
         POSTGRES_PASSWORD: '{{secret:POSTGRES_PASSWORD}}',
         POSTGRES_DB: '{{var:DATABASE_NAME}}',
       },
-      variables: [{ key: 'DATABASE_NAME', label: 'Nome do banco de dados', type: 'text', default: 'app', required: true }],
+      variables: [
+        {
+          key: 'DATABASE_NAME',
+          label: 'Nome do banco de dados (opcional)',
+          description: 'Deixe em branco pra não criar nenhum — crie e gerencie pelo painel, na aba Dados.',
+          type: 'text',
+        },
+      ],
       volumes: [{ name: 'data', containerPath: '/var/lib/postgresql/data' }],
       ports: [{ port: 5432, recommended: true }],
     },

@@ -246,6 +246,7 @@ export interface DatabaseBackupConfig {
   scheduledAt: string | null;
   retentionDays: number;
   destinationId: string | null;
+  database: string | null;
 }
 
 export interface DatabaseBackupRun {

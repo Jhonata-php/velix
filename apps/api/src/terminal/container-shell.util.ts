@@ -45,3 +45,17 @@ export function dbImportCommand(image: string, password: string, dbName: string)
   }
   return null;
 }
+
+/**
+ * Comando (sem I/O ainda, roda antes do `docker exec` de import) que apaga
+ * a(s) linha(s) `SET @@GLOBAL.GTID_PURGED=...` de um dump MySQL/MariaDB —
+ * esse valor descreve o estado de replicação do servidor ONDE o dump foi
+ * gerado, não faz sentido aplicar no destino, e o container já roda com
+ * algum GTID próprio executado desde o bootstrap. Tentar sobrescrever com
+ * um set que não é superconjunto do já executado estoura
+ * `ERROR 3546 (HY000)`, então a linha é descartada — igual a maioria das
+ * ferramentas de migração faz com dumps de origem desconhecida.
+ */
+export function stripGtidPurgedCommand(filePath: string): string {
+  return `sudo sed -i '/^SET @@GLOBAL\\.GTID_PURGED/d' ${shellSingleQuote(filePath)}`;
+}

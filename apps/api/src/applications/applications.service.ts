@@ -8,7 +8,7 @@ import { TraefikService } from '../traefik/traefik.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { resolvedDatabaseName } from '../catalog/catalog.util';
 import { encryptCredential, decryptCredential } from '../ssh/crypto.util';
-import { dbImportSecretKey, dbImportCommand } from '../terminal/container-shell.util';
+import { dbImportSecretKey, dbImportCommand, stripGtidPurgedCommand } from '../terminal/container-shell.util';
 import { shellSingleQuote } from '../database/mysql.util';
 import {
   renderCompose,
@@ -553,6 +553,10 @@ export class ApplicationsService {
       if (!write.ok) throw new BadRequestException(write.message);
 
       try {
+        if (secretKey === 'ROOT_PASSWORD') {
+          await this.ssh.runCommand(options, stripGtidPurgedCommand(remoteFilePath), 15_000);
+        }
+
         onLog?.('Importando...\n');
         const result = await this.ssh.runCommand(
           options,

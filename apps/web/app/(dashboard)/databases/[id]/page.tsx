@@ -593,9 +593,11 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
   const [config, setConfig] = useState<DatabaseBackupConfig | null>(null);
   const [runs, setRuns] = useState<DatabaseBackupRun[] | null>(null);
   const [destinations, setDestinations] = useState<BackupDestinationSummary[]>([]);
+  const [schemas, setSchemas] = useState<string[] | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
   const [retentionDays, setRetentionDays] = useState(14);
   const [destinationId, setDestinationId] = useState('');
+  const [database, setDatabase] = useState('');
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -620,6 +622,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
         setScheduledAt(c.scheduledAt ?? '');
         setRetentionDays(c.retentionDays);
         setDestinationId(c.destinationId ?? '');
+        setDatabase(c.database ?? '');
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
     apiFetch<DatabaseBackupRun[]>(`/databases/${databaseId}/backup-runs`)
@@ -628,6 +631,12 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
     apiFetch<BackupDestinationSummary[]>('/backup-destinations')
       .then(setDestinations)
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
+    // Mesma rota que a aba Dados usa pra listar os bancos de verdade da
+    // instância — o dropdown de destino do dump usa nomes reais em vez de
+    // depender do fallback fixo "app" de resolvedDatabaseName().
+    apiFetch<string[]>(`/databases/${databaseId}/schemas`)
+      .then(setSchemas)
+      .catch(() => setSchemas([]));
   }
 
   useEffect(load, [databaseId]);
@@ -646,6 +655,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
           scheduledAt: scheduledAt.trim() || null,
           retentionDays,
           destinationId: destinationId || null,
+          database: database || null,
         }),
       });
       load();
@@ -669,7 +679,18 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:grid-cols-3 dark:border-slate-700">
+      <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:grid-cols-4 dark:border-slate-700">
+        <label className="block">
+          <span className="mb-1 block text-xs text-slate-400">Banco de dados</span>
+          <select value={database} onChange={(e) => setDatabase(e.target.value)} className="input h-9">
+            <option value="">Detectar automaticamente</option>
+            {schemas?.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="mb-1 block text-xs text-slate-400">Horário diário (opcional)</span>
           <input type="time" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="input h-9" />
