@@ -30,11 +30,20 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     AuthModule,
     ServersModule,
     CloudflareModule,
+    // DatabaseBackupModule ANTES de DatabaseModule: os controllers registram
+    // rotas na ordem dos módulos aqui, e `DatabaseController` (DatabaseModule)
+    // tem uma rota `GET databases/:id` (instância legada, não os bancos por
+    // projeto) que — se registrada primeiro — engole `GET databases/backup-
+    // routines` do DatabaseBackupController tratando "backup-routines" como
+    // se fosse o :id. Foi exatamente esse o bug: a tela de Configurações →
+    // Backup caía num "Instância de banco não encontrada" vindo do
+    // DatabaseController errado. DatabaseConsoleModule não tem esse risco
+    // (todas as rotas dela têm um segmento depois do :id, ex. `:id/schemas`).
+    DatabaseBackupModule,
     DatabaseModule,
     TraefikModule,
     CatalogModule,
     ApplicationsModule,
-    DatabaseBackupModule,
     DatabaseConsoleModule,
     UpdateModule,
     GitAccountsModule,
