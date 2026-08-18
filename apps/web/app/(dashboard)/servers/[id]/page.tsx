@@ -1297,6 +1297,7 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
   const [domainBusy, setDomainBusy] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<DomainRow | null>(null);
   const [search, setSearch] = useState('');
+  const [showTraefikLogs, setShowTraefikLogs] = useState(false);
 
   function loadStatus() {
     apiFetch<TraefikStatusResp>(`/servers/${server.id}/traefik/status`)
@@ -1435,6 +1436,10 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
                 <IconPlus className="h-3.5 w-3.5" />
                 Adicionar domínio
               </button>
+              <button onClick={() => setShowTraefikLogs(true)} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+                <IconTerminal className="h-3.5 w-3.5" />
+                Logs do Traefik
+              </button>
               <button onClick={loadStatus} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs">
                 <IconRefresh className="h-3.5 w-3.5" />
                 Atualizar
@@ -1551,6 +1556,15 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
             loadDomains();
             loadStatus();
           }}
+        />
+      )}
+
+      {showTraefikLogs && (
+        <ContainerLogsModal
+          serverId={server.id}
+          containerId="velix-traefik"
+          title="Logs do Traefik"
+          onClose={() => setShowTraefikLogs(false)}
         />
       )}
 
