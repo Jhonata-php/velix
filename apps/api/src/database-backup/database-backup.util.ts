@@ -33,6 +33,23 @@ export function dumpCommand(image: string, password: string, dbName: string): { 
   return null;
 }
 
+/**
+ * Igual a `dumpCommand`, mas pra "todos os bancos" — sem `dbName`, o dump da
+ * instância inteira: `--all-databases` no mysqldump, `pg_dumpall` no lado
+ * Postgres (não existe flag do `pg_dump` pra várias bases num arquivo só).
+ * Selecionável na aba Backups como alternativa a escolher um banco específico.
+ */
+export function dumpAllCommand(image: string, password: string): { execFlags: string; command: string } | null {
+  const img = image.toLowerCase();
+  if (img.includes('postgres')) {
+    return { execFlags: `-e PGPASSWORD=${shellSingleQuote(password)}`, command: `pg_dumpall -U postgres --no-owner --no-privileges` };
+  }
+  if (img.includes('mysql') || img.includes('mariadb')) {
+    return { execFlags: '', command: `mysqldump -uroot -p${shellSingleQuote(password)} --all-databases` };
+  }
+  return null;
+}
+
 /** Nome de arquivo com timestamp completo (não só data) — dois backups do
  * mesmo banco no mesmo dia não podem colidir. Adiciona sufixo aleatório
  * para garantir unicidade mesmo em chamadas síncronas no mesmo milissegundo. */

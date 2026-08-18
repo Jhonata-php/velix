@@ -3,7 +3,7 @@
  *   npx ts-node src/database-backup/database-backup.util.spec.ts
  */
 import assert from 'node:assert';
-import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
+import { dumpCommand, dumpAllCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
 import { shellSingleQuote } from '../database/mysql.util';
 
 // --- isManagedDatabaseImage ---------------------------------------------------
@@ -39,6 +39,20 @@ assert.equal(dumpCommand('nginx:alpine', 'x', 'app'), null);
 const injected = dumpCommand('postgres:16', 'pw', "app'; rm -rf / #");
 assert.ok(injected);
 assert.equal(injected!.command, "pg_dump -U postgres -d 'app'\\''; rm -rf / #' --no-owner --no-privileges");
+
+// --- dumpAllCommand ("todos os bancos", sem dbName) -------------------------
+const pgAll = dumpAllCommand('postgres:16.4', "senha'com'aspas");
+assert.ok(pgAll);
+assert.equal(pgAll!.command, 'pg_dumpall -U postgres --no-owner --no-privileges');
+assert.ok(pgAll!.execFlags.startsWith('-e PGPASSWORD='));
+
+const mysqlAll = dumpAllCommand('mysql:8.4', "segredo'com'aspas");
+assert.ok(mysqlAll);
+assert.equal(mysqlAll!.execFlags, '');
+assert.equal(mysqlAll!.command, "mysqldump -uroot -p'segredo'\\''com'\\''aspas' --all-databases");
+
+assert.equal(dumpAllCommand('mongo:7', 'x'), null);
+assert.equal(dumpAllCommand('nginx:alpine', 'x'), null);
 
 // --- dumpPipelineCommand ----------------------------------------------------
 const remoteTmp = '/tmp/velix-backup-abc.sql.gz';

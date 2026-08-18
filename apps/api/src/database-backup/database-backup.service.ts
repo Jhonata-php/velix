@@ -11,9 +11,7 @@ import { ServersService } from '../servers/servers.service';
 import { SshService, SshConnectOptions } from '../ssh/ssh.service';
 import { decryptCredential } from '../ssh/crypto.util';
 import { dbImportSecretKey } from '../terminal/container-shell.util';
-import { CatalogService } from '../catalog/catalog.service';
-import { resolvedDatabaseName } from '../catalog/catalog.util';
-import { dumpCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
+import { dumpCommand, dumpAllCommand, dumpPipelineCommand, isManagedDatabaseImage, backupFileName, moveToBackupDirCommand, pruneBackupsCommand } from './database-backup.util';
 import { uploadToDestination } from './backup-transfer.util';
 import { BackupDestinationsService } from './backup-destinations.service';
 import { SetBackupConfigDto } from './dto/set-backup-config.dto';
@@ -46,7 +44,6 @@ export class DatabaseBackupService {
     private readonly servers: ServersService,
     private readonly ssh: SshService,
     private readonly destinations: BackupDestinationsService,
-    private readonly catalog: CatalogService,
   ) {}
 
   /** Todo ProjectService de banco (Postgres/MySQL/MariaDB) de todos os
@@ -210,11 +207,11 @@ export class DatabaseBackupService {
 
       const config = await this.getConfig(projectServiceId);
 
-      const variablesMap = service.deployment.variablesJson ? (JSON.parse(service.deployment.variablesJson) as Record<string, string>) : {};
-      const manifest = service.deployment.manifestSlug ? this.catalog.getManifestSafe(service.deployment.manifestSlug) : null;
-      const dbName = config.database || resolvedDatabaseName(manifest, service.name, variablesMap);
-
-      const dump = dumpCommand(service.image, password, dbName);
+      // Sem banco escolhido na config = backup da instância inteira (todos
+      // os bancos) — não tenta mais "adivinhar" um banco só via manifesto/env
+      // (era o fallback fixo `'app'`, que não existia de verdade na maioria
+      // das instalações e derrubava o backup com "Unknown database").
+      const dump = config.database ? dumpCommand(service.image, password, config.database) : dumpAllCommand(service.image, password);
       if (!dump) throw new BadRequestException('Backup não é suportado para este tipo de serviço');
 
       const { options } = await this.servers.getServerWithConnectOptions(service.application.serverId);

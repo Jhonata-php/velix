@@ -683,7 +683,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
         <label className="block">
           <span className="mb-1 block text-xs text-slate-400">Banco de dados</span>
           <select value={database} onChange={(e) => setDatabase(e.target.value)} className="input h-9">
-            <option value="">Detectar automaticamente</option>
+            <option value="">Todos os bancos</option>
             {schemas?.map((s) => (
               <option key={s} value={s}>
                 {s}
