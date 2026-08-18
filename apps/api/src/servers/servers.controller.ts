@@ -114,6 +114,12 @@ export class ServersController {
     return this.servers.containerLogs(id, containerId, Number.isFinite(parsed) && parsed > 0 ? parsed : 200);
   }
 
+  @Get(':id/system-logs')
+  systemLogs(@Param('id') id: string, @Query('source') source: string, @Query('tail') tail?: string) {
+    const parsed = Number(tail);
+    return this.servers.systemLogs(id, source === 'auth' ? 'auth' : 'syslog', Number.isFinite(parsed) && parsed > 0 ? parsed : 200);
+  }
+
   @Post(':id/docker/containers/:containerId/clone')
   @MinRole('operator')
   cloneContainer(@Param('id') id: string, @Param('containerId') containerId: string, @Body('targetServerId') targetServerId: string) {

@@ -19,6 +19,7 @@ function LogLine({ line }: { line: string }) {
 export function ContainerLogsModal({
   serverId,
   containerId,
+  endpoint,
   title,
   running,
   busy,
@@ -27,7 +28,10 @@ export function ContainerLogsModal({
   onClose,
 }: {
   serverId: string;
-  containerId: string;
+  /** Ausente quando `endpoint` já aponta pra outra fonte de log (ex.: logs do host, não de container). */
+  containerId?: string;
+  /** Sobrescreve a URL padrão de logs de container — usado pra logs do host (journalctl), que não têm containerId. */
+  endpoint?: string;
   title: string;
   running?: boolean;
   busy?: boolean;
@@ -40,12 +44,12 @@ export function ContainerLogsModal({
 
   function load() {
     setLoading(true);
-    apiFetch<{ logs: string }>(`/servers/${serverId}/docker/containers/${containerId}/logs?tail=300`)
+    apiFetch<{ logs: string }>(endpoint ?? `/servers/${serverId}/docker/containers/${containerId}/logs?tail=300`)
       .then((res) => setLogs(res.logs))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [serverId, containerId]);
+  useEffect(load, [serverId, containerId, endpoint]);
 
   return (
     <TerminalModal

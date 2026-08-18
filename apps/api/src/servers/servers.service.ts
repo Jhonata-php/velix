@@ -490,6 +490,22 @@ export class ServersService {
   }
 
   /**
+   * Logs do HOST, não de container — por isso um comando fixo por fonte (nunca
+   * um comando vindo do cliente): `journalctl` cobre tanto o log geral do
+   * sistema quanto o de autenticação SSH sem depender de caminho de arquivo
+   * específico de distro (`/var/log/auth.log` no Debian/Ubuntu vs
+   * `/var/log/secure` no RHEL/Alma — `journalctl -u ssh -u sshd` funciona nos
+   * dois, e uma unit inexistente só devolve vazio, não erro).
+   */
+  async systemLogs(id: string, source: 'syslog' | 'auth', tail: number) {
+    const server = await this.getRawServer(id);
+    const options = this.toConnectOptions(server);
+    const command = source === 'auth' ? `sudo journalctl -u ssh -u sshd --no-pager -n ${tail} 2>&1` : `sudo journalctl --no-pager -n ${tail} 2>&1`;
+    const result = await this.ssh.runCommand(options, command, 15_000);
+    return { logs: result.stdout || result.stderr || '(sem log)' };
+  }
+
+  /**
    * Clona um container genérico (imagem + env + portas + volumes + restart
    * policy) num outro servidor — SEM sincronizar dados, só recria a mesma
    * definição do zero. Diferente da réplica de banco: não há protocolo de

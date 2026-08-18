@@ -279,6 +279,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const [loadHistory, setLoadHistory] = useState<number[]>([]);
   const [memHistory, setMemHistory] = useState<number[]>([]);
   const [diskHistory, setDiskHistory] = useState<number[]>([]);
+  const [showSystemLogs, setShowSystemLogs] = useState<'syslog' | 'auth' | 'velix-api' | null>(null);
 
   function loadRecentHistory() {
     apiFetch<{ loadAvg1: number | null; memUsedMb: number | null; memTotalMb: number | null; diskPercent: number | null }[]>(
@@ -359,6 +360,11 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
   const overviewActions: ActionMenuItem[] = [
     { label: testing ? 'Testando conexão...' : 'Testar conexão', icon: <IconPlug className="h-4 w-4" />, onClick: handleTest, disabled: testing },
     { label: lookingUp ? 'Buscando domínios...' : 'Localizar domínios', icon: <IconGlobe className="h-4 w-4" />, onClick: handleLookupDomains, disabled: lookingUp },
+    { label: 'Logs do sistema', icon: <IconTerminal className="h-4 w-4" />, onClick: () => setShowSystemLogs('syslog') },
+    { label: 'Logs de autenticação (SSH)', icon: <IconTerminal className="h-4 w-4" />, onClick: () => setShowSystemLogs('auth') },
+    ...(server.isLocal
+      ? [{ label: 'Logs do painel (Velix)', icon: <IconTerminal className="h-4 w-4" />, onClick: () => setShowSystemLogs('velix-api' as const) }]
+      : []),
     { label: 'Reiniciar servidor', icon: <IconPower className="h-4 w-4" />, onClick: () => setRebootConfirm(true), danger: true },
   ];
 
@@ -483,6 +489,19 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         <div className="mt-3">
           <Alert variant="info">{rebootMessage}</Alert>
         </div>
+      )}
+
+      {showSystemLogs && (
+        <ContainerLogsModal
+          serverId={server.id}
+          endpoint={
+            showSystemLogs === 'velix-api'
+              ? `/servers/${server.id}/docker/containers/velix-api/logs?tail=300`
+              : `/servers/${server.id}/system-logs?source=${showSystemLogs}&tail=300`
+          }
+          title={showSystemLogs === 'syslog' ? 'Logs do sistema' : showSystemLogs === 'auth' ? 'Logs de autenticação (SSH)' : 'Logs do painel (Velix)'}
+          onClose={() => setShowSystemLogs(null)}
+        />
       )}
     </div>
   );
