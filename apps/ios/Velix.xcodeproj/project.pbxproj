@@ -26,6 +26,7 @@
 		23106B994FF047B580F5A0A6 /* ContainersTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F083D567D63499BA1F0191C /* ContainersTabView.swift */; };
 		D246E7FFFD564AA0BCF15912 /* ContainerLogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B087353D1294BC6AE540E3C /* ContainerLogsView.swift */; };
 		827B5CD4BB000E9A036D7267 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DDF9E29301AAD73E79E6ED8A /* Assets.xcassets */; };
+		097C903499484294A0B9AF73 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8ECC0D43C73F4D088A1450F0 /* GoogleService-Info.plist */; };
 		8FF49F1F00C8B80B1B9D0B69 /* InstanceStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136A8A83913D4537F2F7B5CC /* InstanceStoreTests.swift */; };
 		9FE2817803B851209C6545BF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A12E1D776E45DD99D24742E /* LoginView.swift */; };
 		BF9B99C484A621F611781242 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E98878A286E6246B2CA27C /* Theme.swift */; };
@@ -63,6 +64,7 @@
 		456863276AAD7BA17EC5BB6E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		4666DE05362B875D4A8D4038 /* EnvironmentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentEditorView.swift; sourceTree = "<group>"; };
 		47A33D8B0AEBD507703C87B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8ECC0D43C73F4D088A1450F0 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		4AB4F29BF081C328920F0432 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		54FFD3C7AF444BE7531D4C6B /* Velix.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Velix.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		554453996F547F3188B1D342 /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStoreTests.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 			children = (
 				55C19247BC950C35657CF7A7 /* AppDelegate.swift */,
 				DDF9E29301AAD73E79E6ED8A /* Assets.xcassets */,
+				8ECC0D43C73F4D088A1450F0 /* GoogleService-Info.plist */,
 				47A33D8B0AEBD507703C87B0 /* Info.plist */,
 				456863276AAD7BA17EC5BB6E /* MainTabView.swift */,
 				270E8D06C636DA79508B29FD /* VelixApp.swift */,
@@ -300,6 +303,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				827B5CD4BB000E9A036D7267 /* Assets.xcassets in Resources */,
+				097C903499484294A0B9AF73 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
