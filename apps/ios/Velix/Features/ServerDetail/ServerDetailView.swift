@@ -16,6 +16,7 @@ struct ServerDetailView: View {
     @State private var isRebooting = false
     @State private var showRebootConfirm = false
     @State private var rebootMessage: String?
+    @State private var showDeploy = false
 
     private enum Tab: String, CaseIterable {
         case overview = "Visão geral"
@@ -73,6 +74,13 @@ struct ServerDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .task {
             await load()
+        }
+        .sheet(isPresented: $showDeploy) {
+            NavigationStack {
+                DeployWizardView(server: server) {
+                    Task { await load() }
+                }
+            }
         }
     }
 
@@ -170,6 +178,14 @@ struct ServerDetailView: View {
 
     private var projectsTab: some View {
         List {
+            Section {
+                Button {
+                    showDeploy = true
+                } label: {
+                    Label("Novo serviço", systemImage: "plus.circle")
+                }
+            }
+
             if projects.isEmpty {
                 Text("Nenhum projeto implantado neste servidor.")
                     .foregroundStyle(.secondary)

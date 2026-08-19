@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4A8E980A5DC6E81A18B2D5FC /* DeployWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */; };
 		F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9192899B720427D6261EC6 /* DomainsTabView.swift */; };
 		EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491206A8270149C157D5FC77 /* TerminalView.swift */; };
 		D7A3572C8B4181067A1361CA /* OpsSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB56AE8D4BCFBE8D74AE716A /* OpsSocket.swift */; };
@@ -55,6 +56,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeployWizardView.swift; sourceTree = "<group>"; };
 		8C9192899B720427D6261EC6 /* DomainsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainsTabView.swift; sourceTree = "<group>"; };
 		491206A8270149C157D5FC77 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		EB56AE8D4BCFBE8D74AE716A /* OpsSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpsSocket.swift; sourceTree = "<group>"; };
@@ -111,12 +113,21 @@
 			isa = PBXGroup;
 			children = (
 				9EDB18D9118C338EC5E80644 /* Dashboard */,
+				D78E385ACEE2F82E926CCAB5 /* Deploy */,
 				441E433C68117050A84B4387 /* Instances */,
 				1C74AAEA1522879E14E47C2B /* Notifications */,
 				F3B3639802D302DFAF3B571C /* Onboarding */,
 				F54F54630310D69A45861C41 /* ServerDetail */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		D78E385ACEE2F82E926CCAB5 /* Deploy */ = {
+			isa = PBXGroup;
+			children = (
+				6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */,
+			);
+			path = Deploy;
 			sourceTree = "<group>";
 		};
 		1C74AAEA1522879E14E47C2B /* Notifications */ = {
@@ -326,6 +337,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4A8E980A5DC6E81A18B2D5FC /* DeployWizardView.swift in Sources */,
 				F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */,
 				EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */,
 				D7A3572C8B4181067A1361CA /* OpsSocket.swift in Sources */,
