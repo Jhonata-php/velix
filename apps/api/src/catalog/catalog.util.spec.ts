@@ -29,6 +29,7 @@ import { mysqlManifest } from './manifests/mysql';
 import { mariadbManifest } from './manifests/mariadb';
 import { ghostManifest } from './manifests/ghost';
 import { zabbixManifest } from './manifests/zabbix';
+import { wgEasyManifest } from './manifests/wg-easy';
 
 // validação: o manifesto oficial é válido
 assert.equal(validateManifest(uptimeKumaManifest).ok, true);
@@ -262,5 +263,17 @@ assert.equal(resolvedDatabaseName(mysqlManifest, 'mysql', {}), 'app'); // sem va
 // resolvedDatabaseName: sem manifesto (implantação via Git) ou serviço desconhecido — fallback final
 assert.equal(resolvedDatabaseName(null, 'db', {}), 'app');
 assert.equal(resolvedDatabaseName(ghostManifest, 'servico-inexistente', {}), 'app');
+
+// wg-easy: NET_ADMIN é permitido (não bloqueia o deploy) e vira cap_add no
+// compose; sysctls também é renderizado; a porta recomendada é a UDP
+// (51820, dados da VPN), publicada com sufixo /udp — TCP sem sufixo
+// publicaria a porta certa como protocolo errado, e nenhum pacote chegaria.
+const wgEasyRisk = highestRiskLevel(scanSecurityRisks(wgEasyManifest));
+assert.notEqual(wgEasyRisk, 'blocked', 'wg-easy não deveria ser bloqueado só por pedir NET_ADMIN');
+const wgEasyCompose = renderCompose(wgEasyManifest, 'meuvpn');
+assert.ok(wgEasyCompose.includes('cap_add:\n    - NET_ADMIN'), 'cap_add não renderizado');
+assert.ok(wgEasyCompose.includes('sysctls:\n    - net.ipv4.ip_forward=1'), 'sysctls não renderizado');
+const wgEasyWithPort = renderCompose(wgEasyManifest, 'meuvpn', {}, [], { app: 51820 });
+assert.ok(wgEasyWithPort.includes('"51820:51820/udp"'), 'porta recomendada deveria publicar como UDP');
 
 console.log(`catalog.util self-check OK (${catalog.length} manifestos novos validados)`);

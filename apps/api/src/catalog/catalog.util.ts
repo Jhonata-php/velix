@@ -50,6 +50,14 @@ export interface VelixManifestService {
   privileged?: boolean;
   networkMode?: 'host' | 'bridge';
   dockerSocket?: boolean;
+  /** `cap_add` — lista fechada de capabilities Linux permitidas (ver
+   * ALLOWED_CAPABILITIES em scanSecurityRisks); qualquer outra é bloqueada
+   * na validação, não silenciosamente ignorada. Bem mais estreito que
+   * `privileged` (que dá TODAS as capabilities de uma vez). */
+  capabilities?: string[];
+  /** `sysctls` do container — mesmo raciocínio de `capabilities`: específico
+   * o bastante (rede) pra não ser um jeito disfarçado de pedir privileged. */
+  sysctls?: Record<string, string>;
   /** Serviço opcional — o usuário escolhe incluir ou não na etapa "Componentes" do
    * assistente. Serviços sem essa flag (ou `false`) são sempre incluídos. */
   optional?: boolean;
@@ -101,6 +109,16 @@ export interface SecurityFinding {
   message: string;
 }
 
+/**
+ * Capabilities Linux que um manifesto pode pedir via `capabilities` — lista
+ * fechada, não uma allowlist de sugestão. Qualquer coisa fora daqui é
+ * `blocked`, do mesmo jeito que `privileged`. Começa só com o que um
+ * manifesto de verdade já precisa (WireGuard Easy, que cria interface de
+ * rede — não dá pra rodar sem NET_ADMIN); adicionar outra só quando um
+ * manifesto real precisar, não por especulação.
+ */
+const ALLOWED_CAPABILITIES = new Set(['NET_ADMIN']);
+
 /** Analisa o manifesto por sinais de risco conhecidos antes de permitir a implantação. */
 export function scanSecurityRisks(manifest: VelixManifest): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
@@ -116,6 +134,13 @@ export function scanSecurityRisks(manifest: VelixManifest): SecurityFinding[] {
         level: 'medium',
         message: `Serviço "${service.name}" acessa o socket do Docker — dá controle total sobre containers do servidor. Necessário pra ferramentas de gerenciamento de containers; confirme que confia na imagem.`,
       });
+    }
+    for (const cap of service.capabilities ?? []) {
+      if (!ALLOWED_CAPABILITIES.has(cap)) {
+        findings.push({ level: 'blocked', message: `Serviço "${service.name}" pede a capability "${cap}", fora da lista permitida — bloqueado por padrão.` });
+      } else {
+        findings.push({ level: 'medium', message: `Serviço "${service.name}" pede a capability "${cap}" (necessária pra função do app, ex.: criar interface de rede).` });
+      }
     }
     if (/:latest$/.test(service.image) || !service.image.includes(':')) {
       findings.push({ level: 'low', message: `Serviço "${service.name}" não fixa uma versão da imagem (tag "latest").` });
@@ -260,6 +285,21 @@ function renderVolumes(appSlug: string, volumes?: VelixManifestVolume[]): string
   return `\n    volumes:\n${indent(lines.join('\n'), 2)}`;
 }
 
+/** A validação de `capabilities` (lista fechada, `blocked` fora dela) já
+ * rodou antes de chegar aqui — ver `scanSecurityRisks`/`applications.service.ts`.
+ * Esta função só renderiza, não decide se pode. */
+function renderCapabilities(capabilities?: string[]): string {
+  if (!capabilities || capabilities.length === 0) return '';
+  const lines = capabilities.map((c) => `  - ${c}`);
+  return `\n    cap_add:\n${indent(lines.join('\n'), 2)}`;
+}
+
+function renderSysctls(sysctls?: Record<string, string>): string {
+  if (!sysctls || Object.keys(sysctls).length === 0) return '';
+  const lines = Object.entries(sysctls).map(([k, v]) => `  - ${k}=${v}`);
+  return `\n    sysctls:\n${indent(lines.join('\n'), 2)}`;
+}
+
 /**
  * Renderiza o docker-compose.yml da implantação — string pura, sem I/O.
  * Quando o manifesto declara segredos, NENHUM serviço leva `environment:` inline
@@ -278,10 +318,14 @@ function renderDependsOn(dependsOn: string[] | undefined, includedNames: Set<str
  * pede explicitamente ("Publicar porta" na tela do serviço), pra acessar o
  * banco direto de um cliente de fora sem passar pelo Traefik (que só roteia
  * HTTP/HTTPS, não protocolos de banco). Sem isso, todo serviço fica só na
- * rede interna `velix-proxy`, de propósito (menos superfície exposta). */
-function renderHostPort(hostPort: number | undefined, containerPort: number | undefined): string {
-  if (!hostPort || !containerPort) return '';
-  return `\n    ports:\n      - "${hostPort}:${containerPort}"`;
+ * rede interna `velix-proxy`, de propósito (menos superfície exposta).
+ * `/udp` no sufixo quando a porta recomendada do serviço é UDP (ex.: a porta
+ * de dados do WireGuard) — sem isso a publicação sempre saía como TCP, e uma
+ * porta UDP publicada como TCP simplesmente não recebe nenhum pacote. */
+function renderHostPort(hostPort: number | undefined, port: VelixManifestPort | undefined): string {
+  if (!hostPort || !port) return '';
+  const suffix = port.protocol === 'udp' ? '/udp' : '';
+  return `\n    ports:\n      - "${hostPort}:${port.port}${suffix}"`;
 }
 
 export function renderCompose(
@@ -309,11 +353,11 @@ export function renderCompose(
         usesSecrets && s.environment && Object.keys(s.environment).length > 0
           ? `\n    env_file:\n      - ./secrets/${s.name}.env`
           : renderEnvironment(s.environment, appSlug, variablesMap);
-      const portBlock = renderHostPort(hostPorts[s.name], s.ports?.find((p) => p.recommended)?.port ?? s.ports?.[0]?.port);
+      const portBlock = renderHostPort(hostPorts[s.name], s.ports?.find((p) => p.recommended) ?? s.ports?.[0]);
       return `  ${s.name}:
     image: ${s.image}
     container_name: ${containerName}
-    restart: unless-stopped${command}${envBlock}${renderVolumes(appSlug, s.volumes)}${renderDependsOn(s.dependsOn, includedNames)}${portBlock}
+    restart: unless-stopped${command}${envBlock}${renderVolumes(appSlug, s.volumes)}${renderCapabilities(s.capabilities)}${renderSysctls(s.sysctls)}${renderDependsOn(s.dependsOn, includedNames)}${portBlock}
     networks:
       - velix-proxy`;
     })

@@ -30,6 +30,7 @@ import { qbittorrentManifest } from './manifests/qbittorrent';
 import { immichManifest } from './manifests/immich';
 import { adminerManifest } from './manifests/adminer';
 import { zabbixManifest } from './manifests/zabbix';
+import { wgEasyManifest } from './manifests/wg-easy';
 import { QUICK_MANIFESTS } from './manifests/quick-apps';
 
 /**
@@ -69,6 +70,7 @@ const OFFICIAL_MANIFESTS: VelixManifest[] = [
   immichManifest,
   adminerManifest,
   zabbixManifest,
+  wgEasyManifest,
   ...QUICK_MANIFESTS,
 ];
 
