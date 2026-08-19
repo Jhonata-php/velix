@@ -707,6 +707,7 @@ write_env_file() {
     local jwt_secret="$2"
     local credential_secret="$3"
     local cf_dns_api_token="$4"
+    local firebase_service_account_json="$5"
 
     cat >"$ENV_FILE" <<EOF
 POSTGRES_PASSWORD=${postgres_password}
@@ -719,6 +720,12 @@ VELIX_CREDENTIAL_SECRET=${credential_secret}
 # é reescrito do zero a cada instalação/atualização, e sem preservar, toda
 # atualização apagaria o token e o SSL das aplicações voltaria a quebrar.
 CF_DNS_API_TOKEN=${cf_dns_api_token}
+# Chave de conta de serviço do Firebase (JSON numa linha só — sem quebras de
+# linha reais, só \n escapado dentro do campo private_key), configurada à mão
+# no servidor pra habilitar push notification (ver PushService.getSender()).
+# Preservada pelo mesmo motivo do CF_DNS_API_TOKEN acima: sem isso, toda
+# atualização apagaria a chave e o push pararia de funcionar silenciosamente.
+FIREBASE_SERVICE_ACCOUNT_JSON=${firebase_service_account_json}
 WEB_ORIGIN=${WEB_ORIGIN}
 NEXT_PUBLIC_APP_URL=${WEB_ORIGIN}
 VELIX_ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -752,6 +759,7 @@ generate_environment() {
     local jwt_secret=""
     local credential_secret=""
     local cf_dns_api_token=""
+    local firebase_service_account_json=""
 
     if [ -f "$ENV_FILE" ]; then
         local backup_file="${ENV_FILE}.backup.$(date +%Y%m%d-%H%M%S)"
@@ -761,6 +769,7 @@ generate_environment() {
         jwt_secret="$(get_env_value JWT_SECRET "$ENV_FILE")"
         credential_secret="$(get_env_value VELIX_CREDENTIAL_SECRET "$ENV_FILE")"
         cf_dns_api_token="$(get_env_value CF_DNS_API_TOKEN "$ENV_FILE")"
+        firebase_service_account_json="$(get_env_value FIREBASE_SERVICE_ACCOUNT_JSON "$ENV_FILE")"
 
         warning "Configuração anterior encontrada"
         success "Backup criado em ${backup_file}"
@@ -781,7 +790,7 @@ generate_environment() {
     # Sem valor padrão gerado aqui, de propósito: um token do Cloudflare não é
     # algo que o instalador tem como criar sozinho. Fica vazio até a API gravá-lo.
 
-    write_env_file "$postgres_password" "$jwt_secret" "$credential_secret" "$cf_dns_api_token"
+    write_env_file "$postgres_password" "$jwt_secret" "$credential_secret" "$cf_dns_api_token" "$firebase_service_account_json"
     chmod 600 "$ENV_FILE"
     chown root:root "$ENV_FILE"
 
