@@ -75,7 +75,7 @@ function SettingsTabs() {
         <p className="text-xs text-slate-400">Sistema e integrações</p>
       </div>
 
-      <Link href="/settings/security" className="card card-hover mb-5 flex items-center gap-3 p-4">
+      <Link href="/settings/security" className="card card-hover mb-5 flex items-center gap-3 p-3.5">
         <span className="icon-chip bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
           <IconShield className="h-[18px] w-[18px]" />
         </span>

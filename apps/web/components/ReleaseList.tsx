@@ -92,7 +92,7 @@ export function ReleaseList({ releases, onInstall, canInstall }: Props) {
                     />
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">v{release.version}</span>
+                        <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-50">v{release.version}</span>
                         {release.installed && <StatusBadge tone="success">instalada</StatusBadge>}
                         {isNewest && !release.installed && <StatusBadge tone="info">mais recente</StatusBadge>}
                         {release.prerelease && <StatusBadge tone="warning">prévia</StatusBadge>}

@@ -6,7 +6,7 @@ import { useSelfUpdate } from '@/lib/useSelfUpdate';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge } from '@/components/StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
 import { ReleaseList, type ReleaseEntry } from '@/components/ReleaseList';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
@@ -243,7 +243,7 @@ export default function UpdatesPage() {
               h.type === 'update' ? (
                 <div
                   key={h.id}
-                  className="flex items-center justify-between gap-3 border-b border-slate-100 bg-indigo-500/5 px-5 py-2.5 text-xs last:border-0 dark:border-slate-800"
+                  className={`flex items-center justify-between gap-3 border-b border-l-[3px] ${rowStatusBorderClass('success')} border-slate-100 bg-indigo-500/5 py-2.5 pl-4 pr-5 text-xs last:border-b-0 dark:border-slate-800`}
                 >
                   <div className="min-w-0">
                     <p className="font-medium text-slate-700 dark:text-slate-200">
@@ -253,23 +253,23 @@ export default function UpdatesPage() {
                       {new Date(h.at).toLocaleString('pt-BR')} · por {h.appliedBy}
                     </p>
                   </div>
-                  <StatusBadge tone="success">atualizado</StatusBadge>
+                  <RowStatusLabel tone="success">atualizado</RowStatusLabel>
                 </div>
               ) : (
                 <div
                   key={h.id}
-                  className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-2 text-xs last:border-0 dark:border-slate-800"
+                  className={`flex items-center justify-between gap-3 border-b border-l-[3px] ${rowStatusBorderClass(h.error ? 'warning' : h.updateAvailable ? 'info' : 'neutral')} border-slate-100 py-2 pl-4 pr-5 text-xs last:border-b-0 dark:border-slate-800`}
                 >
                   <span className="truncate text-slate-500 dark:text-slate-400">
                     {new Date(h.at).toLocaleString('pt-BR')} · v{h.installedVersion} · {CHANNEL_LABEL[h.channel] ?? h.channel}
                   </span>
                   <span className="shrink-0">
                     {h.error ? (
-                      <StatusBadge tone="warning">falhou</StatusBadge>
+                      <RowStatusLabel tone="warning">falhou</RowStatusLabel>
                     ) : h.updateAvailable ? (
-                      <StatusBadge tone="info">v{h.latestVersion}</StatusBadge>
+                      <RowStatusLabel tone="info">v{h.latestVersion}</RowStatusLabel>
                     ) : (
-                      <StatusBadge tone="neutral">sem novidades</StatusBadge>
+                      <RowStatusLabel tone="neutral">sem novidades</RowStatusLabel>
                     )}
                   </span>
                 </div>

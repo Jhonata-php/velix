@@ -101,7 +101,7 @@ export function UsersCard() {
   if (error?.includes('permissão') || error?.includes('administradores')) return null;
 
   return (
-    <section className="card p-5">
+    <section className="card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="section-title">Usuários e perfis</h2>

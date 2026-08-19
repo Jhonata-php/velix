@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Alert } from './Alert';
 import { ConfirmModal } from './Modal';
-import { StatusBadge } from './StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
 import { IconPlus, IconTrash, IconBell, IconCheck } from './icons';
 
 type ChannelType = 'discord' | 'telegram' | 'webhook';
@@ -115,7 +115,7 @@ export function AlertsCard() {
   if (error?.includes('permissão') || error?.includes('administradores')) return null;
 
   return (
-    <section className="card p-5">
+    <section className="card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="section-title">Alertas</h2>
@@ -194,10 +194,8 @@ export function AlertsCard() {
       {channels && channels.length > 0 && (
         <div className="mt-4 divide-y divide-slate-200 dark:divide-slate-700">
           {channels.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 py-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                <IconBell className="h-4 w-4" aria-hidden />
-              </span>
+            <div key={c.id} className="flex items-center gap-3 py-2">
+              <IconBell className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{c.label}</p>
                 <p className="truncate text-xs text-slate-400">{TYPE_LABEL[c.type]}</p>
@@ -231,11 +229,11 @@ export function AlertsCard() {
           <summary className="cursor-pointer text-xs text-slate-500">Últimos envios ({recent.length})</summary>
           <div className="mt-2 space-y-1">
             {recent.map((d) => (
-              <div key={d.id} className="flex items-center justify-between gap-2 text-xs">
+              <div key={d.id} className={`flex items-center justify-between gap-2 border-l-[3px] ${rowStatusBorderClass(d.ok ? 'success' : 'danger')} pl-2 text-xs`}>
                 <span className="truncate text-slate-400">
                   {new Date(d.sentAt).toLocaleString('pt-BR')} · {d.title}
                 </span>
-                <StatusBadge tone={d.ok ? 'success' : 'danger'}>{d.ok ? 'enviado' : 'falhou'}</StatusBadge>
+                <RowStatusLabel tone={d.ok ? 'success' : 'danger'}>{d.ok ? 'enviado' : 'falhou'}</RowStatusLabel>
               </div>
             ))}
           </div>

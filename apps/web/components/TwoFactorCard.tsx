@@ -102,7 +102,7 @@ export function TwoFactorCard() {
   }
 
   return (
-    <section className="card p-5">
+    <section className="card p-4">
       <div className="flex items-start gap-3">
         <span className="icon-chip bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
           <IconShield className="h-[18px] w-[18px]" />

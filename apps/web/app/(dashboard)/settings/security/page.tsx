@@ -99,7 +99,7 @@ export default function SecurityPage() {
         <p className="text-xs text-slate-400">Senha, sessões ativas e atividade da conta</p>
       </div>
 
-      <section className="card p-4">
+      <section className="card p-3.5">
         <h2 className="section-title mb-3">Alterar senha</h2>
         <form onSubmit={handleChangePassword} className="max-w-sm space-y-4">
           <PasswordInput label="Senha atual" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
@@ -130,7 +130,7 @@ export default function SecurityPage() {
         </form>
       </section>
 
-      <section className="card p-4">
+      <section className="card p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="section-title">Sessões ativas</h2>
           {others.length > 0 && (
@@ -147,17 +147,16 @@ export default function SecurityPage() {
         ) : (
           <div className="space-y-2">
             {current && (
-              <div className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 dark:border-indigo-900 dark:bg-indigo-900/10">
+              <div className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2 dark:border-indigo-900 dark:bg-indigo-900/10">
                 <div className="flex items-center gap-2.5">
-                  <span className="icon-chip bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                    <IconDevice className="h-4 w-4" />
-                  </span>
+                  <IconDevice className="h-4 w-4 shrink-0 text-indigo-500" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
                       {parseUserAgent(current.userAgent)} <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400">· este dispositivo</span>
                     </p>
                     <p className="text-xs text-slate-400">
-                      {current.ip} · último login {relativeTime(current.createdAt)} · atividade {relativeTime(current.lastSeenAt)}
+                      <span className="font-mono">{current.ip}</span> · último login {relativeTime(current.createdAt)} · atividade{' '}
+                      {relativeTime(current.lastSeenAt)}
                     </p>
                   </div>
                 </div>
@@ -165,15 +164,13 @@ export default function SecurityPage() {
             )}
 
             {others.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700">
+              <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
                 <div className="flex items-center gap-2.5">
-                  <span className="icon-chip bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                    <IconDevice className="h-4 w-4" />
-                  </span>
+                  <IconDevice className="h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{parseUserAgent(s.userAgent)}</p>
                     <p className="text-xs text-slate-400">
-                      {s.ip} · login {relativeTime(s.createdAt)} · atividade {relativeTime(s.lastSeenAt)}
+                      <span className="font-mono">{s.ip}</span> · login {relativeTime(s.createdAt)} · atividade {relativeTime(s.lastSeenAt)}
                     </p>
                   </div>
                 </div>
