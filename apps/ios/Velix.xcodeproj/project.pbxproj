@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9192899B720427D6261EC6 /* DomainsTabView.swift */; };
+		EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491206A8270149C157D5FC77 /* TerminalView.swift */; };
+		D7A3572C8B4181067A1361CA /* OpsSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB56AE8D4BCFBE8D74AE716A /* OpsSocket.swift */; };
+		D5F9CC6A163B2D8603DDC99D /* TerminalSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0DCF46CAFA6AB61CF71A85 /* TerminalSocket.swift */; };
 		048BCA860DB985CF1A4E2451 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 554453996F547F3188B1D342 /* KeychainStoreTests.swift */; };
 		0D4B39722D484E869CBDCCC8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033BF930534EAD09992ACE95 /* ProjectDetailView.swift */; };
 		0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E867F8558F110978FA06CD2 /* AddInstanceView.swift */; };
@@ -51,6 +55,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		8C9192899B720427D6261EC6 /* DomainsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainsTabView.swift; sourceTree = "<group>"; };
+		491206A8270149C157D5FC77 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
+		EB56AE8D4BCFBE8D74AE716A /* OpsSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpsSocket.swift; sourceTree = "<group>"; };
+		2C0DCF46CAFA6AB61CF71A85 /* TerminalSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSocket.swift; sourceTree = "<group>"; };
 		02F51A674FDB4A4648A35604 /* PushManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
 		033BF930534EAD09992ACE95 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		0E867F8558F110978FA06CD2 /* AddInstanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddInstanceView.swift; sourceTree = "<group>"; };
@@ -180,7 +188,9 @@
 				722498D34EF947CE3A08E53F /* Instance.swift */,
 				182805F1FD5EDA4AAA3D0351 /* KeychainStore.swift */,
 				1B4DC84F585D65384BF06820 /* Models.swift */,
+				EB56AE8D4BCFBE8D74AE716A /* OpsSocket.swift */,
 				02F51A674FDB4A4648A35604 /* PushManager.swift */,
+				2C0DCF46CAFA6AB61CF71A85 /* TerminalSocket.swift */,
 				B9E98878A286E6246B2CA27C /* Theme.swift */,
 			);
 			path = Core;
@@ -215,6 +225,8 @@
 				F3470C274166F9121AAEF9F5 /* ServerDetailView.swift */,
 				7F083D567D63499BA1F0191C /* ContainersTabView.swift */,
 				1B087353D1294BC6AE540E3C /* ContainerLogsView.swift */,
+				8C9192899B720427D6261EC6 /* DomainsTabView.swift */,
+				491206A8270149C157D5FC77 /* TerminalView.swift */,
 			);
 			path = ServerDetail;
 			sourceTree = "<group>";
@@ -314,6 +326,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */,
+				EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */,
+				D7A3572C8B4181067A1361CA /* OpsSocket.swift in Sources */,
+				D5F9CC6A163B2D8603DDC99D /* TerminalSocket.swift in Sources */,
 				152D291A6499C7A3A6D48504 /* APIClient.swift in Sources */,
 				0F269EBC95B1129F43963627 /* AddInstanceView.swift in Sources */,
 				67664A10D06B27BF348BDAA0 /* AppDelegate.swift in Sources */,

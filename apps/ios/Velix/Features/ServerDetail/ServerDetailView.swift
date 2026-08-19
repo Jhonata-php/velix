@@ -21,12 +21,16 @@ struct ServerDetailView: View {
         case overview = "Visão geral"
         case projects = "Projetos"
         case containers = "Containers"
+        case domains = "Domínios"
+        case terminal = "Terminal"
 
         var icon: String {
             switch self {
             case .overview: return "gauge.with.dots.needle.50percent"
             case .projects: return "square.stack.3d.up"
             case .containers: return "shippingbox"
+            case .domains: return "network"
+            case .terminal: return "terminal"
             }
         }
     }
@@ -52,6 +56,8 @@ struct ServerDetailView: View {
                         case .overview: overviewTab
                         case .projects: projectsTab
                         case .containers: ContainersTabView(server: server)
+                        case .domains: DomainsTabView(server: server)
+                        case .terminal: TerminalView(server: server)
                         }
                     }
                     .frame(maxHeight: .infinity)

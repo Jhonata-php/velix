@@ -69,6 +69,7 @@ export class DatabaseBackupService {
       .map((s) => ({
         id: s.id,
         applicationId: s.applicationId,
+        deploymentId: s.deploymentId,
         name: s.name,
         image: s.image,
         containerName: s.containerName,

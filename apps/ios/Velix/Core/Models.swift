@@ -98,6 +98,90 @@ struct ProjectSummary: Decodable, Identifiable {
     let deployments: [ProjectDeploymentSummary]
 }
 
+// GET /servers/:id/domains (traefik.controller.ts) — vem direto do Prisma
+// (model Domain), sem seleção de campos, então `status` é sempre um dos 3
+// valores do enum DomainStatus. `lastCheckedAt`/`createdAt` chegam como
+// string ISO — mesmo motivo de `MetricSample.capturedAt`.
+struct ServerDomain: Decodable, Identifiable {
+    let id: String
+    let hostname: String
+    let targetPort: Int
+    let createDnsRecord: Bool
+    let proxied: Bool
+    let status: String // PENDING | ACTIVE | ERROR
+    let lastError: String?
+    let lastCheckedAt: String?
+}
+
+// GET /databases (database-backup.controller.ts:listDatabases) — bancos
+// implantados como serviço de projeto (o que aparece na aba "Dados"/backup
+// do painel). `status` é o ProjectServiceStatus do serviço (mesmos valores
+// de ProjectSummary.status, reaproveita StatusChip).
+struct DatabaseServiceSummary: Decodable, Identifiable {
+    let id: String
+    let applicationId: String
+    let deploymentId: String
+    let name: String
+    let image: String
+    let containerName: String
+    let status: String
+    let publishedPort: Int?
+    let project: DatabaseProjectRef
+    let hasSchedule: Bool
+}
+
+struct DatabaseProjectRef: Decodable {
+    let id: String
+    let name: String
+}
+
+// GET /applications/:appId/deployments/:deploymentId/connection-info
+// (applications.service.ts:getConnectionInfo) — host/porta/usuário/banco pra
+// conectar de fora; a senha em si vem separada, de .../credentials (dicionário
+// solto, ex. {"POSTGRES_PASSWORD": "..."}), por isso não está aqui.
+struct DatabaseConnectionInfo: Decodable {
+    let host: String
+    let port: Int?
+    let username: String?
+    let database: String?
+}
+
+// GET /catalog/applications (catalog.controller.ts) — resumo pra listagem do
+// wizard de deploy; `category` decide o filtro (ex. "database").
+struct CatalogApplicationSummary: Decodable, Identifiable {
+    var id: String { slug }
+    let slug: String
+    let name: String
+    let description: String
+    let category: String
+    let icon: String
+}
+
+// GET /catalog/applications/:slug (catalog.controller.ts) — detalhe usado
+// pelo wizard pra montar o formulário de variáveis antes de implantar.
+struct CatalogApplicationDetail: Decodable {
+    let slug: String
+    let name: String
+    let description: String
+    let services: [CatalogServiceDetail]
+}
+
+struct CatalogServiceDetail: Decodable {
+    let name: String
+    let variables: [CatalogVariable]
+}
+
+struct CatalogVariable: Decodable, Identifiable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let description: String?
+    let type: String // text | password | number | boolean | select
+    let options: [String]?
+    let `default`: String?
+    let required: Bool?
+}
+
 struct AlertThresholdPreference: Codable {
     var id: String?
     var userId: String?
