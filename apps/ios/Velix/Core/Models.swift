@@ -208,6 +208,17 @@ struct SetBackupConfigBody: Encodable {
     }
 }
 
+// GET /applications/:appId/services (applications.service.ts:getServices) —
+// direto do Prisma (model ProjectService), um container por serviço do
+// projeto (ex.: "app", "db" de um manifesto com mais de um componente).
+struct ProjectServiceSummary: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let image: String
+    let status: String
+    let publishedPort: Int?
+}
+
 struct AlertThresholdPreference: Codable {
     var id: String?
     var userId: String?
