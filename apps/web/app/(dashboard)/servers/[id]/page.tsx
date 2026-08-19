@@ -26,7 +26,7 @@ import { CloneContainerModal } from '@/components/CloneContainerModal';
 import { QuickReplicateModal } from '@/components/QuickReplicateModal';
 import { ContainerRow } from '@/components/ContainerRow';
 import { MetricCard } from '@/components/MetricCard';
-import { StatusBadge, CapabilityBadge, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, CapabilityBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { TerminalWindow, TerminalActionButton } from '@/components/TerminalChrome';
@@ -391,7 +391,7 @@ function OverviewTab({ server, onChange }: { server: Server; onChange: () => voi
         </div>
       )}
       {domains && (
-        <div className="card mb-3 p-4">
+        <div className="card mb-3 p-3.5">
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Domínios Cloudflare apontando pra este servidor</h3>
           <ul className="space-y-1 text-sm">
             {domains.length === 0 && <li className="text-slate-400">Nenhum domínio aponta para este IP.</li>}
@@ -843,11 +843,12 @@ function DockerTab({ server, onChange }: { server: Server; onChange: () => void 
                 );
               }
               const activeCount = g.containers.filter((c) => c.status.toLowerCase().includes('up')).length;
+              const groupTone = activeCount === 0 ? 'neutral' : activeCount === g.containers.length ? 'success' : 'warning';
               return (
                 <Link
                   key={g.key}
                   href={`/servers/${server.id}/docker-groups/${encodeURIComponent(g.key)}`}
-                  className="row-hover group flex items-center gap-4 px-4 py-3"
+                  className={`row-hover group flex items-center gap-4 border-l-[3px] ${rowStatusBorderClass(groupTone)} py-2.5 pl-3.5 pr-4`}
                 >
                   <span className={`icon-chip shrink-0 text-sm font-semibold ${avatarColor(g.key)}`}>{g.key.slice(0, 2).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
@@ -1183,7 +1184,10 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
               { label: 'Remover projeto', icon: <IconTrash className="h-4 w-4" />, onClick: () => setConfirmRemove(project), danger: true, disabled: busyNow },
             ];
             return (
-              <div key={project.id} className="row-hover flex items-center gap-3 px-4 py-3">
+              <div
+                key={project.id}
+                className={`row-hover flex items-center gap-3 border-l-[3px] ${rowStatusBorderClass(APP_STATUS_TONE[project.status])} py-2.5 pl-3.5 pr-4`}
+              >
                 <button
                   onClick={() => router.push(`/projects/${project.id}`)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
@@ -1194,7 +1198,7 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</p>
-                      <StatusBadge tone={APP_STATUS_TONE[project.status]}>{APP_STATUS_LABEL[project.status]}</StatusBadge>
+                      <RowStatusLabel tone={APP_STATUS_TONE[project.status]}>{APP_STATUS_LABEL[project.status]}</RowStatusLabel>
                     </div>
                     <p className="truncate text-xs text-slate-400">
                       {project.deployments.length} serviço{project.deployments.length === 1 ? '' : 's'}
@@ -1204,7 +1208,9 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
                 </button>
                 {primaryDomain && (
                   <div className="hidden shrink-0 sm:block">
-                    <StatusBadge tone={DOMAIN_TONE[primaryDomain.status]}>{primaryDomain.hostname}</StatusBadge>
+                    <RowStatusLabel tone={DOMAIN_TONE[primaryDomain.status]}>
+                      <span className="font-mono normal-case tracking-normal">{primaryDomain.hostname}</span>
+                    </RowStatusLabel>
                   </div>
                 )}
                 {primaryDomain && primaryDomain.status === 'ACTIVE' && (
@@ -1507,16 +1513,14 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
         ) : (
           <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
             {visibleDomains.map((d) => (
-              <div key={d.id} className="row-hover flex items-center gap-3 px-4 py-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                  <IconGlobe className="h-4 w-4" />
-                </span>
+              <div key={d.id} className={`row-hover flex items-center gap-3 border-l-[3px] ${rowStatusBorderClass(DOMAIN_TONE[d.status])} py-2.5 pl-3.5 pr-4`}>
+                <IconGlobe className="h-4 w-4 shrink-0 text-slate-400" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
-                    <StatusBadge tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</StatusBadge>
+                    <p className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
+                    <RowStatusLabel tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</RowStatusLabel>
                   </div>
-                  <p className="truncate text-xs text-slate-400">
+                  <p className="truncate font-mono text-xs text-slate-400">
                     → porta {d.targetPort}
                     {d.createDnsRecord ? ' · DNS Cloudflare' : ''}
                     {d.lastError ? ` · ${d.lastError}` : ''}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { ServerSummary } from '@/lib/types';
 import { Bar } from './Bar';
-import { StatusBadge, SERVER_STATUS_TONE } from './StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass, SERVER_STATUS_TONE } from './StatusBadge';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
 import { IconServer } from './icons';
 
@@ -15,10 +15,10 @@ export function ServerRow({ server, actions }: { server: ServerSummary; actions?
   const diskPercent = server.metrics?.diskPercent ? Number(server.metrics.diskPercent.replace('%', '')) : null;
 
   return (
-    <div className="group flex items-center gap-4 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-        <IconServer className="h-4 w-4" />
-      </span>
+    <div
+      className={`group flex items-center gap-4 border-l-[3px] ${rowStatusBorderClass(SERVER_STATUS_TONE[server.status])} py-2.5 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
+    >
+      <IconServer className="h-4 w-4 shrink-0 text-slate-400" />
 
       <Link href={`/servers/${server.id}`} className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -28,7 +28,11 @@ export function ServerRow({ server, actions }: { server: ServerSummary; actions?
           {server.isLocal && <StatusBadge tone="info">este servidor</StatusBadge>}
         </div>
         <p className="truncate text-xs text-slate-400">
-          {server.isLocal ? 'Onde o Velix está instalado' : (server.publicIp ?? server.privateIp ?? '—')}
+          {server.isLocal ? (
+            'Onde o Velix está instalado'
+          ) : (
+            <span className="font-mono">{server.publicIp ?? server.privateIp ?? '—'}</span>
+          )}
           {server.sshUser ? ` · ${server.sshUser}` : ''}
         </p>
       </Link>
@@ -59,7 +63,7 @@ export function ServerRow({ server, actions }: { server: ServerSummary; actions?
         {server.metrics?.uptimeText && <span className="hidden w-24 shrink-0 truncate lg:inline">{server.metrics.uptimeText}</span>}
       </div>
 
-      <StatusBadge tone={SERVER_STATUS_TONE[server.status]}>{server.status}</StatusBadge>
+      <RowStatusLabel tone={SERVER_STATUS_TONE[server.status]}>{server.status}</RowStatusLabel>
 
       {actions && <ActionMenu items={actions} />}
     </div>

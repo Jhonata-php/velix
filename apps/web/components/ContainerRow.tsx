@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { avatarColor } from '@/lib/containerGroups';
 import type { DockerContainer } from '@/lib/containerGroups';
-import { StatusBadge } from './StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
 import { IconFileText, IconChevronDown, IconRefresh, IconPower, IconCopy, IconTrash } from './icons';
 
@@ -48,9 +48,11 @@ export function ContainerRow({
     { label: 'Remover', icon: <IconTrash className="h-4 w-4" />, onClick: onRemove, danger: true, disabled: busy },
   ];
 
+  const tone = running ? 'success' : 'neutral';
+
   return (
     <div className="row-hover">
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
+      <div className={`flex items-center gap-2.5 border-l-[3px] ${rowStatusBorderClass(tone)} py-2 pl-2.5 pr-3`}>
         <button
           onClick={() => setExpanded((v) => !v)}
           title={expanded ? 'Recolher detalhes' : 'Ver detalhes'}
@@ -66,7 +68,7 @@ export function ContainerRow({
         </div>
 
         <div className="hidden shrink-0 sm:block sm:w-40">
-          <StatusBadge tone={running ? 'success' : 'neutral'}>{running ? 'Ativo' : 'Parado'}</StatusBadge>
+          <RowStatusLabel tone={tone}>{running ? 'Ativo' : 'Parado'}</RowStatusLabel>
           <p className="mt-1 truncate text-[11px] text-slate-400">{c.status}</p>
         </div>
 
@@ -94,7 +96,7 @@ export function ContainerRow({
           </div>
           <div className="sm:hidden">
             <p className="text-slate-400">Status</p>
-            <StatusBadge tone={running ? 'success' : 'neutral'}>{running ? 'Ativo' : 'Parado'}</StatusBadge>
+            <RowStatusLabel tone={tone}>{running ? 'Ativo' : 'Parado'}</RowStatusLabel>
           </div>
           <div>
             <p className="text-slate-400">Status bruto (docker ps)</p>

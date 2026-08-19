@@ -3,6 +3,7 @@
 import { avatarColor } from '@/lib/containerGroups';
 import type { DockerContainer } from '@/lib/containerGroups';
 import { IconRefresh, IconCopy, IconPower, IconTrash, IconFileText } from '@/components/icons';
+import { rowStatusBorderClass } from './StatusBadge';
 
 export function ContainerCard({
   container: c,
@@ -29,7 +30,9 @@ export function ContainerCard({
 }) {
   const running = c.status.toLowerCase().includes('up');
   return (
-    <div className="group flex items-center gap-4 px-4 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
+    <div
+      className={`group flex items-center gap-4 border-l-[3px] ${rowStatusBorderClass(running ? 'success' : 'neutral')} py-3 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
+    >
       <span className={`icon-chip shrink-0 text-sm font-semibold ${avatarColor(label)}`}>{label.slice(0, 2).toUpperCase()}</span>
 
       <div className="min-w-0 flex-1">
