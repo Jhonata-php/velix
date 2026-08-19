@@ -10,7 +10,7 @@ import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { GitDeployWizard } from '@/components/GitDeployWizard';
 import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu';
@@ -121,7 +121,7 @@ export default function ProjectPage() {
     <div>
       <Breadcrumb items={[{ label: 'Projetos', href: '/projects' }, { label: project.name }]} />
 
-      <div className="card mb-5 flex flex-wrap items-start justify-between gap-3 p-4">
+      <div className="card mb-5 flex flex-wrap items-start justify-between gap-3 p-3.5">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-base font-semibold text-indigo-600 dark:text-indigo-400">
             {project.name.charAt(0).toUpperCase()}
@@ -183,25 +183,21 @@ export default function ProjectPage() {
                 <Link
                   key={service.id}
                   href={`/projects/${project.id}/services/${encodeURIComponent(service.name)}`}
-                  className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                  className={`group flex items-center gap-3 border-l-[3px] ${rowStatusBorderClass(SERVICE_STATUS_TONE[service.status])} py-3 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
                 >
-                  <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      fromGit
-                        ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                        : 'bg-indigo-500/10 text-indigo-500'
-                    }`}
-                  >
-                    {fromGit ? <IconGithub className="h-4.5 w-4.5" aria-hidden /> : <IconStore className="h-4.5 w-4.5" aria-hidden />}
-                  </span>
+                  {fromGit ? (
+                    <IconGithub className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
+                  ) : (
+                    <IconStore className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
                         {service.name}
                       </p>
-                      <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
+                      <RowStatusLabel tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</RowStatusLabel>
                     </div>
-                    <p className="truncate text-xs text-slate-400">
+                    <p className="truncate font-mono text-xs text-slate-400">
                       {fromGit
                         ? `${deployment?.repoUrl?.replace('https://', '').replace('.git', '') ?? 'repositório'} · ${deployment?.gitRef ?? ''}`
                         : service.image}

@@ -7,7 +7,7 @@ import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
 import { WebTerminal } from '@/components/WebTerminal';
@@ -464,7 +464,7 @@ function OverviewTab({
       </div>
 
       {isDb && (
-        <div className="card space-y-3 p-4">
+        <div className="card space-y-3 p-3.5">
           <p className="section-label">Ferramentas de banco</p>
           <div className="flex flex-wrap gap-2">
             <SqlImportButton
@@ -570,7 +570,7 @@ function EnvironmentTab({
       {!credentials && !error && <Skeleton className="h-24" />}
 
       {credentials && entries.length > 0 && (
-        <div className="card p-4">
+        <div className="card p-3.5">
           <div className="mb-3 flex items-center justify-between">
             <p className="section-label">Segredos gerados</p>
             <button onClick={() => setRevealed((v) => !v)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400">
@@ -695,7 +695,7 @@ function GitEnvEditor({ applicationId, deploymentId, onChange }: { applicationId
   if (!env) return <Skeleton className="h-24" />;
 
   return (
-    <div className="card space-y-3 p-4">
+    <div className="card space-y-3 p-3.5">
       <div className="flex items-center justify-between">
         <p className="section-label">Variáveis de ambiente</p>
         <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 text-xs dark:border-slate-700">
@@ -922,18 +922,18 @@ function DomainsTab({
       ) : (
         <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
           {domains.map((d) => (
-            <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div key={d.id} className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(DOMAIN_TONE[d.status] ?? 'neutral')} py-2.5 pl-3.5 pr-4`}>
               <div className="flex min-w-0 items-center gap-2.5">
                 <IconGlobe className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{d.hostname}</p>
-                  <p className="text-xs text-slate-400">porta {d.targetPort}</p>
+                  <p className="truncate font-mono text-sm font-medium text-slate-700 dark:text-slate-200">{d.hostname}</p>
+                  <p className="font-mono text-xs text-slate-400">porta {d.targetPort}</p>
                   {d.status === 'ERROR' && d.lastError && <p className="truncate text-xs text-red-500 dark:text-red-400">{d.lastError}</p>}
                   {d.status === 'PENDING' && (
                     <p className="truncate text-xs text-slate-400">Aguardando DNS/certificado — verificado automaticamente a cada poucos minutos</p>
                   )}
                 </div>
-                <StatusBadge tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</StatusBadge>
+                <RowStatusLabel tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</RowStatusLabel>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <a
@@ -984,7 +984,7 @@ function DomainsTab({
           Adicionar domínio
         </button>
       ) : (
-        <div className="card space-y-3 p-4">
+        <div className="card space-y-3 p-3.5">
           <p className="section-label">{isEditing ? 'Editar domínio' : 'Novo domínio'}</p>
           <label className="block text-sm">
             <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Domínio</span>
@@ -1070,8 +1070,8 @@ function SecurityTab({ applicationId, deploymentId }: { applicationId: string; d
   return (
     <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
       {data.risks.map((risk, i) => (
-        <div key={i} className="flex items-start gap-3 px-4 py-3">
-          <StatusBadge tone={RISK_TONE[risk.level]}>{risk.level}</StatusBadge>
+        <div key={i} className={`flex items-start gap-3 border-l-[3px] ${rowStatusBorderClass(RISK_TONE[risk.level])} py-2.5 pl-3.5 pr-4`}>
+          <RowStatusLabel tone={RISK_TONE[risk.level]}>{risk.level}</RowStatusLabel>
           <p className="text-sm text-slate-700 dark:text-slate-200">{risk.message}</p>
         </div>
       ))}
@@ -1167,7 +1167,7 @@ function ShellTab({ applicationId, service }: { applicationId: string; service: 
   }
 
   return (
-    <div className="card max-w-md space-y-4 p-5">
+    <div className="card max-w-md space-y-4 p-4">
       {showDbOption && (
         <div>
           <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">O que abrir</p>

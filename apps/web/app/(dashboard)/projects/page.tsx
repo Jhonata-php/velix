@@ -9,7 +9,7 @@ import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Toolbar } from '@/components/Toolbar';
 import { CreateProjectModal } from '@/components/CreateProjectModal';
 import { IconLayoutGrid, IconServer, IconExternalLink, IconPlus } from '@/components/icons';
@@ -190,7 +190,7 @@ export default function ProjectsPage() {
               <Link
                 key={p.id}
                 href={`/projects/${p.id}`}
-                className="group flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                className={`group flex items-center gap-3 border-l-[3px] ${rowStatusBorderClass(STATUS_TONE[p.status])} py-2.5 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
                   {p.name.charAt(0).toUpperCase()}
@@ -201,7 +201,7 @@ export default function ProjectsPage() {
                     <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
                       {p.name}
                     </p>
-                    <StatusBadge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</StatusBadge>
+                    <RowStatusLabel tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</RowStatusLabel>
                   </div>
                   <p className="truncate text-xs text-slate-400">
                     {p.deployments.length} serviço{p.deployments.length === 1 ? '' : 's'} · criado {relativeTime(p.deployedAt)}

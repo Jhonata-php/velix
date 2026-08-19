@@ -453,7 +453,7 @@ function ServerStep({
               </div>
               <StatusBadge tone={s.status === 'ONLINE' ? 'success' : s.status === 'ERROR' ? 'danger' : 'neutral'}>{s.status}</StatusBadge>
             </div>
-            <p className="truncate text-xs text-slate-400">{s.publicIp ?? s.privateIp ?? '—'} · {s.osName ?? 'SO desconhecido'}</p>
+            <p className="truncate text-xs text-slate-400"><span className="font-mono">{s.publicIp ?? s.privateIp ?? '—'}</span> · {s.osName ?? 'SO desconhecido'}</p>
             <div className="flex flex-wrap gap-1.5">
               <span className={`badge text-[10px] ${s.dockerInstalled ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-500/10 text-slate-500'}`}>
                 {s.dockerInstalled ? 'Docker instalado' : 'Docker ausente'}
