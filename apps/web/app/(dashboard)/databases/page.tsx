@@ -72,7 +72,7 @@ export default function DatabasesPage() {
               className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(STATUS_TONE[db.status] ?? 'neutral')} py-3 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
             >
               <div className="flex min-w-0 items-center gap-3">
-                <IconDatabase className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
+                <IconDatabase className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{db.project.name}</p>
                   <p className="truncate text-xs text-slate-400">

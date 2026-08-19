@@ -186,9 +186,9 @@ export default function ProjectPage() {
                   className={`group flex items-center gap-3 border-l-[3px] ${rowStatusBorderClass(SERVICE_STATUS_TONE[service.status])} py-3 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
                 >
                   {fromGit ? (
-                    <IconGithub className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
+                    <IconGithub className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                   ) : (
-                    <IconStore className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
+                    <IconStore className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
