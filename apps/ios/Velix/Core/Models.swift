@@ -182,6 +182,32 @@ struct CatalogVariable: Decodable, Identifiable {
     let required: Bool?
 }
 
+// GET/PATCH /databases/:id/backup-config (database-backup.service.ts:getConfig)
+// — `scheduledAt` é "HH:mm" ou null (sem rotina configurada).
+// `destinationId`/`database` ficam de fora aqui de propósito: destino de
+// backup (FTP/SFTP/S3) continua só configurável pelo painel web por agora.
+struct DatabaseBackupConfig: Decodable {
+    let scheduledAt: String?
+    let retentionDays: Int
+}
+
+// `Encodable` sintetizado usa `encodeIfPresent` pra campo opcional — omitiria
+// a chave inteira quando `scheduledAt` é nil, e sem a chave o backend
+// entende "sem mudança" (dto.scheduledAt === undefined), não "desligar" (ver
+// DatabaseBackupService.setConfig). Encode manual força `null` explícito.
+struct SetBackupConfigBody: Encodable {
+    let scheduledAt: String?
+    let retentionDays: Int
+
+    private enum CodingKeys: String, CodingKey { case scheduledAt, retentionDays }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(scheduledAt, forKey: .scheduledAt)
+        try container.encode(retentionDays, forKey: .retentionDays)
+    }
+}
+
 struct AlertThresholdPreference: Codable {
     var id: String?
     var userId: String?

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09AE4DD83AAC70E24292C030 /* DatabasesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583586402B4A6EA620F8A3FC /* DatabasesListView.swift */; };
+		6E9617750A0C04A20CA83A3E /* DatabaseDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA1FE24F7EE14D965546C62 /* DatabaseDetailView.swift */; };
 		4A8E980A5DC6E81A18B2D5FC /* DeployWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */; };
 		F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9192899B720427D6261EC6 /* DomainsTabView.swift */; };
 		EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491206A8270149C157D5FC77 /* TerminalView.swift */; };
@@ -56,6 +58,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		583586402B4A6EA620F8A3FC /* DatabasesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabasesListView.swift; sourceTree = "<group>"; };
+		5CA1FE24F7EE14D965546C62 /* DatabaseDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseDetailView.swift; sourceTree = "<group>"; };
 		6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeployWizardView.swift; sourceTree = "<group>"; };
 		8C9192899B720427D6261EC6 /* DomainsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainsTabView.swift; sourceTree = "<group>"; };
 		491206A8270149C157D5FC77 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
@@ -113,6 +117,7 @@
 			isa = PBXGroup;
 			children = (
 				9EDB18D9118C338EC5E80644 /* Dashboard */,
+				C0F049DA7346A7C090AA99D9 /* Databases */,
 				D78E385ACEE2F82E926CCAB5 /* Deploy */,
 				441E433C68117050A84B4387 /* Instances */,
 				1C74AAEA1522879E14E47C2B /* Notifications */,
@@ -128,6 +133,15 @@
 				6377E7D78A7A6274757CCBBC /* DeployWizardView.swift */,
 			);
 			path = Deploy;
+			sourceTree = "<group>";
+		};
+		C0F049DA7346A7C090AA99D9 /* Databases */ = {
+			isa = PBXGroup;
+			children = (
+				583586402B4A6EA620F8A3FC /* DatabasesListView.swift */,
+				5CA1FE24F7EE14D965546C62 /* DatabaseDetailView.swift */,
+			);
+			path = Databases;
 			sourceTree = "<group>";
 		};
 		1C74AAEA1522879E14E47C2B /* Notifications */ = {
@@ -337,6 +351,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09AE4DD83AAC70E24292C030 /* DatabasesListView.swift in Sources */,
+				6E9617750A0C04A20CA83A3E /* DatabaseDetailView.swift in Sources */,
 				4A8E980A5DC6E81A18B2D5FC /* DeployWizardView.swift in Sources */,
 				F6E393915869DE173A11CDFC /* DomainsTabView.swift in Sources */,
 				EB8865B80952CB8DEF91B1EE /* TerminalView.swift in Sources */,

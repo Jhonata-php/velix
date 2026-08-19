@@ -50,4 +50,24 @@ final class APIClientTests: XCTestCase {
         let request = client.makeRequest(path: "/servers/1/metrics/history?hours=24", method: "GET")
         XCTAssertEqual(request.url?.absoluteString, "https://painel.exemplo.com/api/servers/1/metrics/history?hours=24")
     }
+
+    // Encode manual em SetBackupConfigBody é o que faz "desligar backup" (scheduledAt
+    // nil) virar `null` explícito no JSON — o synthesized Encodable padrão omitiria a
+    // chave, e sem ela o backend entende "sem mudança" (DatabaseBackupService.setConfig),
+    // não "desligar". Sem esse teste, um refactor que voltasse a synthesized quebraria
+    // silenciosamente o botão de desligar backup no app.
+    func testSetBackupConfigBodyEncodesNilScheduledAtAsExplicitNull() throws {
+        let body = SetBackupConfigBody(scheduledAt: nil, retentionDays: 14)
+        let data = try JSONEncoder().encode(body)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"scheduledAt\":null"), "esperava \"scheduledAt\":null, obteve \(json)")
+    }
+
+    func testSetBackupConfigBodyEncodesScheduledAtWhenPresent() throws {
+        let body = SetBackupConfigBody(scheduledAt: "03:00", retentionDays: 7)
+        let data = try JSONEncoder().encode(body)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(decoded["scheduledAt"] as? String, "03:00")
+        XCTAssertEqual(decoded["retentionDays"] as? Int, 7)
+    }
 }
