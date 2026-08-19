@@ -43,6 +43,26 @@ struct ServerActionResponse: Decodable {
     let message: String
 }
 
+// GET /servers/:id/docker/status (servers.service.ts:dockerStatus) — sem
+// version quando `installed` é false, sem containers também nesse caso.
+struct DockerStatusResponse: Decodable {
+    let installed: Bool
+    let version: String?
+    let containers: [DockerContainerInfo]?
+}
+
+// `status` é a saída bruta de `docker ps` (ex.: "Up 3 hours", "Exited (0) 2
+// days ago") — não um enum fechado, mesmo formato que o painel web usa
+// (`status.toLowerCase().includes("up")` pra decidir se está rodando).
+struct DockerContainerInfo: Decodable, Identifiable {
+    let id: String
+    let image: String
+    let status: String
+    let names: String
+
+    var isRunning: Bool { status.lowercased().contains("up") }
+}
+
 struct MetricSample: Decodable, Identifiable {
     var id: String { capturedAt }
     let loadAvg1: Double?
