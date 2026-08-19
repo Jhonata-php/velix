@@ -18,6 +18,37 @@ const TONE_DOT: Record<StatusTone, string> = {
   neutral: 'bg-slate-400',
 };
 
+const TONE_BORDER: Record<StatusTone, string> = {
+  success: 'border-green-500',
+  warning: 'border-amber-400',
+  danger: 'border-red-500',
+  info: 'border-sky-400',
+  neutral: 'border-slate-400',
+};
+
+const TONE_TEXT: Record<StatusTone, string> = {
+  success: 'text-green-600 dark:text-green-400',
+  warning: 'text-amber-600 dark:text-amber-400',
+  danger: 'text-red-600 dark:text-red-400',
+  info: 'text-sky-600 dark:text-sky-400',
+  neutral: 'text-slate-500 dark:text-slate-400',
+};
+
+/** Classe de borda lateral pra linha de lista/tabela densa — usar junto de
+ * `pl-3` no container da linha, ex.: `border-l-[3px] ${rowStatusBorderClass(tone)} pl-3`.
+ * Substitui o badge-pílula em linha de lista (ver spec do redesign visual,
+ * docs/superpowers/specs/2026-08-18-visual-redesign-design.md §2.5) — o badge
+ * (`StatusBadge` abaixo) continua reservado pra cabeçalho/resumo. */
+export function rowStatusBorderClass(tone: StatusTone): string {
+  return TONE_BORDER[tone];
+}
+
+/** Rótulo de texto colorido pra acompanhar `rowStatusBorderClass` — sem fundo,
+ * sem pílula, só texto curto na cor do tom. */
+export function RowStatusLabel({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+  return <span className={`text-xs font-medium uppercase tracking-wide ${TONE_TEXT[tone]}`}>{children}</span>;
+}
+
 export function StatusDot({ tone, className = 'h-1.5 w-1.5' }: { tone: StatusTone; className?: string }) {
   return <span className={`shrink-0 rounded-full ${TONE_DOT[tone]} ${className}`} />;
 }
