@@ -8,7 +8,7 @@ import { EmptyState, ErrorState } from './EmptyState';
 import { Modal, ConfirmModal } from './Modal';
 import { SqlImportButton } from './SqlImportButton';
 import { Skeleton } from './Skeleton';
-import { StatusBadge } from './StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
 import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown, IconTrash, IconKey } from './icons';
 
 type DbEngine = 'postgresql' | 'mysql' | 'mariadb';
@@ -320,10 +320,10 @@ function SqlEditorModal({
             </p>
             <div className="max-h-52 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
               {queryLog.map((q) => (
-                <div key={q.id} className="px-3 py-2 text-xs">
+                <div key={q.id} className={`border-l-[3px] ${rowStatusBorderClass(q.ok ? 'success' : 'danger')} px-2.5 py-2 text-xs`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-mono text-slate-700 dark:text-slate-200">{q.query}</span>
-                    <StatusBadge tone={q.ok ? 'success' : 'danger'}>{q.ok ? 'ok' : 'erro'}</StatusBadge>
+                    <RowStatusLabel tone={q.ok ? 'success' : 'danger'}>{q.ok ? 'ok' : 'erro'}</RowStatusLabel>
                   </div>
                   <p className="mt-0.5 text-slate-400">
                     {q.userName} · {new Date(q.executedAt).toLocaleString('pt-BR')}
@@ -837,7 +837,7 @@ export function DatabaseDataTab({
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span className="truncate">{t.name}</span>
+                  <span className="truncate font-mono">{t.name}</span>
                   <span className="shrink-0 text-xs text-slate-400">{t.rowCount ?? '—'}</span>
                 </button>
               ))}
@@ -852,7 +852,7 @@ export function DatabaseDataTab({
             description="Escolha uma tabela na lista ao lado pra ver as linhas, ou crie uma nova."
           />
         ) : (
-          <div className="card flex flex-1 flex-col space-y-3 p-4">
+          <div className="card flex flex-1 flex-col space-y-3 p-3.5">
             <div className="flex items-center justify-between gap-2">
               <p className="section-label">{selectedTable}</p>
               <div className="relative">

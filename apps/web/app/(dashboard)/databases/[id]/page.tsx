@@ -14,7 +14,7 @@ import type {
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
-import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { ConfirmModal, Modal } from '@/components/Modal';
 import { PublishPortControl } from '@/components/PublishPortControl';
@@ -258,7 +258,7 @@ export default function DatabaseDetailPage() {
       </div>
 
       {tab === 'conexao' && (
-      <div className="card space-y-3 p-4">
+      <div className="card space-y-3 p-3.5">
         <p className="section-label">Conexão</p>
         <p className="text-xs text-slate-400">
           Pra conectar a partir de outro serviço no Velix (mesma rede Docker), use o host e a porta interna abaixo —
@@ -285,7 +285,7 @@ export default function DatabaseDetailPage() {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-xs text-slate-400">Porta publicada</p>
-            <p className="text-slate-700 dark:text-slate-200">{service.publishedPort ?? '— (só interna)'}</p>
+            <p className="font-mono text-slate-700 dark:text-slate-200">{service.publishedPort ?? '— (só interna)'}</p>
           </div>
         </div>
 
@@ -670,7 +670,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
   if (!config || !runs) return <Skeleton className="h-40" />;
 
   return (
-    <div className="card space-y-4 p-4">
+    <div className="card space-y-4 p-3.5">
       <div className="flex items-center justify-between">
         <p className="section-label">Backups</p>
         <button onClick={() => setRunning(true)} className="btn-primary flex items-center gap-1.5 px-3.5 py-2 text-sm">
@@ -740,7 +740,10 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
         ) : (
           <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
             {runs.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+              <div
+                key={r.id}
+                className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(RUN_TONE[r.status] ?? 'neutral')} py-2 pl-2.5 pr-3 text-xs`}
+              >
                 <div className="min-w-0">
                   <p className="truncate text-slate-700 dark:text-slate-200">{new Date(r.startedAt).toLocaleString('pt-BR')}</p>
                   <p className="truncate text-slate-400">
@@ -761,7 +764,7 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
                       <IconDownload className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   )}
-                  <StatusBadge tone={RUN_TONE[r.status] ?? 'neutral'}>{r.status}</StatusBadge>
+                  <RowStatusLabel tone={RUN_TONE[r.status] ?? 'neutral'}>{r.status}</RowStatusLabel>
                 </div>
               </div>
             ))}

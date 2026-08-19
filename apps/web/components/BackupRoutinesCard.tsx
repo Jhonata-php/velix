@@ -6,7 +6,7 @@ import { relativeTime } from '@/lib/relativeTime';
 import type { DatabaseBackupRoutine, DatabaseListItem, BackupDestinationSummary } from '@/lib/types';
 import { Alert } from './Alert';
 import { Modal, ConfirmModal } from './Modal';
-import { StatusBadge } from './StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
 import { IconPlus, IconPencil, IconTrash, IconDatabase } from './icons';
 
 /**
@@ -69,8 +69,10 @@ export function BackupRoutinesCard() {
 
       {routines && routines.length > 0 && (
         <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
-          {routines.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+          {routines.map((r) => {
+            const runTone = r.lastRun ? (r.lastRun.status === 'SUCCESS' ? 'success' : r.lastRun.status === 'ERROR' ? 'danger' : 'info') : 'neutral';
+            return (
+            <div key={r.id} className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(runTone)} py-2 pl-3 pr-3.5`}>
               <div className="flex min-w-0 items-center gap-2.5">
                 <IconDatabase className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                 <div className="min-w-0">
@@ -85,9 +87,9 @@ export function BackupRoutinesCard() {
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {r.lastRun && (
-                  <StatusBadge tone={r.lastRun.status === 'SUCCESS' ? 'success' : r.lastRun.status === 'ERROR' ? 'danger' : 'info'}>
+                  <RowStatusLabel tone={runTone}>
                     {r.lastRun.status === 'SUCCESS' ? 'concluído' : r.lastRun.status === 'ERROR' ? 'falhou' : 'rodando'}
-                  </StatusBadge>
+                  </RowStatusLabel>
                 )}
                 <button onClick={() => setEditing(r)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="Editar rotina">
                   <IconPencil className="h-4 w-4" aria-hidden />
@@ -97,7 +99,8 @@ export function BackupRoutinesCard() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

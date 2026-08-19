@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from './Alert';
-import { StatusBadge } from './StatusBadge';
+import { StatusBadge, RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
 import { IconHardDrive, IconRefresh } from './icons';
 
 interface BackupRun {
@@ -188,16 +188,17 @@ export function BackupCard() {
             <details className="mt-3">
               <summary className="cursor-pointer text-xs text-slate-500">Histórico ({info.runs.length})</summary>
               <div className="mt-2 space-y-1">
-                {info.runs.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate text-slate-400">
-                      {new Date(r.startedAt).toLocaleString('pt-BR')} · {formatSize(r.sizeBytes)}
-                    </span>
-                    <StatusBadge tone={r.status === 'SUCCESS' ? 'success' : r.status === 'ERROR' ? 'danger' : 'info'}>
-                      {r.status === 'SUCCESS' ? 'ok' : r.status === 'ERROR' ? 'falhou' : 'rodando'}
-                    </StatusBadge>
-                  </div>
-                ))}
+                {info.runs.map((r) => {
+                  const tone = r.status === 'SUCCESS' ? 'success' : r.status === 'ERROR' ? 'danger' : 'info';
+                  return (
+                    <div key={r.id} className={`flex items-center justify-between gap-2 border-l-[3px] ${rowStatusBorderClass(tone)} pl-2 text-xs`}>
+                      <span className="truncate text-slate-400">
+                        {new Date(r.startedAt).toLocaleString('pt-BR')} · {formatSize(r.sizeBytes)}
+                      </span>
+                      <RowStatusLabel tone={tone}>{r.status === 'SUCCESS' ? 'ok' : r.status === 'ERROR' ? 'falhou' : 'rodando'}</RowStatusLabel>
+                    </div>
+                  );
+                })}
               </div>
             </details>
           )}

@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import type { DatabaseListItem } from '@/lib/types';
 import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
-import { StatusBadge, type StatusTone } from '@/components/StatusBadge';
+import { RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { DatabaseCreateWizard } from '@/components/DatabaseCreateWizard';
 import { IconDatabase, IconPlus, IconClock } from '@/components/icons';
 
@@ -69,12 +69,10 @@ export default function DatabasesPage() {
             <Link
               key={db.id}
               href={`/databases/${db.id}`}
-              className="flex items-center justify-between gap-3 px-4 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+              className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(STATUS_TONE[db.status] ?? 'neutral')} py-3 pl-3.5 pr-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40`}
             >
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
-                  <IconDatabase className="h-4.5 w-4.5" aria-hidden />
-                </span>
+                <IconDatabase className="h-4.5 w-4.5 shrink-0 text-slate-400" aria-hidden />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{db.project.name}</p>
                   <p className="truncate text-xs text-slate-400">
@@ -88,7 +86,7 @@ export default function DatabasesPage() {
                     <IconClock className="h-3.5 w-3.5 text-slate-400" aria-hidden />
                   </span>
                 )}
-                <StatusBadge tone={STATUS_TONE[db.status] ?? 'neutral'}>{db.status}</StatusBadge>
+                <RowStatusLabel tone={STATUS_TONE[db.status] ?? 'neutral'}>{db.status}</RowStatusLabel>
               </div>
             </Link>
           ))}
