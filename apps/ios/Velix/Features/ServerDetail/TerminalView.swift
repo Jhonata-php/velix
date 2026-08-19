@@ -1,16 +1,32 @@
 import SwiftUI
 
-/// Aba "Terminal" do detalhe do servidor — SSH interativo via `/terminal`
-/// (terminal-server.ts:handleConnection). Ver ponytail em TerminalSocket:
-/// entrada por linha, não keystroke a keystroke — cobre diagnóstico e
-/// comandos comuns, não substitui um cliente SSH completo pra apps de tela
-/// cheia (vim, htop).
+/// Shell interativo genérico via WebSocket — usado tanto pela aba "Terminal"
+/// do servidor (`/terminal`, SSH direto) quanto pelo console SQL de um banco
+/// (`/service-terminal?mode=db`, ver DatabaseDetailView). Mesmo protocolo
+/// nos dois casos (terminal-server.ts), só muda o path/query. Ver ponytail
+/// em TerminalSocket: entrada por linha, não keystroke a keystroke — cobre
+/// diagnóstico e comandos comuns, não substitui um cliente completo pra apps
+/// de tela cheia (vim, htop).
 struct TerminalView: View {
-    let server: ServerSummary
+    let title: String
+    let path: String
+    let extraQuery: [String: String]
 
     @Environment(AppSession.self) private var session
     @State private var socket = TerminalSocket()
     @State private var input = ""
+
+    init(server: ServerSummary) {
+        title = server.name
+        path = "/terminal"
+        extraQuery = ["serverId": server.id]
+    }
+
+    init(title: String, path: String, extraQuery: [String: String]) {
+        self.title = title
+        self.path = path
+        self.extraQuery = extraQuery
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,13 +70,15 @@ struct TerminalView: View {
             .padding(10)
             .background(.bar)
         }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear { connect() }
         .onDisappear { socket.disconnect() }
     }
 
     private func connect() {
         guard let instance = session.instanceStore.activeInstance else { return }
-        socket.connect(baseURL: instance.baseURL, path: "/terminal", token: instance.accessToken, extraQuery: ["serverId": server.id])
+        socket.connect(baseURL: instance.baseURL, path: path, token: instance.accessToken, extraQuery: extraQuery)
     }
 
     private func send() {

@@ -21,6 +21,7 @@ struct DatabaseDetailView: View {
     @State private var isSavingBackup = false
     @State private var errorMessage: String?
     @State private var copiedKey: String?
+    @State private var showConsole = false
 
     init(database: DatabaseServiceSummary) {
         self.database = database
@@ -73,6 +74,16 @@ struct DatabaseDetailView: View {
                 .foregroundStyle(.red)
             }
 
+            Section {
+                Button {
+                    showConsole = true
+                } label: {
+                    Label("Abrir console SQL", systemImage: "terminal")
+                }
+            } footer: {
+                Text("Login automático — mesma senha usada pela aplicação, gerada no deploy.")
+            }
+
             if let connectionInfo {
                 Section("Conexão") {
                     connectionRow("Host", connectionInfo.host)
@@ -119,6 +130,20 @@ struct DatabaseDetailView: View {
         .task {
             await loadConnection()
             await loadBackupConfig()
+        }
+        .sheet(isPresented: $showConsole) {
+            NavigationStack {
+                TerminalView(
+                    title: "Console — \(database.name)",
+                    path: "/service-terminal",
+                    extraQuery: ["applicationId": database.applicationId, "serviceName": database.name, "mode": "db"]
+                )
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Fechar") { showConsole = false }
+                    }
+                }
+            }
         }
     }
 
