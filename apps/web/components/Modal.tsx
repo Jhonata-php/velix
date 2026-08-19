@@ -33,8 +33,8 @@ export function Modal({ title, onClose, closeDisabled, maxWidth = 'max-w-md', ch
 
   return (
     <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-md">
-      <div className={`modal-pop card w-full ${maxWidth} p-6`}>
-        <div className="mb-4 flex items-center justify-between">
+      <div className={`modal-pop card w-full ${maxWidth} p-5`}>
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="section-title">{title}</h2>
           {onClose && (
             <button
