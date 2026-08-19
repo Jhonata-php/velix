@@ -22,16 +22,18 @@ body {
   .btn-ghost {
     @apply rounded-lg font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
   }
+  /* Plano, sem sombra decorativa — a borda sozinha define o limite do card.
+     Ver docs/superpowers/specs/2026-08-18-visual-redesign-design.md §2.1. */
   .card {
-    @apply rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_24px_-16px_rgba(15,23,42,0.18)] dark:border-slate-700/80 dark:bg-slate-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.03)];
+    @apply rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900;
   }
   .card-hover {
-    @apply transition hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_32px_-16px_rgba(15,23,42,0.24)] dark:hover:border-slate-600;
+    @apply transition-colors hover:border-slate-300 dark:hover:border-slate-600;
   }
   /* Superfície de 3º nível — mais clara que .card no escuro, usada só pra blocos
      que precisam se destacar do resto da página (cabeçalho de entidade, header de módulo). */
   .surface-elevated {
-    @apply rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_24px_-16px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-800/50 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.04)];
+    @apply rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/50;
   }
   .row-hover {
     @apply transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40;
