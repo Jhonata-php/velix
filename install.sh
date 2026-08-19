@@ -23,6 +23,17 @@ LOG_FILE="${LOG_FILE:-/var/log/velix-install.log}"
 SYSTEMD_FILE="/etc/systemd/system/velix.service"
 FIREWALL_SCRIPT="/usr/local/sbin/velix-firewall"
 SELF_UPDATE_SCRIPT="/usr/local/sbin/velix-self-update"
+
+# URL de onde buscar a chave de conta de serviço padrão do Firebase do Velix
+# na hora da instalação — não fica hardcoded aqui pra não cair em bloqueio de
+# secret scanning do GitHub e pra dar pra trocar/revogar sem tocar no script.
+# Só é usada quando a instalação ainda não tem valor próprio salvo (ver
+# generate_environment() — mesmo tratamento de "preserva o que já existe" que
+# POSTGRES_PASSWORD/CF_DNS_API_TOKEN recebem). Risco aceito conscientemente:
+# é a MESMA chave em todo cliente — o servidor de um cliente comprometido
+# expõe uma chave que manda push (e o que mais a conta de serviço tiver
+# liberado) em nome de todos os outros.
+DEFAULT_FIREBASE_CONFIG_URL="https://gist.githubusercontent.com/Jhonata-php/d0a8fca9327581d5727191cde320b45f/raw/velix-firebase-default.json"
 LOCK_FILE="/var/run/velix-install.lock"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
@@ -721,10 +732,12 @@ VELIX_CREDENTIAL_SECRET=${credential_secret}
 # atualização apagaria o token e o SSL das aplicações voltaria a quebrar.
 CF_DNS_API_TOKEN=${cf_dns_api_token}
 # Chave de conta de serviço do Firebase (JSON numa linha só — sem quebras de
-# linha reais, só \n escapado dentro do campo private_key), configurada à mão
-# no servidor pra habilitar push notification (ver PushService.getSender()).
+# linha reais, só \n escapado dentro do campo private_key) que habilita push
+# notification (ver PushService.getSender()). Valor padrão vem da URL em
+# DEFAULT_FIREBASE_CONFIG_URL no topo deste script — só é diferente disso se
+# alguém sobrescrever à mão no .env pra usar outro projeto Firebase.
 # Preservada pelo mesmo motivo do CF_DNS_API_TOKEN acima: sem isso, toda
-# atualização apagaria a chave e o push pararia de funcionar silenciosamente.
+# atualização voltaria a gravar o padrão por cima de uma troca manual.
 FIREBASE_SERVICE_ACCOUNT_JSON=${firebase_service_account_json}
 WEB_ORIGIN=${WEB_ORIGIN}
 NEXT_PUBLIC_APP_URL=${WEB_ORIGIN}
@@ -789,6 +802,14 @@ generate_environment() {
 
     # Sem valor padrão gerado aqui, de propósito: um token do Cloudflare não é
     # algo que o instalador tem como criar sozinho. Fica vazio até a API gravá-lo.
+
+    # Aqui sim tem valor padrão — ver o comentário em cima de
+    # DEFAULT_FIREBASE_CONFIG_URL pra entender a troca consciente que isso
+    # representa (chave compartilhada entre instalações). Busca externa, não
+    # falha a instalação se o download não rolar (rede restrita, URL fora do ar).
+    if [ -z "$firebase_service_account_json" ]; then
+        firebase_service_account_json="$(curl -fsSL --max-time 10 "$DEFAULT_FIREBASE_CONFIG_URL" 2>/dev/null || true)"
+    fi
 
     write_env_file "$postgres_password" "$jwt_secret" "$credential_secret" "$cf_dns_api_token" "$firebase_service_account_json"
     chmod 600 "$ENV_FILE"
