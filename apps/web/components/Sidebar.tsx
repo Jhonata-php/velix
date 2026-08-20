@@ -128,9 +128,9 @@ export function Sidebar() {
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-wordmark.png" alt="Velix" className="h-7 dark:hidden" />
+            <img src="/logo-wordmark.png" alt="Velix" className="h-8 dark:hidden" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-wordmark-white.png" alt="Velix" className="hidden h-7 dark:block" />
+            <img src="/logo-wordmark-white.png" alt="Velix" className="hidden h-8 dark:block" />
           </>
         )}
       </div>
