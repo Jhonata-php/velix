@@ -86,11 +86,13 @@ export class UpdateService implements OnModuleInit {
    * Sem isso, uma release nova só era percebida quando alguém tinha o painel
    * aberto pra disparar a consulta (o cache de 10min do GitHubReleaseService
    * só é renovado por uma chamada de verdade) — sessão fechada = badge de
-   * atualização nunca aparece, por mais tempo que passe. Roda de hora em
-   * hora, force:true, garantindo que o cache e o histórico (`UpdateCheck`)
-   * fiquem frescos mesmo sem ninguém com o painel aberto.
+   * atualização nunca aparece, por mais tempo que passe. Roda a cada 10min,
+   * force:true, garantindo que o cache e o histórico (`UpdateCheck`) fiquem
+   * frescos mesmo sem ninguém com o painel aberto — de hora em hora (o
+   * intervalo original) deixava passar até 1h de defasagem, perceptível
+   * demais pra quem publica uma versão e espera ver o aviso aparecer.
    */
-  @Cron('0 * * * *')
+  @Cron('*/10 * * * *')
   async scheduledCheck() {
     await this.check({ force: true }).catch((err) =>
       this.logger.warn(`Verificação agendada de atualização falhou: ${err instanceof Error ? err.message : err}`),
