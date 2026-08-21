@@ -51,19 +51,20 @@ struct ServerDetailView: View {
                     }
                 }
             } else {
-                VStack(spacing: 0) {
-                    Group {
-                        switch selectedTab {
-                        case .overview: overviewTab
-                        case .projects: projectsTab
-                        case .containers: ContainersTabView(server: server)
-                        case .domains: DomainsTabView(server: server)
-                        case .terminal: TerminalView(server: server)
+                TabView(selection: $selectedTab) {
+                    ForEach(Tab.allCases, id: \.self) { tab in
+                        Group {
+                            switch tab {
+                            case .overview: overviewTab
+                            case .projects: projectsTab
+                            case .containers: ContainersTabView(server: server)
+                            case .domains: DomainsTabView(server: server)
+                            case .terminal: TerminalView(server: server)
+                            }
                         }
+                        .tabItem { Label(tab.rawValue, systemImage: tab.icon) }
+                        .tag(tab)
                     }
-                    .frame(maxHeight: .infinity)
-
-                    bottomTabBar
                 }
             }
         }
@@ -93,14 +94,29 @@ struct ServerDetailView: View {
             }
 
             Section("CPU (últimas 24h)") {
-                if chartPoints.isEmpty {
+                if cpuChartPoints.isEmpty {
                     Text("Sem dados de métricas nesse período.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Chart(chartPoints) { point in
+                    Chart(cpuChartPoints) { point in
                         LineMark(
                             x: .value("Horário", point.date),
-                            y: .value("CPU %", point.cpuPercent)
+                            y: .value("CPU %", point.value)
+                        )
+                    }
+                    .frame(height: 200)
+                }
+            }
+
+            Section("Memória (últimas 24h)") {
+                if memoryChartPoints.isEmpty {
+                    Text("Sem dados de métricas nesse período.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Chart(memoryChartPoints) { point in
+                        LineMark(
+                            x: .value("Horário", point.date),
+                            y: .value("Memória %", point.value)
                         )
                     }
                     .frame(height: 200)
@@ -204,49 +220,35 @@ struct ServerDetailView: View {
         }
     }
 
-    // MARK: - Barra de abas
-
-    private var bottomTabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(Tab.allCases, id: \.self) { tab in
-                Button {
-                    selectedTab = tab
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 19, weight: .medium))
-                        Text(tab.rawValue)
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(selectedTab == tab ? VelixTheme.purple : .secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
-                }
-            }
-        }
-        .padding(.bottom, 4)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
-    }
-
     private struct ChartPoint: Identifiable {
         let id = UUID()
         let date: Date
-        let cpuPercent: Double
+        let value: Double
     }
 
-    private var chartPoints: [ChartPoint] {
+    private func chartPoints(_ value: (MetricSample) -> Double?) -> [ChartPoint] {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let fallbackFormatter = ISO8601DateFormatter()
         return samples.compactMap { sample in
-            guard let cpuPercent = sample.cpuPercent else { return nil }
+            guard let value = value(sample) else { return nil }
             guard let date = formatter.date(from: sample.capturedAt) ?? fallbackFormatter.date(from: sample.capturedAt) else {
                 return nil
             }
-            return ChartPoint(date: date, cpuPercent: cpuPercent)
+            return ChartPoint(date: date, value: value)
         }
         .sorted { $0.date < $1.date }
+    }
+
+    private var cpuChartPoints: [ChartPoint] {
+        chartPoints { $0.cpuPercent }
+    }
+
+    private var memoryChartPoints: [ChartPoint] {
+        chartPoints { sample in
+            guard let used = sample.memUsedMb, let total = sample.memTotalMb, total > 0 else { return nil }
+            return Double(used) / Double(total) * 100
+        }
     }
 
     private func openInBrowser() {
