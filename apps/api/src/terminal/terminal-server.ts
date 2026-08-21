@@ -1,9 +1,10 @@
 import type { Server as HttpServer } from 'http';
 import { parse } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
+import type { Client, ClientChannel } from 'ssh2';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
-import { SshService } from '../ssh/ssh.service';
+import { SshService, type SshConnectOptions } from '../ssh/ssh.service';
 import { buildConnectOptions } from '../ssh/connect-options.util';
 import { decryptCredential } from '../ssh/crypto.util';
 import { shellSingleQuote } from '../database/mysql.util';
@@ -83,10 +84,9 @@ export function attachTerminalServer(
   });
 }
 
-/** Abre o shell, liga o proxy bidirecional WS<->PTY, e devolve o stream (quem chama pode escrever nele antes de retornar). */
-async function wirePty(ws: WebSocket, ssh: SshService, options: Parameters<SshService['openShell']>[0]) {
-  const { conn, stream } = await ssh.openShell(options);
-
+/** Liga o proxy bidirecional WS<->PTY num canal já aberto (shell de login ou
+ * `docker exec` direto — ver `wirePty`/`wireExecPty`). */
+function wireStream(ws: WebSocket, conn: Client, stream: ClientChannel) {
   stream.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
   stream.stderr.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
   stream.on('close', () => {
@@ -106,7 +106,26 @@ async function wirePty(ws: WebSocket, ssh: SshService, options: Parameters<SshSe
 
   ws.on('close', () => conn.end());
   ws.on('error', () => conn.end());
+}
 
+/** Abre um shell de login real no host — reservado pro terminal SSH do
+ * próprio servidor (`/terminal`), onde isso é intencional. */
+async function wirePty(ws: WebSocket, ssh: SshService, options: SshConnectOptions) {
+  const { conn, stream } = await ssh.openShell(options);
+  wireStream(ws, conn, stream);
+  return stream;
+}
+
+/** Roda `command` direto com PTY, sem abrir shell de login antes — usado pro
+ * terminal escopado a um container (`/db-console`, `/service-terminal`):
+ * quando o comando termina (o usuário sai do shell do container), o canal
+ * inteiro fecha, sem sobrar um shell do host por trás pra "escapar" saindo
+ * do container. Antes disso era um shell de login normal com o `docker exec`
+ * só digitado nele — mostrava o banner de login do host e, saindo do
+ * container, caía de volta num shell do host com o mesmo `sudo` do SSH. */
+async function wireExecPty(ws: WebSocket, ssh: SshService, options: SshConnectOptions, command: string) {
+  const { conn, stream } = await ssh.execPty(options, command);
+  wireStream(ws, conn, stream);
   return stream;
 }
 
@@ -179,8 +198,8 @@ async function handleDbConsole(
   }
 
   const rootPassword = decryptCredential(instance.rootPasswordEnc);
-  const stream = await wirePty(ws, deps.ssh, options);
-  stream.write(`sudo docker exec -it ${instance.containerName} mysql -uroot -p${shellSingleQuote(rootPassword)}\n`);
+  const command = `sudo docker exec -it ${shellSingleQuote(instance.containerName)} mysql -uroot -p${shellSingleQuote(rootPassword)}`;
+  await wireExecPty(ws, deps.ssh, options, command);
 }
 
 /**
@@ -263,6 +282,6 @@ async function handleServiceTerminal(
     }
   }
 
-  const stream = await wirePty(ws, deps.ssh, options);
-  stream.write(`sudo docker exec ${execFlags}-it ${containerName} ${command ?? 'sh'}\n`);
+  const execCommand = `sudo docker exec ${execFlags}-it ${containerName} ${command ?? 'sh'}`;
+  await wireExecPty(ws, deps.ssh, options, execCommand);
 }

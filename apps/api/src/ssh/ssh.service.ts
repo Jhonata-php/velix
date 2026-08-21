@@ -307,4 +307,43 @@ export class SshService {
         });
     });
   }
+
+  /**
+   * Roda UM comando com PTY interativo, sem abrir um shell de login primeiro
+   * — usado pro terminal escopado a um container (`docker exec ... sh`, ou o
+   * console de um banco): quando o comando termina (o usuário sai do shell
+   * do container), o canal inteiro fecha, em vez de cair de volta num shell
+   * do host por trás dele. `openShell` é um shell de login de verdade —
+   * reservado pro terminal SSH do próprio servidor, onde isso é intencional.
+   */
+  execPty(options: SshConnectOptions, command: string, timeoutMs = 15_000): Promise<{ conn: Client; stream: ClientChannel }> {
+    return new Promise((resolve, reject) => {
+      const conn = new Client();
+      let settled = false;
+      conn
+        .on('ready', () => {
+          conn.exec(command, { pty: { term: 'xterm-256color' } }, (err, stream) => {
+            if (err) {
+              settled = true;
+              conn.end();
+              reject(err);
+              return;
+            }
+            settled = true;
+            resolve({ conn, stream });
+          });
+        })
+        .on('error', (err) => {
+          if (!settled) reject(err);
+        })
+        .connect({
+          host: options.host,
+          port: options.port,
+          username: options.username,
+          password: options.password,
+          privateKey: options.privateKey,
+          readyTimeout: timeoutMs,
+        });
+    });
+  }
 }
