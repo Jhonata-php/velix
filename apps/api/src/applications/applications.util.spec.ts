@@ -8,6 +8,7 @@ import {
   appDir,
   allContainersUp,
   aggregateContainerStatus,
+  containersByPrefix,
   parseExposedPorts,
   isValidContainerRef,
   mergeComposeFragments,
@@ -31,6 +32,12 @@ assert.equal(aggregateContainerStatus(['meuapp_app'], ps), 'RUNNING');
 assert.equal(aggregateContainerStatus(['meuapp_app', 'meuapp_db'], ps), 'ERROR');
 assert.equal(aggregateContainerStatus(['meuapp_db'], ps), 'STOPPED');
 assert.equal(aggregateContainerStatus(['meuapp_app'], ''), 'STOPPED');
+
+const psMulti = 'wconect_wco-assinante|Up 43 hours\napps_crm|Up 41 hours\napps_need-site|Up 2 days\nnexus_app|Up 37 hours';
+assert.deepEqual(containersByPrefix(psMulti, 'wconect'), ['wconect_wco-assinante']);
+assert.deepEqual(containersByPrefix(psMulti, 'apps').sort(), ['apps_crm', 'apps_need-site']);
+assert.deepEqual(containersByPrefix(psMulti, 'app'), []); // não confunde "app" com "apps_..."
+assert.deepEqual(containersByPrefix(psMulti, 'inexistente'), []);
 
 assert.deepEqual(parseExposedPorts('{"3001/tcp":{}}'), [{ port: 3001, protocol: 'tcp' }]);
 assert.deepEqual(parseExposedPorts('{"9000/tcp":{},"9001/tcp":{}}'), [

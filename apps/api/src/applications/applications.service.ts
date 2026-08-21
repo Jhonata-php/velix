@@ -24,7 +24,15 @@ import {
   validateManifest,
 } from '../catalog/catalog.util';
 import { PROXY_NETWORK } from '../traefik/traefik.util';
-import { appDir, allContainersUp, aggregateContainerStatus, parseExposedPorts, slugify, mergeComposeFragments } from './applications.util';
+import {
+  appDir,
+  allContainersUp,
+  aggregateContainerStatus,
+  containersByPrefix,
+  parseExposedPorts,
+  slugify,
+  mergeComposeFragments,
+} from './applications.util';
 import { DeployServiceDto } from './dto/deploy-service.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
@@ -697,9 +705,19 @@ export class ApplicationsService {
       // `containerNames` (mantido à parte, ver deployManifestIntoProject/
       // GitDeployService.deployRepo) é a fonte pro status do projeto, não
       // `services` — projeto implantado antes da tabela `ProjectService`
-      // existir pode não ter linha nenhuma lá, e sem isso ficaria pulado
-      // pra sempre aqui, preso no status antigo.
-      const containerNames = app.containerNames.length > 0 ? app.containerNames : app.services.map((s) => s.containerName);
+      // existir pode não ter linha nenhuma lá. E `containerNames` em si
+      // também é um campo que só passou a ser preenchido a partir de certa
+      // versão, sem backfill — projeto de antes disso tem as duas listas
+      // vazias mesmo com containers de verdade rodando. Último recurso:
+      // qualquer container cujo nome comece com "${slug}_" é do projeto,
+      // por convenção (`renderCompose`/`GitDeployService` sempre nomeiam
+      // assim) — não depende de nenhum dado guardado.
+      const containerNames =
+        app.containerNames.length > 0
+          ? app.containerNames
+          : app.services.length > 0
+            ? app.services.map((s) => s.containerName)
+            : containersByPrefix(ps.stdout, app.slug);
       if (containerNames.length === 0) continue;
       const realAppStatus = aggregateContainerStatus(containerNames, ps.stdout);
       if (realAppStatus !== app.status) {

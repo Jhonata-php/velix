@@ -49,6 +49,18 @@ export function parseContainerStatuses(psOutput: string): Map<string, string> {
   );
 }
 
+/** Nomes de container na saída de `docker ps` que começam com `${slug}_` —
+ * fallback pra quando não há lista guardada de containers do projeto
+ * (`Application.containerNames`/`ProjectService`, ambos adicionados depois
+ * que alguns projetos já existiam, sem backfill retroativo). Todo container
+ * do Velix segue esse padrão de nome (`renderCompose`/`GitDeployService`
+ * sempre montam `${slug}_${serviceName}`), então o prefixo sozinho já basta
+ * pra achar os containers de um projeto sem precisar de nenhum dado extra. */
+export function containersByPrefix(psOutput: string, slug: string): string[] {
+  const prefix = `${slug}_`;
+  return [...parseContainerStatuses(psOutput).keys()].filter((name) => name.startsWith(prefix));
+}
+
 /** Todos os containers esperados aparecem "Up" na saída de
  * `docker ps --format '{{.Names}}|{{.Status}}'`? */
 export function allContainersUp(psOutput: string, expectedNames: string[]): boolean {
