@@ -3,7 +3,7 @@
  * framework: npx ts-node src/servers/metrics.util.spec.ts
  */
 import assert from 'node:assert';
-import { parseMetrics } from './metrics.util';
+import { parseMetrics, parseOsInfo } from './metrics.util';
 
 const output = [
   'UPTIME: 10:00:00 up 5 days,  2:30,  1 user,  load average: 0.52, 0.58, 0.59',
@@ -26,5 +26,15 @@ assert.equal(metrics.temperatureCelsius, 45.0);
 const withoutSensors = parseMetrics(['UPTIME: up', 'MEM:7975 3210', 'DISK:50G 20G 42%', 'CPU:12', 'TEMP:'].join('\n'));
 assert.equal(withoutSensors.cpuPercent, 12);
 assert.equal(withoutSensors.temperatureCelsius, null);
+
+const osInfo = parseOsInfo(['OSNAME:ubuntu', 'OSVERSION:24.04'].join('\n'));
+assert.equal(osInfo.osName, 'ubuntu');
+assert.equal(osInfo.osVersion, '24.04');
+
+// servidor sem /etc/os-release (raro fora de distro Linux padrão): grep não
+// acha nada, a linha vem vazia — null, não string vazia.
+const noOsRelease = parseOsInfo(['OSNAME:', 'OSVERSION:'].join('\n'));
+assert.equal(noOsRelease.osName, null);
+assert.equal(noOsRelease.osVersion, null);
 
 console.log('metrics.util self-check OK');

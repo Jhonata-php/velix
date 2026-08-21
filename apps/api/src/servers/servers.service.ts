@@ -9,7 +9,7 @@ import { generateSshKeyPair } from '../ssh/keygen.util';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { parseAptUpgradable, parseDnfUpgradable, parseSecurityPackageNames } from './updates.util';
-import { METRICS_COMMAND, parseMetrics } from './metrics.util';
+import { METRICS_COMMAND, parseMetrics, parseOsInfo } from './metrics.util';
 import { shellSingleQuote } from '../database/mysql.util';
 
 type LogFn = (line: string) => void;
@@ -178,9 +178,20 @@ export class ServersService {
     }
 
     const metrics = parseMetrics(result.stdout);
+    // Só grava se achou algo — não sobrescreve um osName já salvo (por
+    // "Testar conexão") com null só porque essa leitura específica falhou
+    // em achar /etc/os-release por algum motivo pontual.
+    const { osName, osVersion } = parseOsInfo(result.stdout);
     await this.prisma.server.update({
       where: { id },
-      data: { status: 'ONLINE', metrics: metrics as object, metricsCheckedAt: new Date(), lastCheckedAt: new Date() },
+      data: {
+        status: 'ONLINE',
+        metrics: metrics as object,
+        metricsCheckedAt: new Date(),
+        lastCheckedAt: new Date(),
+        ...(osName ? { osName } : {}),
+        ...(osVersion ? { osVersion } : {}),
+      },
     });
 
     await this.prisma.serverMetricSample.create({
