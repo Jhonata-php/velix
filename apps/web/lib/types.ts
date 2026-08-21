@@ -99,6 +99,9 @@ export interface ProjectService {
   applicationId: string;
   deploymentId: string;
   name: string;
+  /** Apelido de exibição (ex.: "n8n") — `name` continua sendo a chave real
+   * do compose/container/rota, nunca editável. */
+  displayName: string | null;
   image: string;
   containerName: string;
   required: boolean;

@@ -99,6 +99,9 @@ export default function ServicePage() {
   const [showMovePicker, setShowMovePicker] = useState(false);
   const [moveTargetAppId, setMoveTargetAppId] = useState('');
   const [moving, setMoving] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   function load() {
     apiFetch<ProjectDetail>(`/applications/${params.id}`)
@@ -127,6 +130,9 @@ export default function ServicePage() {
   const fromGit = deployment?.sourceType === 'git';
   const activeDomain = project.domains.find((d) => d.serviceName === service.name && d.status === 'ACTIVE');
   const running = service.status === 'RUNNING';
+  // Rótulo mostrado (apelido ou nome cru) — `service.name` continua sendo a
+  // chave funcional usada em toda URL/prop/comparação abaixo.
+  const displayLabel = service.displayName ?? service.name;
 
   async function lifecycleAction(a: 'start' | 'stop' | 'restart') {
     setBusy(true);
@@ -153,6 +159,22 @@ export default function ServicePage() {
     }
   }
 
+  async function saveDisplayName() {
+    setSavingName(true);
+    try {
+      await apiFetch(`/applications/${project!.id}/services/${encodeURIComponent(service!.name)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName: nameDraft }),
+      });
+      setRenaming(false);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao renomear serviço');
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Visão geral', icon: <IconActivity className="h-4 w-4" /> },
     ...(fromGit ? [{ key: 'source' as const, label: 'Fonte', icon: <IconGithub className="h-4 w-4" /> }] : []),
@@ -170,12 +192,57 @@ export default function ServicePage() {
         items={[
           { label: 'Projetos', href: '/projects' },
           { label: project.name, href: `/projects/${project.id}` },
-          { label: service.name },
+          { label: displayLabel },
         ]}
       />
 
       <div className="mb-4 flex items-center gap-2">
-        <h1 className="page-title">{service.name}</h1>
+        {renaming ? (
+          <>
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveDisplayName();
+                if (e.key === 'Escape') setRenaming(false);
+              }}
+              placeholder={service.name}
+              className="page-title rounded-lg border border-slate-300 bg-transparent px-2 py-0.5 dark:border-slate-600"
+            />
+            <button
+              onClick={saveDisplayName}
+              disabled={savingName}
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-green-600 disabled:opacity-50 dark:hover:bg-slate-800"
+              aria-label="Salvar nome"
+            >
+              <IconCheck className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              onClick={() => setRenaming(false)}
+              disabled={savingName}
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800"
+              aria-label="Cancelar"
+            >
+              ✕
+            </button>
+          </>
+        ) : (
+          <>
+            <h1 className="page-title">{displayLabel}</h1>
+            <button
+              onClick={() => {
+                setNameDraft(displayLabel);
+                setRenaming(true);
+              }}
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
+              aria-label="Renomear serviço"
+              title="Renomear"
+            >
+              <IconPencil className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </>
+        )}
         <StatusBadge tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</StatusBadge>
       </div>
 
@@ -306,7 +373,7 @@ export default function ServicePage() {
           serverId={project.server.id}
           op="service-redeploy-git"
           params={{ deploymentId: service.deploymentId }}
-          title={`Reimplantando ${service.name}`}
+          title={`Reimplantando ${displayLabel}`}
           onClose={() => {
             setRedeploying(false);
             load();
@@ -321,7 +388,7 @@ export default function ServicePage() {
       {confirmRemove && (
         <ConfirmModal
           title="Remover serviço"
-          message={`Remover "${service.name}" deste projeto? Os containers e volumes desse serviço são apagados. O resto do projeto continua no ar.`}
+          message={`Remover "${displayLabel}" deste projeto? Os containers e volumes desse serviço são apagados. O resto do projeto continua no ar.`}
           confirmLabel="Remover"
           danger
           loading={busy}
@@ -348,7 +415,7 @@ export default function ServicePage() {
           serverId={project.server.id}
           op="service-move"
           params={{ deploymentId: service.deploymentId, targetApplicationId: moveTargetAppId }}
-          title={`Movendo ${service.name}`}
+          title={`Movendo ${displayLabel}`}
           onClose={() => setMoving(false)}
           onDone={() => router.push(`/projects/${moveTargetAppId}/services/${encodeURIComponent(service.name)}`)}
         />

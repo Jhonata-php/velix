@@ -558,8 +558,14 @@ model ProjectService {
   deploymentId    String
   deployment      ProjectDeployment     @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
   // Nome do serviço dentro do compose (ex.: "app", "db", "onlyoffice") — igual
-  // ao `name` declarado no VelixManifestService de origem.
+  // ao `name` declarado no VelixManifestService de origem. Chave funcional
+  // (compose/container/rota) — nunca editável pelo usuário.
   name            String
+  // Apelido editável só de exibição (ex.: "n8n" em vez de "app") — não afeta
+  // compose/container/rota, que continuam usando `name`. Preenchido com o
+  // nome do catálogo (`manifest.name`) no deploy do serviço principal; null
+  // volta a mostrar `name` cru.
+  displayName     String?
   image           String
   containerName   String
   required        Boolean               @default(true)

@@ -255,6 +255,9 @@ export class ApplicationsService {
           create: includedServices.map((s) => ({
             applicationId,
             name: s.name,
+            // Só o serviço principal ganha o nome do catálogo por padrão — os
+            // secundários (db, cache...) já têm nome próprio significativo.
+            displayName: s.name === manifest.primaryService ? manifest.name : null,
             image: s.image,
             containerName: `${slug}_${s.name}`,
             required: !s.optional,
@@ -694,6 +697,22 @@ export class ApplicationsService {
     const status = !result.ok ? 'ERROR' : action === 'stop' ? 'STOPPED' : 'RUNNING';
     await this.prisma.projectService.update({ where: { id: service.id }, data: { status } });
     return { ok: result.ok };
+  }
+
+  /** Apelido de exibição — só o rótulo mostrado no painel. Não mexe em
+   * `name` (chave do compose/container/rota), então não recria container
+   * nenhum. Mandar vazio remove o apelido e volta a mostrar o nome do
+   * catálogo (ou o nome interno, se este serviço não tiver um). */
+  async renameService(applicationId: string, serviceName: string, displayName: string | null | undefined) {
+    const service = await this.prisma.projectService.findUnique({
+      where: { applicationId_name: { applicationId, name: serviceName } },
+    });
+    if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
+    const trimmed = displayName?.trim();
+    return this.prisma.projectService.update({
+      where: { id: service.id },
+      data: { displayName: trimmed ? trimmed : null },
+    });
   }
 
   /**

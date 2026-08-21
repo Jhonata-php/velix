@@ -117,6 +117,14 @@ export class ApplicationsController {
     return this.applications.serviceAction(appId, name, 'restart');
   }
 
+  /** Renomeia só o rótulo de exibição do serviço — `name` (compose/container/
+   * rota) não muda. `displayName` vazio remove o apelido. */
+  @Patch('applications/:appId/services/:name')
+  @MinRole('operator')
+  renameService(@Param('appId') appId: string, @Param('name') name: string, @Body('displayName') displayName: string) {
+    return this.applications.renameService(appId, name, displayName);
+  }
+
   /** `port: null` remove a publicação — ver comentário do método no service. */
   @Post('applications/:appId/services/:name/publish-port')
   @MinRole('operator')
