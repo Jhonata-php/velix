@@ -42,4 +42,17 @@ export class DeployServiceDto {
   @IsArray()
   @IsString({ each: true })
   selectedServices?: string[];
+
+  /** Tag Docker diferente da fixada no manifesto (ex.: "latest" em vez da
+   * versão pinada) — vazio ou ausente mantém a tag do manifesto. */
+  @IsOptional()
+  @IsString()
+  imageTag?: string;
+
+  /** Variáveis de ambiente extras, fora das que o manifesto já declara —
+   * chave repetida sobrescreve o valor fixo do manifesto pro serviço
+   * principal. Nenhuma validação de chave aqui: é responsabilidade de quem
+   * digita, igual a qualquer variável de ambiente de container. */
+  @IsOptional()
+  extraEnv?: Record<string, string>;
 }

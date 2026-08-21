@@ -254,6 +254,44 @@ export function resolveVariables(manifest: VelixManifest, userValues: Record<str
   return map;
 }
 
+/** Troca só a tag de uma referência de imagem Docker, sem confundir com a
+ * porta de um registry privado (`host:5000/repo`, onde o `:` antes da `/`
+ * não é tag nenhuma). Sem tag nenhuma hoje, só adiciona. */
+export function withImageTag(image: string, tag: string): string {
+  const lastColon = image.lastIndexOf(':');
+  if (lastColon === -1) return `${image}:${tag}`;
+  const afterColon = image.slice(lastColon + 1);
+  if (afterColon.includes('/')) return `${image}:${tag}`;
+  return `${image.slice(0, lastColon)}:${tag}`;
+}
+
+/** Aplica as duas customizações que o assistente de implantação permite por
+ * cima do manifesto do catálogo — versão de imagem diferente da fixada no
+ * manifesto, e variáveis de ambiente extras não declaradas por ele — sempre
+ * só no serviço principal (`primaryService`), que é quem a tela de
+ * "Variáveis" trata como o alvo dessas duas opções. Sem override nenhum,
+ * devolve o manifesto original sem clonar nada. */
+export function applyDeployCustomizations(
+  manifest: VelixManifest,
+  overrides: { imageTag?: string; extraEnv?: Record<string, string> },
+): VelixManifest {
+  const hasImageTag = !!overrides.imageTag?.trim();
+  const hasExtraEnv = !!overrides.extraEnv && Object.keys(overrides.extraEnv).length > 0;
+  if (!hasImageTag && !hasExtraEnv) return manifest;
+
+  return {
+    ...manifest,
+    services: manifest.services.map((s) => {
+      if (s.name !== manifest.primaryService) return s;
+      return {
+        ...s,
+        image: hasImageTag ? withImageTag(s.image, overrides.imageTag!.trim()) : s.image,
+        environment: hasExtraEnv ? { ...s.environment, ...overrides.extraEnv } : s.environment,
+      };
+    }),
+  };
+}
+
 /** Todas as variáveis configuráveis do manifesto (todos os serviços), pra montar o formulário do assistente. */
 export function allVariables(manifest: VelixManifest): VelixManifestVariable[] {
   return manifest.services.flatMap((s) => s.variables ?? []);

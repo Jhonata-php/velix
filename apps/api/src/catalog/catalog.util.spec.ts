@@ -11,6 +11,8 @@ import {
   resolveSecrets,
   resolveVariables,
   allVariables,
+  withImageTag,
+  applyDeployCustomizations,
   servicePorts,
   validateManifest,
   scanSecurityRisks,
@@ -105,6 +107,29 @@ assert.deepEqual(
   allVariables(withVariables).map((v) => v.key),
   ['ADMIN_USER'],
 );
+
+// withImageTag: troca só a tag, sem confundir com porta de registry privado
+assert.equal(withImageTag('n8nio/n8n:1.71.3', 'latest'), 'n8nio/n8n:latest');
+assert.equal(withImageTag('n8nio/n8n', 'latest'), 'n8nio/n8n:latest');
+assert.equal(withImageTag('myregistry.io:5000/n8n', 'latest'), 'myregistry.io:5000/n8n:latest');
+assert.equal(withImageTag('myregistry.io:5000/n8n:1.0', 'latest'), 'myregistry.io:5000/n8n:latest');
+
+// applyDeployCustomizations: sem overrides, devolve o mesmo objeto (sem clonar à toa)
+assert.equal(applyDeployCustomizations(withVariables, {}), withVariables);
+
+// applyDeployCustomizations: tag e env extra só no serviço principal ("app")
+const customized = applyDeployCustomizations(withVariables, { imageTag: '2.0', extraEnv: { API_KEY: 'abc123' } });
+assert.equal(customized.services[0].image, 'x:2.0');
+assert.deepEqual(customized.services[0].environment, { API_KEY: 'abc123' });
+// env extra não apaga variável do manifesto original quando ele já declarava `environment`
+const withEnv: VelixManifest = {
+  ...withVariables,
+  services: [{ ...withVariables.services[0], environment: { FIXO: '1' } }],
+};
+assert.deepEqual(applyDeployCustomizations(withEnv, { extraEnv: { EXTRA: '2' } }).services[0].environment, {
+  FIXO: '1',
+  EXTRA: '2',
+});
 
 // geração de segredo: tamanho correto, dois valores gerados nunca são iguais
 const secretA = generateSecretValue();

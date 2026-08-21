@@ -22,6 +22,7 @@ import {
   scanSecurityRisks,
   highestRiskLevel,
   validateManifest,
+  applyDeployCustomizations,
 } from '../catalog/catalog.util';
 import { PROXY_NETWORK } from '../traefik/traefik.util';
 import {
@@ -220,7 +221,10 @@ export class ApplicationsService {
       }
     }
 
-    const manifest = this.catalog.getManifest(dto.manifestSlug);
+    const manifest = applyDeployCustomizations(this.catalog.getManifest(dto.manifestSlug), {
+      imageTag: dto.imageTag,
+      extraEnv: dto.extraEnv,
+    });
     const validation = validateManifest(manifest);
     if (!validation.ok) {
       throw new BadRequestException(`Manifesto inválido: ${validation.errors.join('; ')}`);

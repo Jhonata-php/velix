@@ -10,11 +10,18 @@ import { Alert } from './Alert';
 import { StatusBadge } from './StatusBadge';
 import { OpsLogPanel, type OpsLogStatus } from './InstallLogModal';
 import { TerminalWindow } from './TerminalChrome';
-import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff, IconRefresh } from './icons';
+import { IconCheck, IconX, IconServer, IconGlobe, IconTerminal, IconKey, IconCopy, IconEye, IconEyeOff, IconRefresh, IconPlus, IconTrash } from './icons';
 import { NetworkPulse } from './NetworkPulse';
 import { DeployProgress, type ProgressStage } from './DeployProgress';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+/** Só o que o seletor de "projeto existente" precisa de `GET /applications`. */
+interface ExistingProject {
+  id: string;
+  name: string;
+  server: { id: string; name: string; isLocal: boolean };
+}
 
 /** Rótulo curto e legível pra sugestão de domínio aleatório — não precisa ser
  * criptograficamente forte, só improvável de colidir com outro subdomínio já
@@ -84,12 +91,7 @@ interface Props {
 
 export function DeployWizard({ manifest, preselectedServerId, applicationId, projectServerId, onClose }: Props) {
   const router = useRouter();
-  const visibleSteps = useMemo(
-    () => (applicationId ? ALL_STEPS.filter((s) => s.key !== 'info' && s.key !== 'server') : ALL_STEPS),
-    [applicationId],
-  );
   const [step, setStep] = useState(0);
-  const currentKey = visibleSteps[step]?.key;
 
   // Trilha de etapas: barra de rolagem escondida, arraste horizontal no lugar.
   const stepsRef = useRef<HTMLDivElement>(null);
@@ -101,9 +103,37 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
   const [environment, setEnvironment] = useState<(typeof ENVIRONMENTS)[number]['value']>('PRODUCTION');
   const [tagsInput, setTagsInput] = useState('');
 
-  // 2. Servidor — fixo (o do projeto) quando `applicationId` é passado.
+  // Novo projeto (padrão) x projeto existente — só quando `applicationId` não
+  // veio de fora (ex.: "Adicionar serviço" dentro de um projeto já fixa isso).
+  // Escolhendo um projeto existente, ele vira o alvo do deploy exatamente como
+  // se `applicationId` tivesse sido passado por fora — sem esse projeto vira
+  // "Servidor" (implícito no projeto escolhido).
+  const [targetMode, setTargetMode] = useState<'new' | 'existing'>('new');
+  const [existingProjects, setExistingProjects] = useState<ExistingProject[] | null>(null);
+  const [existingProjectId, setExistingProjectId] = useState('');
+  useEffect(() => {
+    if (applicationId || targetMode !== 'existing' || existingProjects) return;
+    apiFetch<ExistingProject[]>('/applications').then(setExistingProjects);
+  }, [applicationId, targetMode, existingProjects]);
+  const existingProject = existingProjects?.find((p) => p.id === existingProjectId) ?? null;
+  const effectiveApplicationId = applicationId ?? (targetMode === 'existing' ? existingProjectId || undefined : undefined);
+
+  // "Servidor" só faz sentido escolhendo um projeto novo — um projeto
+  // existente já tem servidor fixo, igual a quando `applicationId` vem de fora.
+  const visibleSteps = useMemo(() => {
+    if (applicationId) return ALL_STEPS.filter((s) => s.key !== 'info' && s.key !== 'server');
+    if (targetMode === 'existing') return ALL_STEPS.filter((s) => s.key !== 'server');
+    return ALL_STEPS;
+  }, [applicationId, targetMode]);
+  const currentKey = visibleSteps[step]?.key;
+
+  // 2. Servidor — fixo (o do projeto) quando `applicationId` é passado, ou
+  // quando um projeto existente é escolhido na etapa "Informações".
   const [servers, setServers] = useState<ServerSummary[] | null>(null);
   const [serverId, setServerId] = useState(projectServerId ?? preselectedServerId ?? '');
+  useEffect(() => {
+    if (existingProject) setServerId(existingProject.server.id);
+  }, [existingProject]);
 
   function reloadServers() {
     apiFetch<ServerSummary[]>('/servers').then(setServers);
@@ -140,6 +170,16 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
     setVariables((prev) => ({ ...Object.fromEntries(allVariables.map((v) => [v.key, v.default ?? ''])), ...prev }));
   }, [allVariables]);
 
+  // Tag da imagem do serviço principal (vazio = mantém a do manifesto) e
+  // variáveis de ambiente extras, fora do que o manifesto já declara — as
+  // duas customizações que `applyDeployCustomizations` aplica no backend.
+  const [imageTag, setImageTag] = useState('');
+  const [extraEnvRows, setExtraEnvRows] = useState<{ key: string; value: string }[]>([]);
+  const extraEnv = useMemo(
+    () => Object.fromEntries(extraEnvRows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value])),
+    [extraEnvRows],
+  );
+
   // 6. Domínio
   const [wantsDomain, setWantsDomain] = useState(false);
   const [hostname, setHostname] = useState('');
@@ -161,7 +201,7 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
     .filter(Boolean);
 
   const validByKey: Record<StepKey, boolean> = {
-    info: name.trim().length >= 2,
+    info: targetMode === 'existing' ? !!existingProjectId : name.trim().length >= 2,
     server: !!selectedServer && selectedServer.dockerInstalled,
     components: true,
     variables: allVariables.every((v) => !v.required || (variables[v.key] ?? '').trim().length > 0),
@@ -191,6 +231,8 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
     variables,
     selectedServices,
     ...(wantsDomain ? { domain: { hostname: hostname.trim(), createDnsRecord } } : {}),
+    ...(imageTag.trim() ? { imageTag: imageTag.trim() } : {}),
+    ...(Object.keys(extraEnv).length > 0 ? { extraEnv } : {}),
   };
   const projectInfo = {
     serverId,
@@ -264,6 +306,11 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
               setEnvironment={setEnvironment}
               tagsInput={tagsInput}
               setTagsInput={setTagsInput}
+              targetMode={targetMode}
+              setTargetMode={setTargetMode}
+              existingProjects={existingProjects}
+              existingProjectId={existingProjectId}
+              setExistingProjectId={setExistingProjectId}
             />
           )}
           {currentKey === 'server' && <ServerStep servers={servers} serverId={serverId} setServerId={setServerId} />}
@@ -276,7 +323,17 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
             />
           )}
           {currentKey === 'variables' && (
-            <VariablesStep allVariables={allVariables} variables={variables} setVariables={setVariables} secretKeys={manifest.secretKeys} />
+            <VariablesStep
+              allVariables={allVariables}
+              variables={variables}
+              setVariables={setVariables}
+              secretKeys={manifest.secretKeys}
+              defaultImageVersion={manifest.version}
+              imageTag={imageTag}
+              setImageTag={setImageTag}
+              extraEnvRows={extraEnvRows}
+              setExtraEnvRows={setExtraEnvRows}
+            />
           )}
           {currentKey === 'storage' && <StorageStep volumes={allVolumes} />}
           {currentKey === 'domain' && (
@@ -297,7 +354,8 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
           {currentKey === 'review' && (
             <ReviewStep
               manifest={manifest}
-              applicationId={applicationId}
+              applicationId={effectiveApplicationId}
+              existingProjectName={existingProject?.name}
               name={name}
               description={description}
               environment={environment}
@@ -313,7 +371,7 @@ export function DeployWizard({ manifest, preselectedServerId, applicationId, pro
           )}
           {currentKey === 'deploy' && serverId && (
             <DeployStep
-              applicationId={applicationId}
+              applicationId={effectiveApplicationId}
               serverId={serverId}
               serviceParams={serviceParams}
               projectInfo={projectInfo}
@@ -365,6 +423,11 @@ function InformationsStep({
   setEnvironment,
   tagsInput,
   setTagsInput,
+  targetMode,
+  setTargetMode,
+  existingProjects,
+  existingProjectId,
+  setExistingProjectId,
 }: {
   manifest: CatalogApplicationDetail;
   name: string;
@@ -375,6 +438,11 @@ function InformationsStep({
   setEnvironment: (v: (typeof ENVIRONMENTS)[number]['value']) => void;
   tagsInput: string;
   setTagsInput: (v: string) => void;
+  targetMode: 'new' | 'existing';
+  setTargetMode: (v: 'new' | 'existing') => void;
+  existingProjects: ExistingProject[] | null;
+  existingProjectId: string;
+  setExistingProjectId: (v: string) => void;
 }) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -389,32 +457,71 @@ function InformationsStep({
           <span className="text-[11px] text-slate-400">v{manifest.version}</span>
         </div>
       </div>
-      <div className="card space-y-5 p-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+      <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+        <button
+          onClick={() => setTargetMode('new')}
+          className={`tab-pill flex-1 ${targetMode === 'new' ? 'tab-pill-active' : ''}`}
+        >
+          Novo projeto
+        </button>
+        <button
+          onClick={() => setTargetMode('existing')}
+          className={`tab-pill flex-1 ${targetMode === 'existing' ? 'tab-pill-active' : ''}`}
+        >
+          Projeto existente
+        </button>
+      </div>
+
+      {targetMode === 'existing' ? (
+        <div className="card space-y-2 p-5">
           <label className="block text-sm">
-            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Nome do projeto</span>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="input" />
+            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Projeto</span>
+            {existingProjects === null ? (
+              <p className="text-xs text-slate-400">Carregando projetos...</p>
+            ) : existingProjects.length === 0 ? (
+              <p className="text-xs text-slate-400">Nenhum projeto ainda — crie um novo pra continuar.</p>
+            ) : (
+              <select value={existingProjectId} onChange={(e) => setExistingProjectId(e.target.value)} className="input">
+                <option value="">Selecione...</option>
+                {existingProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.server.isLocal ? 'este servidor' : p.server.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+          <p className="text-xs text-slate-400">O serviço entra como mais um componente dentro desse projeto.</p>
+        </div>
+      ) : (
+        <div className="card space-y-5 p-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Nome do projeto</span>
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="input" />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Ambiente</span>
+              <select value={environment} onChange={(e) => setEnvironment(e.target.value as (typeof ENVIRONMENTS)[number]['value'])} className="input">
+                {ENVIRONMENTS.map((e) => (
+                  <option key={e.value} value={e.value}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Descrição (opcional)</span>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="input resize-none" />
           </label>
           <label className="block text-sm">
-            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Ambiente</span>
-            <select value={environment} onChange={(e) => setEnvironment(e.target.value as (typeof ENVIRONMENTS)[number]['value'])} className="input">
-              {ENVIRONMENTS.map((e) => (
-                <option key={e.value} value={e.value}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
+            <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Tags (separadas por vírgula, opcional)</span>
+            <input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="ex.: monitoramento, interno" className="input" />
           </label>
         </div>
-        <label className="block text-sm">
-          <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Descrição (opcional)</span>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="input resize-none" />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Tags (separadas por vírgula, opcional)</span>
-          <input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="ex.: monitoramento, interno" className="input" />
-        </label>
-      </div>
+      )}
     </div>
   );
 }
@@ -551,14 +658,86 @@ function VariablesStep({
   variables,
   setVariables,
   secretKeys,
+  defaultImageVersion,
+  imageTag,
+  setImageTag,
+  extraEnvRows,
+  setExtraEnvRows,
 }: {
   allVariables: CatalogApplicationDetail['services'][number]['variables'];
   variables: Record<string, string>;
   setVariables: (fn: (v: Record<string, string>) => Record<string, string>) => void;
   secretKeys: string[];
+  defaultImageVersion: string;
+  imageTag: string;
+  setImageTag: (v: string) => void;
+  extraEnvRows: { key: string; value: string }[];
+  setExtraEnvRows: (fn: (rows: { key: string; value: string }[]) => { key: string; value: string }[]) => void;
 }) {
+  function updateRow(index: number, patch: Partial<{ key: string; value: string }>) {
+    setExtraEnvRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+  function removeRow(index: number) {
+    setExtraEnvRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <div className="card space-y-3 p-5">
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-medium text-slate-700 dark:text-slate-200">Versão da imagem</span>
+          <input
+            value={imageTag}
+            onChange={(e) => setImageTag(e.target.value)}
+            placeholder={defaultImageVersion}
+            className="input font-mono"
+          />
+          <span className="mt-1 block text-xs text-slate-400">
+            Em branco, usa a versão testada do catálogo (v{defaultImageVersion}). Digite &quot;latest&quot; ou outra tag pra trocar —
+            sem garantia de compatibilidade, só o catálogo é testado.
+          </span>
+        </label>
+      </div>
+
+      <div className="card space-y-3 p-5">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Variáveis de ambiente extras</span>
+          <button
+            type="button"
+            onClick={() => setExtraEnvRows((rows) => [...rows, { key: '', value: '' }])}
+            className="btn-secondary flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            <IconPlus className="h-3.5 w-3.5" aria-hidden />
+            Adicionar
+          </button>
+        </div>
+        {extraEnvRows.length === 0 ? (
+          <p className="text-xs text-slate-400">Nenhuma variável extra — use se o app precisar de algo que o catálogo não pergunta.</p>
+        ) : (
+          <div className="space-y-2">
+            {extraEnvRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={row.key}
+                  onChange={(e) => updateRow(i, { key: e.target.value.toUpperCase() })}
+                  placeholder="NOME_DA_VARIAVEL"
+                  className="input flex-1 font-mono text-xs"
+                />
+                <input
+                  value={row.value}
+                  onChange={(e) => updateRow(i, { value: e.target.value })}
+                  placeholder="valor"
+                  className="input flex-1 font-mono text-xs"
+                />
+                <button type="button" onClick={() => removeRow(i)} aria-label="Remover" className="btn-ghost shrink-0 p-2">
+                  <IconTrash className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {allVariables.length === 0 ? (
         <p className="text-sm text-slate-400">Esta aplicação não possui variáveis configuráveis.</p>
       ) : (
@@ -827,6 +1006,7 @@ function DomainStep({
 function ReviewStep({
   manifest,
   applicationId,
+  existingProjectName,
   name,
   description,
   environment,
@@ -841,6 +1021,7 @@ function ReviewStep({
 }: {
   manifest: CatalogApplicationDetail;
   applicationId?: string;
+  existingProjectName?: string;
   name: string;
   description: string;
   environment: string;
@@ -858,6 +1039,7 @@ function ReviewStep({
     <div className="mx-auto max-w-2xl space-y-4 text-sm">
       <Section title="Serviço">
         <Row label="Template" value={`${manifest.name} v${manifest.version}`} />
+        {existingProjectName && <Row label="Projeto" value={existingProjectName} />}
         {!applicationId && (
           <>
             <Row label="Nome do projeto" value={name} />
