@@ -684,8 +684,6 @@ export class ApplicationsService {
     }
 
     for (const app of apps) {
-      if (app.services.length === 0) continue;
-
       // Um container só: `aggregateContainerStatus` nunca devolve 'ERROR'
       // pra uma lista de 1 (só existe "misto" com 2+), então o real de cada
       // serviço é sempre RUNNING ou STOPPED.
@@ -696,7 +694,13 @@ export class ApplicationsService {
         }
       }
 
-      const containerNames = app.services.map((s) => s.containerName);
+      // `containerNames` (mantido à parte, ver deployManifestIntoProject/
+      // GitDeployService.deployRepo) é a fonte pro status do projeto, não
+      // `services` — projeto implantado antes da tabela `ProjectService`
+      // existir pode não ter linha nenhuma lá, e sem isso ficaria pulado
+      // pra sempre aqui, preso no status antigo.
+      const containerNames = app.containerNames.length > 0 ? app.containerNames : app.services.map((s) => s.containerName);
+      if (containerNames.length === 0) continue;
       const realAppStatus = aggregateContainerStatus(containerNames, ps.stdout);
       if (realAppStatus !== app.status) {
         await this.prisma.application.update({ where: { id: app.id }, data: { status: realAppStatus } });
