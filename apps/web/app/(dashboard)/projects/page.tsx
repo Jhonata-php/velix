@@ -9,7 +9,7 @@ import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
-import { RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
+import { rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Toolbar } from '@/components/Toolbar';
 import { CreateProjectModal } from '@/components/CreateProjectModal';
 import { IconLayoutGrid, IconServer, IconExternalLink, IconPlus } from '@/components/icons';
@@ -45,15 +45,6 @@ const STATUS_TONE: Record<ProjectRow['status'], StatusTone> = {
   STOPPED: 'neutral',
   ERROR: 'danger',
   REMOVING: 'warning',
-};
-
-const STATUS_LABEL: Record<ProjectRow['status'], string> = {
-  EMPTY: 'vazio',
-  DEPLOYING: 'implantando',
-  RUNNING: 'rodando',
-  STOPPED: 'parada',
-  ERROR: 'com erro',
-  REMOVING: 'removendo',
 };
 
 type StatusFilter = 'all' | 'RUNNING' | 'STOPPED' | 'ERROR';
@@ -201,7 +192,6 @@ export default function ProjectsPage() {
                     <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
                       {p.name}
                     </p>
-                    <RowStatusLabel tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</RowStatusLabel>
                   </div>
                   <p className="truncate text-xs text-slate-400">
                     {p.deployments.length} serviço{p.deployments.length === 1 ? '' : 's'} · criado {relativeTime(p.deployedAt)}

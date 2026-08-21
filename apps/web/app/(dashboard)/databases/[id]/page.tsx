@@ -14,7 +14,7 @@ import type {
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { ConfirmModal, Modal } from '@/components/Modal';
 import { PublishPortControl } from '@/components/PublishPortControl';
@@ -764,7 +764,6 @@ function BackupSection({ databaseId, serverId }: { databaseId: string; serverId:
                       <IconDownload className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   )}
-                  <RowStatusLabel tone={RUN_TONE[r.status] ?? 'neutral'}>{r.status}</RowStatusLabel>
                 </div>
               </div>
             ))}

@@ -8,7 +8,7 @@ import { EmptyState, ErrorState } from './EmptyState';
 import { Modal, ConfirmModal } from './Modal';
 import { SqlImportButton } from './SqlImportButton';
 import { Skeleton } from './Skeleton';
-import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
+import { rowStatusBorderClass } from './StatusBadge';
 import { IconLayers, IconSearch, IconTerminal, IconClock, IconPlus, IconDatabase, IconChevronDown, IconTrash, IconKey } from './icons';
 
 type DbEngine = 'postgresql' | 'mysql' | 'mariadb';
@@ -323,7 +323,6 @@ function SqlEditorModal({
                 <div key={q.id} className={`border-l-[3px] ${rowStatusBorderClass(q.ok ? 'success' : 'danger')} px-2.5 py-2 text-xs`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-mono text-slate-700 dark:text-slate-200">{q.query}</span>
-                    <RowStatusLabel tone={q.ok ? 'success' : 'danger'}>{q.ok ? 'ok' : 'erro'}</RowStatusLabel>
                   </div>
                   <p className="mt-0.5 text-slate-400">
                     {q.userName} · {new Date(q.executedAt).toLocaleString('pt-BR')}

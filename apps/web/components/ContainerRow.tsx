@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { avatarColor } from '@/lib/containerGroups';
 import type { DockerContainer } from '@/lib/containerGroups';
-import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
+import { rowStatusBorderClass } from './StatusBadge';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
 import { IconFileText, IconChevronDown, IconRefresh, IconPower, IconCopy, IconTrash } from './icons';
 
@@ -68,8 +68,7 @@ export function ContainerRow({
         </div>
 
         <div className="hidden shrink-0 sm:block sm:w-40">
-          <RowStatusLabel tone={tone}>{running ? 'Ativo' : 'Parado'}</RowStatusLabel>
-          <p className="mt-1 truncate text-[11px] text-slate-400">{c.status}</p>
+          <p className="truncate text-[11px] text-slate-400">{c.status}</p>
         </div>
 
         <button
@@ -93,10 +92,6 @@ export function ContainerRow({
             <p className="truncate font-mono text-slate-600 dark:text-slate-300" title={c.image}>
               {c.image}
             </p>
-          </div>
-          <div className="sm:hidden">
-            <p className="text-slate-400">Status</p>
-            <RowStatusLabel tone={tone}>{running ? 'Ativo' : 'Parado'}</RowStatusLabel>
           </div>
           <div>
             <p className="text-slate-400">Status bruto (docker ps)</p>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Alert } from './Alert';
 import { ConfirmModal } from './Modal';
-import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
+import { rowStatusBorderClass } from './StatusBadge';
 import { IconPlus, IconTrash, IconBell, IconCheck } from './icons';
 
 type ChannelType = 'discord' | 'telegram' | 'webhook';
@@ -233,7 +233,6 @@ export function AlertsCard() {
                 <span className="truncate text-slate-400">
                   {new Date(d.sentAt).toLocaleString('pt-BR')} · {d.title}
                 </span>
-                <RowStatusLabel tone={d.ok ? 'success' : 'danger'}>{d.ok ? 'enviado' : 'falhou'}</RowStatusLabel>
               </div>
             ))}
           </div>

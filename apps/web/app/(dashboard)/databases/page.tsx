@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import type { DatabaseListItem } from '@/lib/types';
 import { Skeleton } from '@/components/Skeleton';
 import { Alert } from '@/components/Alert';
-import { RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
+import { rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { DatabaseCreateWizard } from '@/components/DatabaseCreateWizard';
 import { IconDatabase, IconPlus, IconClock } from '@/components/icons';
 
@@ -86,7 +86,6 @@ export default function DatabasesPage() {
                     <IconClock className="h-3.5 w-3.5 text-slate-400" aria-hidden />
                   </span>
                 )}
-                <RowStatusLabel tone={STATUS_TONE[db.status] ?? 'neutral'}>{db.status}</RowStatusLabel>
               </div>
             </Link>
           ))}

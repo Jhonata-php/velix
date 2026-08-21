@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from './Alert';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
+import { StatusBadge, rowStatusBorderClass } from './StatusBadge';
 import { IconHardDrive, IconRefresh } from './icons';
 
 interface BackupRun {
@@ -195,7 +195,6 @@ export function BackupCard() {
                       <span className="truncate text-slate-400">
                         {new Date(r.startedAt).toLocaleString('pt-BR')} · {formatSize(r.sizeBytes)}
                       </span>
-                      <RowStatusLabel tone={tone}>{r.status === 'SUCCESS' ? 'ok' : r.status === 'ERROR' ? 'falhou' : 'rodando'}</RowStatusLabel>
                     </div>
                   );
                 })}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { ServerSummary } from '@/lib/types';
 import { Bar } from './Bar';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass, SERVER_STATUS_TONE } from './StatusBadge';
+import { StatusBadge, rowStatusBorderClass, SERVER_STATUS_TONE } from './StatusBadge';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
 import { IconServer } from './icons';
 
@@ -62,8 +62,6 @@ export function ServerRow({ server, actions }: { server: ServerSummary; actions?
         </div>
         {server.metrics?.uptimeText && <span className="hidden w-24 shrink-0 truncate lg:inline">{server.metrics.uptimeText}</span>}
       </div>
-
-      <RowStatusLabel tone={SERVER_STATUS_TONE[server.status]}>{server.status}</RowStatusLabel>
 
       {actions && <ActionMenu items={actions} />}
     </div>

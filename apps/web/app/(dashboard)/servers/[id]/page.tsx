@@ -1000,12 +1000,6 @@ const DOMAIN_TONE: Record<DomainRow['status'], StatusTone> = {
   ERROR: 'danger',
 };
 
-const DOMAIN_LABEL: Record<DomainRow['status'], string> = {
-  PENDING: 'Aguardando SSL',
-  ACTIVE: 'Ativo',
-  ERROR: 'Erro',
-};
-
 function LibraryTab({ server }: { server: Server }) {
   const [apps, setApps] = useState<CatalogApplicationSummary[] | null>(null);
   const [search, setSearch] = useState('');
@@ -1091,15 +1085,6 @@ const APP_STATUS_TONE: Record<ProjectRow['status'], StatusTone> = {
   STOPPED: 'neutral',
   ERROR: 'danger',
   REMOVING: 'warning',
-};
-
-const APP_STATUS_LABEL: Record<ProjectRow['status'], string> = {
-  EMPTY: 'Vazio',
-  DEPLOYING: 'Implantando',
-  RUNNING: 'Ativo',
-  STOPPED: 'Parado',
-  ERROR: 'Erro',
-  REMOVING: 'Removendo',
 };
 
 function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibrary?: () => void }) {
@@ -1198,7 +1183,6 @@ function ApplicationsTab({ server, onGoToLibrary }: { server: Server; onGoToLibr
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</p>
-                      <RowStatusLabel tone={APP_STATUS_TONE[project.status]}>{APP_STATUS_LABEL[project.status]}</RowStatusLabel>
                     </div>
                     <p className="truncate text-xs text-slate-400">
                       {project.deployments.length} serviço{project.deployments.length === 1 ? '' : 's'}
@@ -1518,7 +1502,6 @@ function ProxyTab({ server, onChange }: { server: Server; onChange: () => void }
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">{d.hostname}</p>
-                    <RowStatusLabel tone={DOMAIN_TONE[d.status]}>{DOMAIN_LABEL[d.status]}</RowStatusLabel>
                   </div>
                   <p className="truncate font-mono text-xs text-slate-400">
                     → porta {d.targetPort}

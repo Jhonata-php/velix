@@ -7,7 +7,7 @@ import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { LiveLogsPanel } from '@/components/LiveLogsPanel';
 import { WebTerminal } from '@/components/WebTerminal';
@@ -1000,7 +1000,6 @@ function DomainsTab({
                     <p className="truncate text-xs text-slate-400">Aguardando DNS/certificado — verificado automaticamente a cada poucos minutos</p>
                   )}
                 </div>
-                <RowStatusLabel tone={DOMAIN_TONE[d.status] ?? 'neutral'}>{d.status}</RowStatusLabel>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <a
@@ -1138,7 +1137,6 @@ function SecurityTab({ applicationId, deploymentId }: { applicationId: string; d
     <div className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-700">
       {data.risks.map((risk, i) => (
         <div key={i} className={`flex items-start gap-3 border-l-[3px] ${rowStatusBorderClass(RISK_TONE[risk.level])} py-2.5 pl-3.5 pr-4`}>
-          <RowStatusLabel tone={RISK_TONE[risk.level]}>{risk.level}</RowStatusLabel>
           <p className="text-sm text-slate-700 dark:text-slate-200">{risk.message}</p>
         </div>
       ))}

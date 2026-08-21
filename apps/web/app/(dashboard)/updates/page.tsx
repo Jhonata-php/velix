@@ -6,7 +6,7 @@ import { useSelfUpdate } from '@/lib/useSelfUpdate';
 import { relativeTime } from '@/lib/relativeTime';
 import { Alert } from '@/components/Alert';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass } from '@/components/StatusBadge';
+import { StatusBadge, rowStatusBorderClass } from '@/components/StatusBadge';
 import { UpdateModal } from '@/components/UpdateModal';
 import { ReleaseList, type ReleaseEntry } from '@/components/ReleaseList';
 import { IconRefresh, IconDownload, IconCheck, IconAlertTriangle } from '@/components/icons';
@@ -253,7 +253,6 @@ export default function UpdatesPage() {
                       {new Date(h.at).toLocaleString('pt-BR')} · por {h.appliedBy}
                     </p>
                   </div>
-                  <RowStatusLabel tone="success">atualizado</RowStatusLabel>
                 </div>
               ) : (
                 <div
@@ -263,15 +262,9 @@ export default function UpdatesPage() {
                   <span className="truncate text-slate-500 dark:text-slate-400">
                     {new Date(h.at).toLocaleString('pt-BR')} · v{h.installedVersion} · {CHANNEL_LABEL[h.channel] ?? h.channel}
                   </span>
-                  <span className="shrink-0">
-                    {h.error ? (
-                      <RowStatusLabel tone="warning">falhou</RowStatusLabel>
-                    ) : h.updateAvailable ? (
-                      <RowStatusLabel tone="info">v{h.latestVersion}</RowStatusLabel>
-                    ) : (
-                      <RowStatusLabel tone="neutral">sem novidades</RowStatusLabel>
-                    )}
-                  </span>
+                  {h.updateAvailable && !h.error && (
+                    <span className="shrink-0 font-mono text-slate-400">v{h.latestVersion}</span>
+                  )}
                 </div>
               ),
             )

@@ -8,7 +8,7 @@ import { CATEGORY_LABEL } from '@/lib/catalogCategories';
 import { AppIcon } from '@/components/AppIcon';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass } from '@/components/StatusBadge';
+import { StatusBadge, rowStatusBorderClass } from '@/components/StatusBadge';
 import { DeployWizard } from '@/components/DeployWizard';
 import { IconLayers, IconGlobe, IconHardDrive, IconShield, IconFileText } from '@/components/icons';
 
@@ -281,7 +281,6 @@ function SecurityTab({ app }: { app: CatalogApplicationDetail }) {
       {app.securityFindings.map((f, i) => (
         <div key={i} className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass(RISK_TONE[f.level])} py-3 pl-3 pr-3.5`}>
           <p className="text-sm text-slate-700 dark:text-slate-200">{f.message}</p>
-          <RowStatusLabel tone={RISK_TONE[f.level]}>{f.level}</RowStatusLabel>
         </div>
       ))}
     </div>

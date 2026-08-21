@@ -6,7 +6,7 @@ import { relativeTime } from '@/lib/relativeTime';
 import type { DatabaseBackupRoutine, DatabaseListItem, BackupDestinationSummary } from '@/lib/types';
 import { Alert } from './Alert';
 import { Modal, ConfirmModal } from './Modal';
-import { RowStatusLabel, rowStatusBorderClass } from './StatusBadge';
+import { rowStatusBorderClass } from './StatusBadge';
 import { IconPlus, IconPencil, IconTrash, IconDatabase } from './icons';
 
 /**
@@ -86,11 +86,6 @@ export function BackupRoutinesCard() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {r.lastRun && (
-                  <RowStatusLabel tone={runTone}>
-                    {r.lastRun.status === 'SUCCESS' ? 'concluído' : r.lastRun.status === 'ERROR' ? 'falhou' : 'rodando'}
-                  </RowStatusLabel>
-                )}
                 <button onClick={() => setEditing(r)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="Editar rotina">
                   <IconPencil className="h-4 w-4" aria-hidden />
                 </button>

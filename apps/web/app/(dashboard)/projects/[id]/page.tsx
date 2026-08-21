@@ -10,7 +10,7 @@ import { Alert } from '@/components/Alert';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
-import { StatusBadge, RowStatusLabel, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
+import { StatusBadge, rowStatusBorderClass, type StatusTone } from '@/components/StatusBadge';
 import { Modal, ConfirmModal } from '@/components/Modal';
 import { GitDeployWizard } from '@/components/GitDeployWizard';
 import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu';
@@ -49,13 +49,6 @@ const SERVICE_STATUS_TONE: Record<ProjectService['status'], StatusTone> = {
   RUNNING: 'success',
   STOPPED: 'neutral',
   ERROR: 'danger',
-};
-
-const SERVICE_STATUS_LABEL: Record<ProjectService['status'], string> = {
-  DEPLOYING: 'implantando',
-  RUNNING: 'ativo',
-  STOPPED: 'parado',
-  ERROR: 'erro',
 };
 
 /**
@@ -195,7 +188,6 @@ export default function ProjectPage() {
                       <p className="truncate text-sm font-medium text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
                         {service.displayName ?? service.name}
                       </p>
-                      <RowStatusLabel tone={SERVICE_STATUS_TONE[service.status]}>{SERVICE_STATUS_LABEL[service.status]}</RowStatusLabel>
                     </div>
                     <p className="truncate font-mono text-xs text-slate-400">
                       {fromGit
