@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { VersionService } from '../version/version.service';
+import { PushService } from '../push/push.service';
 import { GitHubReleaseService, ReleaseInfo, UpdateChannel } from './github-release.service';
 import { compareSemver } from './semver.util';
 
@@ -48,6 +49,7 @@ export class UpdateService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly version: VersionService,
     private readonly github: GitHubReleaseService,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -114,6 +116,22 @@ export class UpdateService implements OnModuleInit {
 
     const release = result.release;
     const updateAvailable = !!release && compareSemver(release.version, installedVersion) > 0;
+
+    // Notifica só na TRANSIÇÃO pra uma versão nova — sem isso, cada rodada do
+    // cron de 10min (scheduledCheck) mandaria push de novo enquanto a
+    // atualização pendente não fosse aplicada.
+    if (updateAvailable && release) {
+      const previous = await this.prisma.updateCheck.findFirst({ orderBy: { checkedAt: 'desc' } });
+      if (previous?.latestVersion !== release.version) {
+        this.push
+          .sendToAll({
+            title: 'Nova atualização do Velix',
+            body: `A versão ${release.version} já está disponível.`,
+            data: { type: 'update', version: release.version },
+          })
+          .catch((err) => this.logger.warn(`Falha ao notificar nova versão: ${err instanceof Error ? err.message : err}`));
+      }
+    }
 
     await this.prisma.updateCheck.create({
       data: {

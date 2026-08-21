@@ -49,28 +49,40 @@ export class PushService {
   }
 
   async sendToUser(userId: string, message: PushMessage) {
-    const sender = this.getSender();
-    if (!sender) return;
-
     const devices = await this.prisma.deviceToken.findMany({ where: { userId } });
-    if (devices.length === 0) return;
+    await this.sendToTokens(devices.map((d) => d.fcmToken), message);
+  }
 
-    const tokens = devices.map((d) => d.fcmToken);
-    let result: admin.messaging.BatchResponse;
-    try {
-      result = await sender.sendEachForMulticast({
-        tokens,
-        notification: { title: message.title, body: message.body },
-        data: message.data,
-      });
-    } catch (err) {
-      this.logger.warn(`Falha ao enviar push pro usuário ${userId}: ${err instanceof Error ? err.message : err}`);
-      return;
-    }
+  /** Broadcast pra todo dispositivo registrado — usado por avisos que não são
+   * de um usuário específico (ex.: nova versão do Velix disponível). */
+  async sendToAll(message: PushMessage) {
+    const devices = await this.prisma.deviceToken.findMany({ select: { fcmToken: true } });
+    await this.sendToTokens(devices.map((d) => d.fcmToken), message);
+  }
 
-    const invalid = collectInvalidTokens(tokens, result.responses);
-    if (invalid.length > 0) {
-      await this.prisma.deviceToken.deleteMany({ where: { fcmToken: { in: invalid } } });
+  private async sendToTokens(tokens: string[], message: PushMessage) {
+    const sender = this.getSender();
+    if (!sender || tokens.length === 0) return;
+
+    // sendEachForMulticast aceita até 500 tokens por chamada.
+    for (let i = 0; i < tokens.length; i += 500) {
+      const batch = tokens.slice(i, i + 500);
+      let result: admin.messaging.BatchResponse;
+      try {
+        result = await sender.sendEachForMulticast({
+          tokens: batch,
+          notification: { title: message.title, body: message.body },
+          data: message.data,
+        });
+      } catch (err) {
+        this.logger.warn(`Falha ao enviar push: ${err instanceof Error ? err.message : err}`);
+        continue;
+      }
+
+      const invalid = collectInvalidTokens(batch, result.responses);
+      if (invalid.length > 0) {
+        await this.prisma.deviceToken.deleteMany({ where: { fcmToken: { in: invalid } } });
+      }
     }
   }
 }
