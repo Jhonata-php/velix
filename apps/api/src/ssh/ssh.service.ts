@@ -281,54 +281,13 @@ export class SshService {
   }
 
   /**
-   * Abre um shell interativo (PTY) e mantém a conexão viva — usado pelo
-   * terminal web. Quem chama é responsável por fechar `conn` quando acabar.
-   */
-  openShell(options: SshConnectOptions, timeoutMs = 15_000): Promise<{ conn: Client; stream: ClientChannel }> {
-    return new Promise((resolve, reject) => {
-      const conn = new Client();
-      let settled = false;
-      conn
-        .on('ready', () => {
-          conn.shell({ term: 'xterm-256color' }, (err, stream) => {
-            if (err) {
-              settled = true;
-              conn.end();
-              reject(err);
-              return;
-            }
-            settled = true;
-            resolve({ conn, stream });
-          });
-        })
-        .on('error', (err) => {
-          if (!settled) reject(err);
-        })
-        .connect({
-          host: options.host,
-          port: options.port,
-          username: options.username,
-          password: options.password,
-          privateKey: options.privateKey,
-          readyTimeout: timeoutMs,
-          // Sem isso, uma sessão parada (ninguém digitando por um tempo) fica
-          // sujeita ao timeout de conexão ociosa de qualquer proxy no caminho
-          // (Traefik/Cloudflare) — a sessão cai sozinha no meio do uso, sem
-          // nenhum erro real do lado do SSH. Manda um keepalive a cada 15s
-          // pra manter o caminho "quente".
-          keepaliveInterval: 15_000,
-          keepaliveCountMax: 4,
-        });
-    });
-  }
-
-  /**
    * Roda UM comando com PTY interativo, sem abrir um shell de login primeiro
-   * — usado pro terminal escopado a um container (`docker exec ... sh`, ou o
-   * console de um banco): quando o comando termina (o usuário sai do shell
-   * do container), o canal inteiro fecha, em vez de cair de volta num shell
-   * do host por trás dele. `openShell` é um shell de login de verdade —
-   * reservado pro terminal SSH do próprio servidor, onde isso é intencional.
+   * — usado por todo terminal web (SSH do servidor, console de banco,
+   * terminal de container): um shell de login de verdade faz o sshd imprimir
+   * o banner de boas-vindas do host (MOTD, updates disponíveis etc.), e no
+   * caso do terminal de container ainda deixaria, ao sair do container, cair
+   * de volta num shell do host por trás dele. Passar o comando já pronto (que
+   * pode ser só `bash -l`) evita os dois problemas.
    */
   execPty(options: SshConnectOptions, command: string, timeoutMs = 15_000): Promise<{ conn: Client; stream: ClientChannel }> {
     return new Promise((resolve, reject) => {

@@ -84,8 +84,7 @@ export function attachTerminalServer(
   });
 }
 
-/** Liga o proxy bidirecional WS<->PTY num canal já aberto (shell de login ou
- * `docker exec` direto — ver `wirePty`/`wireExecPty`). */
+/** Liga o proxy bidirecional WS<->PTY num canal já aberto (ver `wireExecPty`). */
 function wireStream(ws: WebSocket, conn: Client, stream: ClientChannel) {
   // Sem isso, qualquer proxy no caminho entre o navegador e a API (Traefik,
   // Cloudflare) pode derrubar o WebSocket por "conexão ociosa" no meio de uma
@@ -123,21 +122,13 @@ function wireStream(ws: WebSocket, conn: Client, stream: ClientChannel) {
   });
 }
 
-/** Abre um shell de login real no host — reservado pro terminal SSH do
- * próprio servidor (`/terminal`), onde isso é intencional. */
-async function wirePty(ws: WebSocket, ssh: SshService, options: SshConnectOptions) {
-  const { conn, stream } = await ssh.openShell(options);
-  wireStream(ws, conn, stream);
-  return stream;
-}
-
-/** Roda `command` direto com PTY, sem abrir shell de login antes — usado pro
- * terminal escopado a um container (`/db-console`, `/service-terminal`):
- * quando o comando termina (o usuário sai do shell do container), o canal
- * inteiro fecha, sem sobrar um shell do host por trás pra "escapar" saindo
- * do container. Antes disso era um shell de login normal com o `docker exec`
- * só digitado nele — mostrava o banner de login do host e, saindo do
- * container, caía de volta num shell do host com o mesmo `sudo` do SSH. */
+/** Roda `command` direto com PTY, sem abrir shell de login antes — usado por
+ * todo terminal (`/terminal`, `/db-console`, `/service-terminal`): o sshd só
+ * imprime o banner de boas-vindas do host (MOTD, updates disponíveis etc.)
+ * quando abre um shell de login de verdade; passando um comando fixo (nem
+ * que seja só `bash -l`) esse banner nunca aparece. Pro terminal escopado a
+ * um container, tem o bônus de fechar o canal inteiro quando o usuário sai
+ * do shell do container, sem sobrar um shell do host por trás pra "escapar". */
 async function wireExecPty(ws: WebSocket, ssh: SshService, options: SshConnectOptions, command: string) {
   const { conn, stream } = await ssh.execPty(options, command);
   wireStream(ws, conn, stream);
@@ -174,7 +165,11 @@ async function handleConnection(
     return;
   }
 
-  await wirePty(ws, deps.ssh, options);
+  // `wireExecPty` em vez de `wirePty`: mesmo motivo do terminal de container
+  // (ver comentário acima) — como aqui o comando já é fixo (`bash -l`), o
+  // sshd não trata como shell de login e não imprime o banner de boas-vindas
+  // do Ubuntu (updates, MOTD, "System information"), só o prompt direto.
+  await wireExecPty(ws, deps.ssh, options, 'bash -l');
 }
 
 /**
