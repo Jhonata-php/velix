@@ -93,7 +93,7 @@ export default function SecurityPage() {
   const others = sessions?.filter((s) => !s.current) ?? [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-5">
       <div>
         <h1 className="page-title">Segurança</h1>
         <p className="text-xs text-slate-400">Senha, sessões ativas e atividade da conta</p>

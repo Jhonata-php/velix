@@ -69,7 +69,7 @@ function SettingsTabs() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <div className="mb-4">
         <h1 className="page-title">Configurações</h1>
         <p className="text-xs text-slate-400">Sistema e integrações</p>

@@ -18,6 +18,7 @@ import {
   IconChevronRight,
   IconDatabase,
   IconDevice,
+  IconShield,
 } from './icons';
 
 const GROUPS = [
@@ -208,6 +209,14 @@ export function Sidebar() {
                 <span className="block truncate text-sm font-medium">{user.name}</span>
                 <span className="block truncate text-xs text-slate-400">{roleLabel(user.role)}</span>
               </div>
+              <Link
+                href="/settings/security"
+                onClick={() => setMenuOpen(false)}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                <IconShield className="h-4 w-4" aria-hidden />
+                Segurança
+              </Link>
               <button
                 onClick={() => {
                   setMenuOpen(false);
