@@ -13,6 +13,8 @@ import {
   isValidContainerRef,
   mergeComposeFragments,
   uniqueServiceName,
+  parseMemUsage,
+  parseCpuPercent,
 } from './applications.util';
 import { renderCompose } from '../catalog/catalog.util';
 import { uptimeKumaManifest } from '../catalog/manifests/uptime-kuma';
@@ -110,3 +112,17 @@ assert.equal(uniqueServiceName('app', ['app']), 'app-2');
 assert.equal(uniqueServiceName('app', ['app', 'app-2']), 'app-3');
 
 console.log('uniqueServiceName self-check OK');
+
+// --- parseMemUsage / parseCpuPercent ----------------------------------------
+// Formato de `docker stats --format '{{.MemUsage}}|{{.CPUPerc}}'`.
+assert.deepEqual(parseMemUsage('165.1MiB / 11.65GiB'), { usedMb: 165.1, totalMb: 11.65 * 1024 });
+assert.deepEqual(parseMemUsage('500MiB / 1GiB'), { usedMb: 500, totalMb: 1024 });
+assert.deepEqual(parseMemUsage(null), { usedMb: null, totalMb: null });
+assert.deepEqual(parseMemUsage('lixo'), { usedMb: null, totalMb: null });
+
+assert.equal(parseCpuPercent('4.47%'), 4.47);
+assert.equal(parseCpuPercent('0.00%'), 0);
+assert.equal(parseCpuPercent(null), null);
+assert.equal(parseCpuPercent('lixo'), null);
+
+console.log('parseMemUsage/parseCpuPercent self-check OK');

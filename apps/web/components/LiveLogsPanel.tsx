@@ -121,7 +121,7 @@ export function LiveLogsPanel({ serverId, containerId }: { serverId: string; con
             const el = e.currentTarget;
             setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
           }}
-          className="h-80 overflow-y-auto rounded-lg bg-slate-950 p-3 font-mono text-[11.5px] leading-relaxed text-slate-300"
+          className="h-80 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-[11.5px] leading-relaxed text-slate-300"
         >
           {visible.length === 0 ? (
             <p className="text-slate-500">{search ? 'Nenhuma linha corresponde ao filtro.' : 'Aguardando saída do container...'}</p>

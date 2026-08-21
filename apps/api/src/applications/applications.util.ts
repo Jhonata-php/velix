@@ -83,6 +83,35 @@ export function aggregateContainerStatus(containerNames: string[], psOutput: str
   return 'ERROR';
 }
 
+const DOCKER_SIZE_UNIT_TO_MB: Record<string, number> = { b: 1 / 1024 / 1024, kib: 1 / 1024, mib: 1, gib: 1024, tib: 1024 * 1024 };
+
+/** "165.1MiB" → 165.1 (em MB). Unidade de `docker stats --format '{{.MemUsage}}'`. */
+function parseDockerSizeMb(text: string): number | null {
+  const m = text.trim().match(/^([\d.]+)\s*([a-zA-Z]+)$/);
+  if (!m) return null;
+  const mult = DOCKER_SIZE_UNIT_TO_MB[m[2].toLowerCase()];
+  if (mult === undefined) return null;
+  return Number(m[1]) * mult;
+}
+
+/** "165.1MiB / 11.65GiB" → memória usada/total em MB — formato de
+ * `docker stats --format '{{.MemUsage}}'`. */
+export function parseMemUsage(memUsage: string | null | undefined): { usedMb: number | null; totalMb: number | null } {
+  if (!memUsage) return { usedMb: null, totalMb: null };
+  const [usedRaw, totalRaw] = memUsage.split('/').map((s) => s.trim());
+  return {
+    usedMb: usedRaw ? parseDockerSizeMb(usedRaw) : null,
+    totalMb: totalRaw ? parseDockerSizeMb(totalRaw) : null,
+  };
+}
+
+/** "4.47%" → 4.47 — formato de `docker stats --format '{{.CPUPerc}}'`. */
+export function parseCpuPercent(cpuPerc: string | null | undefined): number | null {
+  if (!cpuPerc) return null;
+  const n = Number(cpuPerc.replace('%', '').trim());
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Parseia `docker inspect <container> --format '{{json .Config.ExposedPorts}}'`
  * (ex.: `{"3001/tcp":{}}`, ou `null` quando a imagem não declara nenhuma porta) —
  * fallback quando o manifesto não lista as portas do serviço. */

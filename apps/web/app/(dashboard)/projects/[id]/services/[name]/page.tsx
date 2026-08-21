@@ -14,6 +14,7 @@ import { WebTerminal } from '@/components/WebTerminal';
 import { AutoDeployModal } from '@/components/AutoDeployModal';
 import { InstallLogModal } from '@/components/InstallLogModal';
 import { MetricCard, MetricValue } from '@/components/MetricCard';
+import { Sparkline } from '@/components/Sparkline';
 import { SqlImportButton } from '@/components/SqlImportButton';
 import { PublishPortControl } from '@/components/PublishPortControl';
 import { DeploymentHistoryCard } from '@/components/DeploymentHistoryCard';
@@ -1144,30 +1145,61 @@ function SecurityTab({ applicationId, deploymentId }: { applicationId: string; d
   );
 }
 
-/** Mesmos dados de `ResourcesTab`, só que sempre visível abaixo da barra de
- * ações — em vez de escondido dentro da aba "Recursos" — pra dar a visão
- * rápida de CPU/Memória/Rede que o print de referência mostrava. */
-function ServiceStatsBar({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
-  const [stats, setStats] = useState<{ cpu: string | null; memory: string | null; network: string | null } | null>(null);
+interface ServiceStats {
+  cpu: string | null;
+  memory: string | null;
+  network: string | null;
+}
+
+/** Busca o ponto atual (CPU/memória/rede) e o histórico de 1h de CPU/memória
+ * pro sparkline — usado tanto na barra sempre visível quanto na aba
+ * "Recursos" (`ServiceStatsBar`/`ResourcesTab`), que mostram os mesmos dados
+ * em dois lugares diferentes da tela. */
+function useServiceStats(applicationId: string, serviceName: string) {
+  const [stats, setStats] = useState<ServiceStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cpuHistory, setCpuHistory] = useState<number[]>([]);
+  const [memHistory, setMemHistory] = useState<number[]>([]);
 
   function load() {
-    apiFetch<{ cpu: string | null; memory: string | null; network: string | null }>(
-      `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`,
-    )
+    apiFetch<ServiceStats>(`/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`)
       .then(setStats)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
+
+    apiFetch<{ cpuPercent: number | null; memUsedMb: number | null; memTotalMb: number | null }[]>(
+      `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats/history?hours=1`,
+    )
+      .then((samples) => {
+        setCpuHistory(samples.map((s) => s.cpuPercent).filter((v): v is number => v != null));
+        setMemHistory(samples.filter((s) => s.memTotalMb && s.memUsedMb != null).map((s) => (s.memUsedMb! / s.memTotalMb!) * 100));
+      })
       .catch(() => {});
   }
 
   useEffect(load, [applicationId, serviceName]);
   useAutoRefresh(load, 5_000);
 
+  return { stats, error, cpuHistory, memHistory };
+}
+
+function ServiceMetricCards({
+  stats,
+  cpuHistory,
+  memHistory,
+}: {
+  stats: ServiceStats | null;
+  cpuHistory: number[];
+  memHistory: number[];
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <MetricCard icon={<IconActivity className="h-3.5 w-3.5" />} label="CPU">
         <MetricValue>{stats?.cpu ?? '—'}</MetricValue>
+        <Sparkline data={cpuHistory} className="mt-1 h-8 w-full text-indigo-500 dark:text-indigo-400" />
       </MetricCard>
       <MetricCard icon={<IconDisk className="h-3.5 w-3.5" />} label="Memória">
         <MetricValue>{stats?.memory ?? '—'}</MetricValue>
+        <Sparkline data={memHistory} className="mt-1 h-8 w-full text-amber-500 dark:text-amber-400" />
       </MetricCard>
       <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
         <MetricValue>{stats?.network ?? '—'}</MetricValue>
@@ -1176,37 +1208,21 @@ function ServiceStatsBar({ applicationId, serviceName }: { applicationId: string
   );
 }
 
+/** Mesmos dados de `ResourcesTab`, só que sempre visível abaixo da barra de
+ * ações — em vez de escondido dentro da aba "Recursos" — pra dar a visão
+ * rápida de CPU/Memória/Rede que o print de referência mostrava. */
+function ServiceStatsBar({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
+  const { stats, cpuHistory, memHistory } = useServiceStats(applicationId, serviceName);
+  return <ServiceMetricCards stats={stats} cpuHistory={cpuHistory} memHistory={memHistory} />;
+}
+
 function ResourcesTab({ applicationId, serviceName }: { applicationId: string; serviceName: string }) {
-  const [stats, setStats] = useState<{ cpu: string | null; memory: string | null; network: string | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  function load() {
-    apiFetch<{ cpu: string | null; memory: string | null; network: string | null }>(
-      `/applications/${applicationId}/services/${encodeURIComponent(serviceName)}/stats`,
-    )
-      .then(setStats)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'));
-  }
-
-  useEffect(load, [applicationId, serviceName]);
-  useAutoRefresh(load, 5_000);
+  const { stats, error, cpuHistory, memHistory } = useServiceStats(applicationId, serviceName);
 
   if (error) return <Alert variant="error">{error}</Alert>;
   if (!stats) return <Skeleton className="h-24" />;
 
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <MetricCard icon={<IconActivity className="h-3.5 w-3.5" />} label="CPU">
-        <MetricValue>{stats.cpu ?? '—'}</MetricValue>
-      </MetricCard>
-      <MetricCard icon={<IconDisk className="h-3.5 w-3.5" />} label="Memória">
-        <MetricValue>{stats.memory ?? '—'}</MetricValue>
-      </MetricCard>
-      <MetricCard icon={<IconGlobe className="h-3.5 w-3.5" />} label="Rede (I/O)">
-        <MetricValue>{stats.network ?? '—'}</MetricValue>
-      </MetricCard>
-    </div>
-  );
+  return <ServiceMetricCards stats={stats} cpuHistory={cpuHistory} memHistory={memHistory} />;
 }
 
 function ShellTab({ applicationId, service }: { applicationId: string; service: ProjectService }) {
@@ -1232,7 +1248,17 @@ function ShellTab({ applicationId, service }: { applicationId: string; service: 
   }
 
   return (
-    <div className="card max-w-md space-y-4 p-4">
+    <div className="card max-w-md space-y-5 p-5">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+          <IconTerminal className="h-4.5 w-4.5" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Abrir terminal</p>
+          <p className="truncate text-xs text-slate-400">Acesso direto ao container de {service.name}</p>
+        </div>
+      </div>
+
       {showDbOption && (
         <div>
           <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">O que abrir</p>
@@ -1264,7 +1290,8 @@ function ShellTab({ applicationId, service }: { applicationId: string; service: 
         </div>
       )}
 
-      <button onClick={() => setSession({ mode, shell })} className="btn-primary w-full py-2 text-sm">
+      <button onClick={() => setSession({ mode, shell })} className="btn-primary flex w-full items-center justify-center gap-2 py-2 text-sm">
+        <IconTerminal className="h-4 w-4" aria-hidden />
         Conectar
       </button>
     </div>

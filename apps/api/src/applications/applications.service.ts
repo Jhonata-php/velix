@@ -31,6 +31,8 @@ import {
   aggregateContainerStatus,
   containersByPrefix,
   parseExposedPorts,
+  parseCpuPercent,
+  parseMemUsage,
   slugify,
   mergeComposeFragments,
 } from './applications.util';
@@ -524,7 +526,31 @@ export class ApplicationsService {
       15_000,
     );
     const [cpu, memory, network] = result.stdout.trim().split('|');
+
+    const { usedMb, totalMb } = parseMemUsage(memory);
+    await this.prisma.serviceMetricSample.create({
+      data: { projectServiceId: service.id, cpuPercent: parseCpuPercent(cpu), memUsedMb: usedMb, memTotalMb: totalMb },
+    });
+    // ponytail: poda direto aqui em vez de um job separado, mesmo padrão de
+    // `collectMetrics`/ServerMetricSample.
+    await this.prisma.serviceMetricSample.deleteMany({
+      where: { projectServiceId: service.id, capturedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+    });
+
     return { cpu: cpu ?? null, memory: memory ?? null, network: network ?? null };
+  }
+
+  async serviceMetricsHistory(applicationId: string, serviceName: string, hours: number) {
+    const app = await this.getOne(applicationId);
+    const service = app.services.find((s) => s.name === serviceName);
+    if (!service) throw new NotFoundException(`Serviço "${serviceName}" não existe neste projeto`);
+
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return this.prisma.serviceMetricSample.findMany({
+      where: { projectServiceId: service.id, capturedAt: { gte: since } },
+      orderBy: { capturedAt: 'asc' },
+      select: { cpuPercent: true, memUsedMb: true, memTotalMb: true, capturedAt: true },
+    });
   }
 
   /**

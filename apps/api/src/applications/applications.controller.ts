@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomBytes } from 'crypto';
@@ -86,6 +86,12 @@ export class ApplicationsController {
   @Get('applications/:appId/services/:name/stats')
   getServiceStats(@Param('appId') appId: string, @Param('name') name: string) {
     return this.applications.getServiceStats(appId, name);
+  }
+
+  @Get('applications/:appId/services/:name/stats/history')
+  serviceMetricsHistory(@Param('appId') appId: string, @Param('name') name: string, @Query('hours') hours?: string) {
+    const parsed = Number(hours);
+    return this.applications.serviceMetricsHistory(appId, name, Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
   }
 
   /** Histórico de implantações — sem o log completo, que é pesado; ver o endpoint de detalhe pra isso. */

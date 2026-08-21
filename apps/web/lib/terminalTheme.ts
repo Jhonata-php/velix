@@ -1,12 +1,12 @@
 import type { ITheme } from '@xterm/xterm';
 
 export const TERMINAL_THEME: ITheme = {
-  background: '#0a0a0f',
+  background: '#0f172a',
   foreground: '#e2e8f0',
   cursor: '#818cf8',
-  cursorAccent: '#0a0a0f',
+  cursorAccent: '#0f172a',
   selectionBackground: '#4f46e555',
-  black: '#0a0a0f',
+  black: '#0f172a',
   red: '#f87171',
   green: '#4ade80',
   yellow: '#fbbf24',

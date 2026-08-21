@@ -580,10 +580,27 @@ model ProjectService {
   backupConfig    DatabaseBackupConfig?
   backupRuns      DatabaseBackupRun[]
   queryLogs       DatabaseQueryLog[]
+  metricSamples   ServiceMetricSample[]
 
   @@unique([applicationId, name])
   @@index([applicationId])
   @@index([deploymentId])
+}
+
+// ponytail: mesmo padrão de ServerMetricSample — uma amostra por chamada de
+// `getServiceStats` (o front já faz polling de 5 em 5s enquanto a aba de
+// Recursos/visão geral está aberta), podada pros últimos 7 dias na hora de
+// gravar, sem job de limpeza separado.
+model ServiceMetricSample {
+  id               String         @id @default(uuid())
+  projectServiceId String
+  projectService   ProjectService @relation(fields: [projectServiceId], references: [id], onDelete: Cascade)
+  cpuPercent       Float?
+  memUsedMb        Float?
+  memTotalMb       Float?
+  capturedAt       DateTime       @default(now())
+
+  @@index([projectServiceId, capturedAt])
 }
 
 /// Conexão FTP/SFTP salva pra onde um backup de banco pode ser enviado —

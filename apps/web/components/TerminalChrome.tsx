@@ -18,8 +18,8 @@ export function TerminalWindow({
   className?: string;
 }) {
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-[#111318] ${className}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-[#16181f] px-4 py-2.5">
+    <div className={`flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900 ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-slate-800 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex shrink-0 gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
@@ -31,7 +31,7 @@ export function TerminalWindow({
         </div>
         {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </div>
-      <div className={`bg-[#0a0a0f] ${bodyClassName}`}>{children}</div>
+      <div className={`bg-slate-900 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
