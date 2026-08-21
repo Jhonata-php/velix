@@ -5,16 +5,18 @@ import { useRouter } from 'next/navigation';
 import { clearToken, type StoredUser } from '@/lib/api';
 import { BottomSheet } from './BottomSheet';
 import { ThemeToggle } from '../ThemeToggle';
-import { IconSettings, IconShield, IconLogout, IconDevice } from '../icons';
+import { IconSettings, IconShield, IconLogout, IconDevice, IconLock } from '../icons';
 
 export function MoreMenuDrawer({
   user,
   onClose,
   onOpenMobilePairing,
+  onOpenChangePassword,
 }: {
   user: StoredUser | null;
   onClose: () => void;
   onOpenMobilePairing: () => void;
+  onOpenChangePassword: () => void;
 }) {
   const router = useRouter();
 
@@ -54,6 +56,16 @@ export function MoreMenuDrawer({
           <IconShield className="h-4 w-4 text-slate-400" aria-hidden />
           Segurança
         </Link>
+        <button
+          onClick={() => {
+            onClose();
+            onOpenChangePassword();
+          }}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          <IconLock className="h-4 w-4 text-slate-400" aria-hidden />
+          Trocar senha
+        </button>
 
         <div className="flex items-center justify-between px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200">
           Tema

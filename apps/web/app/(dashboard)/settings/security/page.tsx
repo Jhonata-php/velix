@@ -5,10 +5,9 @@ import { apiFetch } from '@/lib/api';
 import { relativeTime } from '@/lib/relativeTime';
 import { parseUserAgent } from '@/lib/parseUserAgent';
 import { Alert } from '@/components/Alert';
-import { PasswordInput } from '@/components/auth/PasswordInput';
-import { PasswordStrength } from '@/components/auth/PasswordStrength';
-import { Spinner } from '@/components/ui/Spinner';
-import { IconDevice, IconShield, IconLock } from '@/components/icons';
+import { ChangePasswordForm } from '@/components/ChangePasswordForm';
+import { rowStatusBorderClass } from '@/components/StatusBadge';
+import { IconDevice, IconLock } from '@/components/icons';
 import { TwoFactorCard } from '@/components/TwoFactorCard';
 
 interface SessionInfo {
@@ -25,13 +24,6 @@ export default function SecurityPage() {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokingOthers, setRevokingOthers] = useState(false);
-
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [changeError, setChangeError] = useState<string | null>(null);
-  const [changeSuccess, setChangeSuccess] = useState(false);
-  const [changing, setChanging] = useState(false);
 
   function loadSessions() {
     apiFetch<SessionInfo[]>('/auth/sessions')
@@ -64,31 +56,6 @@ export default function SecurityPage() {
     }
   }
 
-  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
-
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (changing || mismatch) return;
-    setChangeError(null);
-    setChangeSuccess(false);
-    setChanging(true);
-    try {
-      await apiFetch('/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      setChangeSuccess(true);
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      loadSessions();
-    } catch (err) {
-      setChangeError(err instanceof Error ? err.message : 'Não foi possível alterar a senha.');
-    } finally {
-      setChanging(false);
-    }
-  }
-
   const current = sessions?.find((s) => s.current);
   const others = sessions?.filter((s) => !s.current) ?? [];
 
@@ -99,39 +66,15 @@ export default function SecurityPage() {
         <p className="text-xs text-slate-400">Senha, sessões ativas e atividade da conta</p>
       </div>
 
+      <TwoFactorCard />
+
       <section className="card p-3.5">
         <h2 className="section-title mb-3">Alterar senha</h2>
-        <form onSubmit={handleChangePassword} className="max-w-sm space-y-4">
-          <PasswordInput label="Senha atual" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
-          <div>
-            <PasswordInput label="Nova senha" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />
-            <PasswordStrength password={newPassword} />
-          </div>
-          <PasswordInput
-            label="Confirmar nova senha"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            autoComplete="new-password"
-            invalid={mismatch}
-            errorMessage="As senhas não coincidem."
-          />
-
-          {changeError && <Alert variant="error">{changeError}</Alert>}
-          {changeSuccess && <Alert variant="success">Senha alterada com sucesso. Outras sessões foram encerradas.</Alert>}
-
-          <button
-            type="submit"
-            disabled={changing || mismatch || !currentPassword || !newPassword}
-            className="flex items-center gap-2 btn-primary px-4 py-2 text-sm"
-          >
-            {changing && <Spinner className="h-4 w-4" />}
-            {changing ? 'Salvando...' : 'Alterar senha'}
-          </button>
-        </form>
+        <ChangePasswordForm onSuccess={loadSessions} />
       </section>
 
-      <section className="card p-3.5">
-        <div className="mb-3 flex items-center justify-between">
+      <section className="card overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-3 dark:border-slate-700">
           <h2 className="section-title">Sessões ativas</h2>
           {others.length > 0 && (
             <button onClick={handleRevokeOthers} disabled={revokingOthers} className="btn-secondary px-3 py-1.5 text-xs">
@@ -140,19 +83,23 @@ export default function SecurityPage() {
           )}
         </div>
 
-        {sessionsError && <Alert variant="error">{sessionsError}</Alert>}
+        {sessionsError && (
+          <div className="p-3.5">
+            <Alert variant="error">{sessionsError}</Alert>
+          </div>
+        )}
 
         {!sessions ? (
-          <p className="text-sm text-slate-400">Carregando...</p>
+          <p className="p-3.5 text-sm text-slate-400">Carregando...</p>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
             {current && (
-              <div className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2 dark:border-indigo-900 dark:bg-indigo-900/10">
+              <div className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass('success')} px-3.5 py-3`}>
                 <div className="flex items-center gap-2.5">
-                  <IconDevice className="h-4 w-4 shrink-0 text-indigo-500" />
+                  <IconDevice className="h-4 w-4 shrink-0 text-green-500" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {parseUserAgent(current.userAgent)} <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400">· este dispositivo</span>
+                      {parseUserAgent(current.userAgent)} <span className="text-xs font-normal text-green-600 dark:text-green-400">· este dispositivo</span>
                     </p>
                     <p className="text-xs text-slate-400">
                       <span className="font-mono">{current.ip}</span> · último login {relativeTime(current.createdAt)} · atividade{' '}
@@ -164,7 +111,7 @@ export default function SecurityPage() {
             )}
 
             {others.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+              <div key={s.id} className={`flex items-center justify-between gap-3 border-l-[3px] ${rowStatusBorderClass('neutral')} px-3.5 py-3`}>
                 <div className="flex items-center gap-2.5">
                   <IconDevice className="h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0">
@@ -184,12 +131,10 @@ export default function SecurityPage() {
               </div>
             ))}
 
-            {others.length === 0 && current && <p className="text-xs text-slate-400">Nenhuma outra sessão ativa.</p>}
+            {others.length === 0 && current && <p className="p-3.5 text-xs text-slate-400">Nenhuma outra sessão ativa.</p>}
           </div>
         )}
       </section>
-
-      <TwoFactorCard />
 
       <p className="flex items-center gap-1.5 text-xs text-slate-400">
         <IconLock className="h-3.5 w-3.5" />

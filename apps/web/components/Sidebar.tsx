@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { clearToken, getUser, type StoredUser } from '@/lib/api';
 import { useUpdateStatus } from '@/lib/useUpdateStatus';
 import { MobilePairingModal } from './MobilePairingModal';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import {
   IconDashboard,
   IconServer,
@@ -19,6 +20,7 @@ import {
   IconDatabase,
   IconDevice,
   IconShield,
+  IconLock,
 } from './icons';
 
 const GROUPS = [
@@ -78,6 +80,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showPairing, setShowPairing] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const user = useLoggedUser();
   const logout = useLogout();
@@ -220,6 +223,16 @@ export function Sidebar() {
               <button
                 onClick={() => {
                   setMenuOpen(false);
+                  setShowChangePassword(true);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                <IconLock className="h-4 w-4" aria-hidden />
+                Trocar senha
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
                   setShowPairing(true);
                 }}
                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -252,6 +265,7 @@ export function Sidebar() {
         </div>
       )}
       {showPairing && <MobilePairingModal onClose={() => setShowPairing(false)} />}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </aside>
   );
 }

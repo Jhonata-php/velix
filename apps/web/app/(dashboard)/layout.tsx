@@ -9,6 +9,7 @@ import { MobileHeader } from '@/components/navigation/MobileHeader';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { MoreMenuDrawer } from '@/components/navigation/MoreMenuDrawer';
 import { MobilePairingModal } from '@/components/MobilePairingModal';
+import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { UpdatingScreen } from '@/components/UpdatingScreen';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { SelfUpdateProvider, useSelfUpdate } from '@/lib/useSelfUpdate';
@@ -96,6 +97,7 @@ function DashboardShell({
 }) {
   const selfUpdate = useSelfUpdate();
   const [mobilePairingOpen, setMobilePairingOpen] = useState(false);
+  const [mobileChangePasswordOpen, setMobileChangePasswordOpen] = useState(false);
 
   return (
     <div className="flex">
@@ -121,9 +123,14 @@ function DashboardShell({
             setMoreOpen(false);
             setMobilePairingOpen(true);
           }}
+          onOpenChangePassword={() => {
+            setMoreOpen(false);
+            setMobileChangePasswordOpen(true);
+          }}
         />
       )}
       {mobilePairingOpen && <MobilePairingModal onClose={() => setMobilePairingOpen(false)} />}
+      {mobileChangePasswordOpen && <ChangePasswordModal onClose={() => setMobileChangePasswordOpen(false)} />}
 
       {/* Fora do <main>: a atualização derruba o painel inteiro, então a tela
           cobre qualquer página em que o usuário estiver. */}
