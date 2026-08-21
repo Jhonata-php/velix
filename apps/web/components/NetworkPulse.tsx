@@ -100,9 +100,7 @@ export function NetworkPulse({ state, label = 'V', className = 'h-32 w-32', aria
 
       <circle cx="100" cy="100" r="26" fill={`url(#${hubId})`} />
       {state === 'running' ? (
-        <text x="100" y="101" textAnchor="middle" dominantBaseline="central" fontSize="24" fontWeight="700" fill="#fff">
-          {label}
-        </text>
+        <image href="/logo-mark-white.png" x="81" y="84" width="38" height="33" preserveAspectRatio="xMidYMid meet" aria-label={label} />
       ) : (
         <g transform="translate(88 88)" stroke="#fff" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
           {state === 'success' ? <path d="M4 13l6 6L20 5" /> : <path d="M12 5v10M12 19h.01" />}

@@ -123,8 +123,12 @@ export function Sidebar() {
 
       <div className={`mb-5 flex items-center ${collapsed ? 'justify-center' : 'px-4'}`}>
         {collapsed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/logo.png" alt="Velix" className="h-9 w-9 shrink-0" />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Velix" className="h-9 w-9 shrink-0 dark:hidden" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-white.png" alt="Velix" className="hidden h-9 w-9 shrink-0 dark:block" />
+          </>
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
