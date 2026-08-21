@@ -669,17 +669,23 @@ export class ApplicationsService {
    * deixa o painel mostrando um status que não bate mais com a realidade —
    * chamado periodicamente por `MonitoringService`, um servidor por vez.
    *
-   * EMPTY/DEPLOYING/REMOVING ficam de fora: são estados transitórios que uma
-   * ação do próprio Velix está gerenciando ativamente agora — reconciliar
-   * por cima correria com essa ação e poderia sobrescrever um status que
-   * está prestes a mudar de qualquer forma.
+   * Só REMOVING fica de fora — é uma implantação sendo desmontada agora, sem
+   * containers esperados pra comparar. EMPTY/DEPLOYING entram: na prática, um
+   * projeto que trava nesses dois por algum motivo (a API caiu no meio do
+   * deploy antes de gravar o status final, por exemplo) fica preso lá pra
+   * sempre sem isso — e como EMPTY também é mostrado em cinza no painel,
+   * herda o mesmo bug visual que a reconciliação existe pra corrigir. Um
+   * deploy genuinamente em andamento pode, na pior das hipóteses, passar por
+   * um tick com status momentaneamente errado (ex.: ERROR com containers
+   * subindo aos poucos) — o próprio deploy sobrescreve de volta ao terminar,
+   * então o efeito é só cosmético e passa em minutos.
    */
   async reconcileServerApplications(serverId: string) {
     const server = await this.prisma.server.findUnique({ where: { id: serverId } });
     if (!server || !server.dockerInstalled) return;
 
     const apps = await this.prisma.application.findMany({
-      where: { serverId, status: { in: ['RUNNING', 'STOPPED', 'ERROR'] } },
+      where: { serverId, status: { not: 'REMOVING' } },
       include: { services: true },
     });
     if (apps.length === 0) return;
@@ -718,8 +724,14 @@ export class ApplicationsService {
           : app.services.length > 0
             ? app.services.map((s) => s.containerName)
             : containersByPrefix(ps.stdout, app.slug);
-      if (containerNames.length === 0) continue;
+      if (containerNames.length === 0) {
+        this.logger.warn(`[reconcile] "${app.name}" (${app.slug}) sem nenhum container conhecido nem por prefixo — pulado`);
+        continue;
+      }
       const realAppStatus = aggregateContainerStatus(containerNames, ps.stdout);
+      this.logger.warn(
+        `[reconcile] "${app.name}" (${app.slug}) status=${app.status} real=${realAppStatus} containers=[${containerNames.join(', ')}]`,
+      );
       if (realAppStatus !== app.status) {
         await this.prisma.application.update({ where: { id: app.id }, data: { status: realAppStatus } });
       }
