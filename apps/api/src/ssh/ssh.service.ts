@@ -171,6 +171,13 @@ export class SshService {
           password: options.password,
           privateKey: options.privateKey,
           readyTimeout: timeoutMs,
+          // Sem isso, uma sessão parada (ninguém digitando por um tempo) fica
+          // sujeita ao timeout de conexão ociosa de qualquer proxy no caminho
+          // (Traefik/Cloudflare) — a sessão cai sozinha no meio do uso, sem
+          // nenhum erro real do lado do SSH. Manda um keepalive a cada 15s
+          // pra manter o caminho "quente".
+          keepaliveInterval: 15_000,
+          keepaliveCountMax: 4,
         });
     });
   }
@@ -304,6 +311,13 @@ export class SshService {
           password: options.password,
           privateKey: options.privateKey,
           readyTimeout: timeoutMs,
+          // Sem isso, uma sessão parada (ninguém digitando por um tempo) fica
+          // sujeita ao timeout de conexão ociosa de qualquer proxy no caminho
+          // (Traefik/Cloudflare) — a sessão cai sozinha no meio do uso, sem
+          // nenhum erro real do lado do SSH. Manda um keepalive a cada 15s
+          // pra manter o caminho "quente".
+          keepaliveInterval: 15_000,
+          keepaliveCountMax: 4,
         });
     });
   }
@@ -343,6 +357,13 @@ export class SshService {
           password: options.password,
           privateKey: options.privateKey,
           readyTimeout: timeoutMs,
+          // Sem isso, uma sessão parada (ninguém digitando por um tempo) fica
+          // sujeita ao timeout de conexão ociosa de qualquer proxy no caminho
+          // (Traefik/Cloudflare) — a sessão cai sozinha no meio do uso, sem
+          // nenhum erro real do lado do SSH. Manda um keepalive a cada 15s
+          // pra manter o caminho "quente".
+          keepaliveInterval: 15_000,
+          keepaliveCountMax: 4,
         });
     });
   }

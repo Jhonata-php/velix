@@ -87,9 +87,18 @@ export function attachTerminalServer(
 /** Liga o proxy bidirecional WS<->PTY num canal já aberto (shell de login ou
  * `docker exec` direto — ver `wirePty`/`wireExecPty`). */
 function wireStream(ws: WebSocket, conn: Client, stream: ClientChannel) {
+  // Sem isso, qualquer proxy no caminho entre o navegador e a API (Traefik,
+  // Cloudflare) pode derrubar o WebSocket por "conexão ociosa" no meio de uma
+  // sessão de terminal parada (ninguém digitando por um tempo) — um ping a
+  // cada 20s conta como atividade e mantém a conexão viva.
+  const heartbeat = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.ping();
+  }, 20_000);
+
   stream.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
   stream.stderr.on('data', (chunk: Buffer) => send(ws, { type: 'data', data: chunk.toString('utf8') }));
   stream.on('close', () => {
+    clearInterval(heartbeat);
     send(ws, { type: 'closed' });
     ws.close();
   });
@@ -104,8 +113,14 @@ function wireStream(ws: WebSocket, conn: Client, stream: ClientChannel) {
     }
   });
 
-  ws.on('close', () => conn.end());
-  ws.on('error', () => conn.end());
+  ws.on('close', () => {
+    clearInterval(heartbeat);
+    conn.end();
+  });
+  ws.on('error', () => {
+    clearInterval(heartbeat);
+    conn.end();
+  });
 }
 
 /** Abre um shell de login real no host — reservado pro terminal SSH do
