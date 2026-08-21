@@ -1,6 +1,7 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { IconX } from './icons';
 import { Alert } from './Alert';
 
@@ -31,7 +32,15 @@ export function Modal({ title, onClose, closeDisabled, maxWidth = 'max-w-md', ch
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose, closeDisabled]);
 
-  return (
+  // Portal pra fora da árvore de quem chamou: `position: fixed` só cobre a
+  // tela inteira se nenhum ancestral tiver transform/filter/perspective —
+  // a sidebar tem um `transform` (truque de performance do sticky) que sem
+  // isso prendia o modal dentro da largura dela quando aberto por lá.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="overlay-fade fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-md">
       <div className={`modal-pop card w-full ${maxWidth} p-5`}>
         <div className="mb-3 flex items-center justify-between">
@@ -49,7 +58,8 @@ export function Modal({ title, onClose, closeDisabled, maxWidth = 'max-w-md', ch
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
