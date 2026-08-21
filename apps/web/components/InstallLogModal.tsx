@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { getToken } from '@/lib/api';
-import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { getTerminalTheme } from '@/lib/terminalTheme';
 import { TerminalModal } from './TerminalChrome';
 import '@xterm/xterm/css/xterm.css';
 
@@ -42,14 +43,21 @@ interface PanelProps {
  * layout (ex.: a etapa "Implantação" do assistente de instalação). */
 export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange, onLine }: PanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<import('@xterm/xterm').Terminal | null>(null);
   // Em ref, não em estado: o efeito que abre o WebSocket não pode depender de
   // uma função nova a cada render, senão reconecta e reinicia a operação.
   const onLineRef = useRef(onLine);
   onLineRef.current = onLine;
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   function setStatus(s: OpsLogStatus) {
     onStatusChange?.(s);
   }
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme(isDark);
+  }, [isDark]);
 
   useEffect(() => {
     let disposed = false;
@@ -68,8 +76,9 @@ export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange, onLi
         fontSize: 12,
         lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: TERMINAL_THEME,
+        theme: getTerminalTheme(isDark),
       });
+      termRef.current = term;
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
@@ -124,6 +133,7 @@ export function OpsLogPanel({ serverId, op, params, onDone, onStatusChange, onLi
       resizeObserver?.disconnect();
       ws?.close();
       term?.dispose();
+      termRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, op]);
@@ -141,7 +151,7 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<OpsLogStatus, string> = {
-  connecting: 'bg-slate-800 text-slate-300',
+  connecting: 'bg-slate-500/15 text-slate-600 dark:text-slate-300',
   running: 'bg-amber-500/15 text-amber-400',
   'done-ok': 'bg-green-500/15 text-green-400',
   'done-error': 'bg-red-500/15 text-red-400',
@@ -166,7 +176,7 @@ export function InstallLogModal({ serverId, op, params, title, onClose, onDone }
           <button
             onClick={onClose}
             disabled={!canClose}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/5"
           >
             Fechar
           </button>

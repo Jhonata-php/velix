@@ -18,20 +18,22 @@ export function TerminalWindow({
   className?: string;
 }) {
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900 ${className}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-slate-800 px-4 py-2.5">
+    <div
+      className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 ${className}`}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-white/5 dark:bg-slate-800">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex shrink-0 gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
           </div>
-          <h2 className="truncate text-sm font-medium text-slate-200">{title}</h2>
+          <h2 className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">{title}</h2>
           {statusSlot}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </div>
-      <div className={`bg-slate-900 ${bodyClassName}`}>{children}</div>
+      <div className={`bg-white dark:bg-slate-900 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
@@ -61,13 +63,17 @@ export function TerminalActionButton({
   children: ReactNode;
 }) {
   const toneClass =
-    tone === 'success' ? 'text-green-400' : tone === 'danger' ? 'text-slate-300 hover:bg-red-500/10 hover:text-red-400' : 'text-slate-300';
+    tone === 'success'
+      ? 'text-green-600 dark:text-green-400'
+      : tone === 'danger'
+        ? 'text-slate-500 hover:text-red-500 dark:text-slate-300 dark:hover:text-red-400'
+        : 'text-slate-500 dark:text-slate-300';
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded-lg p-1.5 transition hover:bg-white/5 disabled:opacity-40 ${toneClass}`}
+      className={`rounded-lg p-1.5 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/5 ${toneClass}`}
     >
       {children}
     </button>

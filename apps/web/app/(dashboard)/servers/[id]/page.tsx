@@ -7,7 +7,8 @@ import { apiFetch, getToken } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { formatUptime } from '@/lib/formatUptime';
 import { useInstallWizard } from '@/lib/useInstallWizard';
-import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { useTheme } from 'next-themes';
+import { getTerminalTheme } from '@/lib/terminalTheme';
 import { type DockerContainer, groupContainers, avatarColor, stripSwarmSuffix } from '@/lib/containerGroups';
 import type { DatabaseInstanceSummary, CatalogApplicationSummary, CatalogApplicationDetail } from '@/lib/types';
 import { Bar } from '@/components/Bar';
@@ -1703,7 +1704,14 @@ function AddDomainModal({
 
 function TerminalTab({ serverId }: { serverId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<import('@xterm/xterm').Terminal | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'closed' | 'error'>('connecting');
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme(isDark);
+  }, [isDark]);
 
   useEffect(() => {
     let disposed = false;
@@ -1721,8 +1729,9 @@ function TerminalTab({ serverId }: { serverId: string }) {
         fontSize: 13,
         lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: TERMINAL_THEME,
+        theme: getTerminalTheme(isDark),
       });
+      termRef.current = term;
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
@@ -1760,6 +1769,7 @@ function TerminalTab({ serverId }: { serverId: string }) {
       resizeObserver?.disconnect();
       ws?.close();
       term?.dispose();
+      termRef.current = null;
     };
   }, [serverId]);
 

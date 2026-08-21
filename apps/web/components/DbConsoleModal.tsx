@@ -1,14 +1,22 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { getToken } from '@/lib/api';
-import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { getTerminalTheme } from '@/lib/terminalTheme';
 import { TerminalModal } from './TerminalChrome';
 import '@xterm/xterm/css/xterm.css';
 
 export function DbConsoleModal({ instanceId, title, onClose }: { instanceId: string; title: string; onClose: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<import('@xterm/xterm').Terminal | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'closed' | 'error'>('connecting');
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme(isDark);
+  }, [isDark]);
 
   useEffect(() => {
     let disposed = false;
@@ -26,8 +34,9 @@ export function DbConsoleModal({ instanceId, title, onClose }: { instanceId: str
         fontSize: 13,
         lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: TERMINAL_THEME,
+        theme: getTerminalTheme(isDark),
       });
+      termRef.current = term;
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
@@ -65,6 +74,7 @@ export function DbConsoleModal({ instanceId, title, onClose }: { instanceId: str
       resizeObserver?.disconnect();
       ws?.close();
       term?.dispose();
+      termRef.current = null;
     };
   }, [instanceId]);
 
@@ -88,7 +98,10 @@ export function DbConsoleModal({ instanceId, title, onClose }: { instanceId: str
         </span>
       }
       actions={
-        <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5">
+        <button
+          onClick={onClose}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
+        >
           Fechar
         </button>
       }

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { getToken } from '@/lib/api';
-import { TERMINAL_THEME } from '@/lib/terminalTheme';
+import { getTerminalTheme } from '@/lib/terminalTheme';
 import { TerminalWindow } from './TerminalChrome';
 import '@xterm/xterm/css/xterm.css';
 
@@ -13,7 +14,14 @@ import '@xterm/xterm/css/xterm.css';
  * `docker exec` dentro de um container específico). */
 export function WebTerminal({ wsPath, title }: { wsPath: string; title: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<import('@xterm/xterm').Terminal | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'closed' | 'error'>('connecting');
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme(isDark);
+  }, [isDark]);
 
   useEffect(() => {
     let disposed = false;
@@ -31,8 +39,9 @@ export function WebTerminal({ wsPath, title }: { wsPath: string; title: string }
         fontSize: 13,
         lineHeight: 1.4,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: TERMINAL_THEME,
+        theme: getTerminalTheme(isDark),
       });
+      termRef.current = term;
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
@@ -71,6 +80,7 @@ export function WebTerminal({ wsPath, title }: { wsPath: string; title: string }
       resizeObserver?.disconnect();
       ws?.close();
       term?.dispose();
+      termRef.current = null;
     };
   }, [wsPath]);
 
