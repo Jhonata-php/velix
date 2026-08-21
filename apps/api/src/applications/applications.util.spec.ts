@@ -3,7 +3,16 @@
  *   npx ts-node src/applications/applications.util.spec.ts
  */
 import assert from 'node:assert';
-import { slugify, appDir, allContainersUp, parseExposedPorts, isValidContainerRef, mergeComposeFragments, uniqueServiceName } from './applications.util';
+import {
+  slugify,
+  appDir,
+  allContainersUp,
+  aggregateContainerStatus,
+  parseExposedPorts,
+  isValidContainerRef,
+  mergeComposeFragments,
+  uniqueServiceName,
+} from './applications.util';
 import { renderCompose } from '../catalog/catalog.util';
 import { uptimeKumaManifest } from '../catalog/manifests/uptime-kuma';
 import { immichManifest } from '../catalog/manifests/immich';
@@ -17,6 +26,11 @@ const ps = 'meuapp_app|Up 3 minutes\nmeuapp_db|Exited (0) 2 minutes ago';
 assert.equal(allContainersUp(ps, ['meuapp_app']), true);
 assert.equal(allContainersUp(ps, ['meuapp_app', 'meuapp_db']), false);
 assert.equal(allContainersUp('', ['meuapp_app']), false);
+
+assert.equal(aggregateContainerStatus(['meuapp_app'], ps), 'RUNNING');
+assert.equal(aggregateContainerStatus(['meuapp_app', 'meuapp_db'], ps), 'ERROR');
+assert.equal(aggregateContainerStatus(['meuapp_db'], ps), 'STOPPED');
+assert.equal(aggregateContainerStatus(['meuapp_app'], ''), 'STOPPED');
 
 assert.deepEqual(parseExposedPorts('{"3001/tcp":{}}'), [{ port: 3001, protocol: 'tcp' }]);
 assert.deepEqual(parseExposedPorts('{"9000/tcp":{},"9001/tcp":{}}'), [

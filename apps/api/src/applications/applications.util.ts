@@ -34,10 +34,10 @@ export function uniqueServiceName(base: string, existingNames: string[]): string
   return `${clean}-${Date.now()}`;
 }
 
-/** Todos os containers esperados aparecem "Up" na saída de
- * `docker ps --format '{{.Names}}|{{.Status}}'`? */
-export function allContainersUp(psOutput: string, expectedNames: string[]): boolean {
-  const statusByName = new Map(
+/** `docker ps --format '{{.Names}}|{{.Status}}'` → nome do container → texto
+ * bruto do status (ex.: "Up 3 hours", "Exited (0) 2 days ago"). */
+export function parseContainerStatuses(psOutput: string): Map<string, string> {
+  return new Map(
     psOutput
       .split('\n')
       .map((l) => l.trim())
@@ -47,7 +47,28 @@ export function allContainersUp(psOutput: string, expectedNames: string[]): bool
         return [name, rest.join('|')] as const;
       }),
   );
+}
+
+/** Todos os containers esperados aparecem "Up" na saída de
+ * `docker ps --format '{{.Names}}|{{.Status}}'`? */
+export function allContainersUp(psOutput: string, expectedNames: string[]): boolean {
+  const statusByName = parseContainerStatuses(psOutput);
   return expectedNames.every((name) => (statusByName.get(name) ?? '').toLowerCase().includes('up'));
+}
+
+/** Status agregado de um projeto a partir do status real (docker ps) de cada
+ * um dos seus serviços — usado pra corrigir `Application.status`/
+ * `ProjectService.status` quando ficam desatualizados em relação ao Docker de
+ * verdade (ex.: a API reiniciou no meio de um evento, ou o container caiu e
+ * subiu de novo por conta própria, sem passar pelas ações do Velix). Todos
+ * rodando → RUNNING; nenhum rodando → STOPPED; misto → ERROR (estado que
+ * merece atenção, não é nem "no ar" nem "totalmente parado"). */
+export function aggregateContainerStatus(containerNames: string[], psOutput: string): 'RUNNING' | 'STOPPED' | 'ERROR' {
+  const statusByName = parseContainerStatuses(psOutput);
+  const upCount = containerNames.filter((name) => (statusByName.get(name) ?? '').toLowerCase().includes('up')).length;
+  if (upCount === containerNames.length) return 'RUNNING';
+  if (upCount === 0) return 'STOPPED';
+  return 'ERROR';
 }
 
 /** Parseia `docker inspect <container> --format '{{json .Config.ExposedPorts}}'`

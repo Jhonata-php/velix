@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServersService } from '../servers/servers.service';
 import { SshService } from '../ssh/ssh.service';
+import { ApplicationsService } from '../applications/applications.service';
 import { ServerWatcher } from './server-watcher';
 import { ThresholdAlertService } from './threshold-alert.service';
 
@@ -16,6 +17,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     private readonly servers: ServersService,
     private readonly ssh: SshService,
     private readonly evaluator: ThresholdAlertService,
+    private readonly applications: ApplicationsService,
   ) {}
 
   async onModuleInit() {
@@ -67,6 +69,23 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         this.watchers.set(id, watcher);
       } catch (err) {
         this.logger.warn(`Não foi possível iniciar monitoramento de ${id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
+  /**
+   * Confere o Docker de verdade e corrige o status de projetos que ficou
+   * desatualizado (ver `ApplicationsService.reconcileServerApplications`) —
+   * um servidor por vez, pra um erro num não travar a checagem dos outros.
+   */
+  @Cron('*/2 * * * *')
+  async reconcileApplicationStatuses() {
+    const servers = await this.prisma.server.findMany({ where: { dockerInstalled: true }, select: { id: true } });
+    for (const { id } of servers) {
+      try {
+        await this.applications.reconcileServerApplications(id);
+      } catch (err) {
+        this.logger.warn(`Não foi possível reconciliar status de projetos do servidor ${id}: ${err instanceof Error ? err.message : err}`);
       }
     }
   }

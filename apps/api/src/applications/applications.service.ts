@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,7 +24,7 @@ import {
   validateManifest,
 } from '../catalog/catalog.util';
 import { PROXY_NETWORK } from '../traefik/traefik.util';
-import { appDir, allContainersUp, parseExposedPorts, slugify, mergeComposeFragments } from './applications.util';
+import { appDir, allContainersUp, aggregateContainerStatus, parseExposedPorts, slugify, mergeComposeFragments } from './applications.util';
 import { DeployServiceDto } from './dto/deploy-service.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateApplicationDomainDto } from './dto/create-application-domain.dto';
@@ -52,6 +52,8 @@ export interface EndpointService {
 
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger(ApplicationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ssh: SshService,
@@ -647,6 +649,59 @@ export class ApplicationsService {
   async getServices(applicationId: string) {
     await this.getOne(applicationId);
     return this.prisma.projectService.findMany({ where: { applicationId }, orderBy: { createdAt: 'asc' } });
+  }
+
+  /**
+   * Corrige `Application.status`/`ProjectService.status` a partir do Docker
+   * de verdade (`docker ps`) — sem isso, os dois campos só mudam quando uma
+   * ação passa pelo próprio Velix (deploy, start/stop/restart), então
+   * qualquer coisa fora desse caminho (a API reiniciou no meio de uma
+   * implantação, o container caiu e a política de restart do Docker subiu
+   * ele de novo sozinha, alguém rodou `docker restart` direto no servidor)
+   * deixa o painel mostrando um status que não bate mais com a realidade —
+   * chamado periodicamente por `MonitoringService`, um servidor por vez.
+   *
+   * EMPTY/DEPLOYING/REMOVING ficam de fora: são estados transitórios que uma
+   * ação do próprio Velix está gerenciando ativamente agora — reconciliar
+   * por cima correria com essa ação e poderia sobrescrever um status que
+   * está prestes a mudar de qualquer forma.
+   */
+  async reconcileServerApplications(serverId: string) {
+    const server = await this.prisma.server.findUnique({ where: { id: serverId } });
+    if (!server || !server.dockerInstalled) return;
+
+    const apps = await this.prisma.application.findMany({
+      where: { serverId, status: { in: ['RUNNING', 'STOPPED', 'ERROR'] } },
+      include: { services: true },
+    });
+    if (apps.length === 0) return;
+
+    const { options } = await this.servers.getServerWithConnectOptions(serverId);
+    const ps = await this.ssh.runCommand(options, "sudo docker ps --format '{{.Names}}|{{.Status}}'", 15_000);
+    if (!ps.ok) {
+      this.logger.warn(`Não foi possível conferir containers do servidor ${serverId}: ${ps.message ?? ps.stderr}`);
+      return;
+    }
+
+    for (const app of apps) {
+      if (app.services.length === 0) continue;
+
+      // Um container só: `aggregateContainerStatus` nunca devolve 'ERROR'
+      // pra uma lista de 1 (só existe "misto" com 2+), então o real de cada
+      // serviço é sempre RUNNING ou STOPPED.
+      for (const s of app.services) {
+        const real = aggregateContainerStatus([s.containerName], ps.stdout) as 'RUNNING' | 'STOPPED';
+        if (s.status !== real) {
+          await this.prisma.projectService.update({ where: { id: s.id }, data: { status: real } });
+        }
+      }
+
+      const containerNames = app.services.map((s) => s.containerName);
+      const realAppStatus = aggregateContainerStatus(containerNames, ps.stdout);
+      if (realAppStatus !== app.status) {
+        await this.prisma.application.update({ where: { id: app.id }, data: { status: realAppStatus } });
+      }
+    }
   }
 
   /** Sem `log`, que pode ser grande — a lista é só pra renderizar as linhas do histórico. */
