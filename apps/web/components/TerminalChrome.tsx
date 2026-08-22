@@ -19,21 +19,21 @@ export function TerminalWindow({
 }) {
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 ${className}`}
+      className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-[#171717] ${className}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-white/5 dark:bg-slate-800">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-white/10 dark:bg-neutral-900">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex shrink-0 gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
           </div>
-          <h2 className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">{title}</h2>
+          <h2 className="truncate text-sm font-medium text-slate-800 dark:text-neutral-200">{title}</h2>
           {statusSlot}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </div>
-      <div className={`bg-white dark:bg-slate-900 ${bodyClassName}`}>{children}</div>
+      <div className={`bg-white dark:bg-[#171717] ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
@@ -66,8 +66,8 @@ export function TerminalActionButton({
     tone === 'success'
       ? 'text-green-600 dark:text-green-400'
       : tone === 'danger'
-        ? 'text-slate-500 hover:text-red-500 dark:text-slate-300 dark:hover:text-red-400'
-        : 'text-slate-500 dark:text-slate-300';
+        ? 'text-slate-500 hover:text-red-500 dark:text-neutral-300 dark:hover:text-red-400'
+        : 'text-slate-500 dark:text-neutral-300';
   return (
     <button
       onClick={onClick}

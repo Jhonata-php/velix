@@ -1,27 +1,29 @@
 import type { ITheme } from '@xterm/xterm';
 
+// Cinza neutro (sem matiz de azul) — o slate usado antes lia como "terminal
+// azul" pra quem via de relance, mesmo sendo bem escuro.
 const DARK_THEME: ITheme = {
-  background: '#0f172a',
-  foreground: '#e2e8f0',
-  cursor: '#818cf8',
-  cursorAccent: '#0f172a',
-  selectionBackground: '#4f46e555',
-  black: '#0f172a',
+  background: '#171717',
+  foreground: '#e5e5e5',
+  cursor: '#e5e5e5',
+  cursorAccent: '#171717',
+  selectionBackground: '#ffffff26',
+  black: '#171717',
   red: '#f87171',
   green: '#4ade80',
   yellow: '#fbbf24',
   blue: '#60a5fa',
   magenta: '#c084fc',
   cyan: '#22d3ee',
-  white: '#e2e8f0',
-  brightBlack: '#475569',
+  white: '#e5e5e5',
+  brightBlack: '#525252',
   brightRed: '#fca5a5',
   brightGreen: '#86efac',
   brightYellow: '#fde68a',
   brightBlue: '#93c5fd',
   brightMagenta: '#d8b4fe',
   brightCyan: '#67e8f9',
-  brightWhite: '#f8fafc',
+  brightWhite: '#fafafa',
 };
 
 // Fundo branco, letra preta — pedido explícito no modo claro, em vez de um
